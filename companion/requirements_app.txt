@@ -1,0 +1,12 @@
+Pillow==12.3.0
+psutil==7.2.2
+pynput==1.8.2
+pyserial==3.5
+pystray==0.19.5
+winrt-runtime==3.2.1
+winrt-Windows.Foundation==3.2.1
+winrt-Windows.Foundation.Collections==3.2.1
+winrt-Windows.Media.Control==3.2.1
+winrt-Windows.Storage.Streams==3.2.1
+winrt-Windows.System==3.2.1
+pyinstaller==6.22.3

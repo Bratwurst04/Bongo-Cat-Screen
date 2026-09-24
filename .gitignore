@@ -1,0 +1,20 @@
+.pio/
+build/
+dist/
+__pycache__/
+*.pyc
+.pytest_cache/
+.venv/
+venv/
+
+# Local Windows companion settings and Spotify credentials.
+**/config.json
+**/config_backup.json
+**/spotify_tokens.json
+.env
+.env.*
+!.env.example
+
+# Older local packages are retained on disk, not published as current builds.
+/release/BongoDesk-spotify-v6-stable.bin
+/release/BongoDeskSpotify.exe

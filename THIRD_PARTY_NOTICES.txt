@@ -1,0 +1,24 @@
+BongoDesk Spotify v2 third-party notices
+========================================
+
+Base project
+------------
+vostoklabs/bongo_cat_monitor
+https://github.com/vostoklabs/bongo_cat_monitor
+MIT License, Copyright (c) 2024 Bongo Cat Project.
+
+Interface and implementation research
+-------------------------------------
+The BONGO DJ screen and architecture were independently adapted for this
+ESP32-024 hardware after studying these MIT-licensed projects:
+
+- joeycatic/esp32-spotify-touch-controller
+  https://github.com/joeycatic/esp32-spotify-touch-controller
+- witnessmenow/Spotify-Diy-Thing
+  https://github.com/witnessmenow/Spotify-Diy-Thing
+- Saqoosha/SPNFY
+  https://github.com/Saqoosha/SPNFY
+
+No credentials or code from those repositories are embedded in the firmware.
+Their design patterns informed the cover-first layout, touch gestures, and
+separation between media acquisition and display rendering.

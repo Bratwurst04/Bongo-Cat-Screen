@@ -1,0 +1,213 @@
+{
+  "classification": "simulerade förhandsbilder",
+  "display_pixels": [
+    240,
+    320
+  ],
+  "generator": "tools/export_ui_visuals.py",
+  "command": "python tools/export_ui_visuals.py",
+  "example_data": {
+    "time": "14:26",
+    "cpu_percent": 18,
+    "ram_percent": 42,
+    "wpm": 73,
+    "bonks": 7,
+    "title": "Midnight Circuit — Extended Session Mix",
+    "artist": "Demo Artist",
+    "elapsed_seconds": 82,
+    "duration_seconds": 213,
+    "source_windows": "SPOTIFY",
+    "source_api": "SPOTIFY API",
+    "dj_playing_layers": [
+      "dj_effect_r1",
+      "dj_notes_l1",
+      "dj_notes_r2"
+    ],
+    "dj_paused_layers": [
+      "dj_effect_r1",
+      "dj_notes_l1",
+      "dj_notes_r2"
+    ]
+  },
+  "views": [
+    {
+      "id": "bongo",
+      "name": "Bongo-skärm",
+      "file": "composed/bongo.png",
+      "dimensions": [
+        240,
+        320
+      ],
+      "classification": "simulerad förhandsbild",
+      "media_state": "IDLE_STAGE1",
+      "note": "CPU/RAM/WPM/tid är exempeldata.",
+      "sha256": "b226543e5af19db6b7ae8fbd86db56c07eb311534776ac69a8b407a20b48a532"
+    },
+    {
+      "id": "dashboard",
+      "name": "Meny – Bongo aktiv",
+      "file": "composed/dashboard.png",
+      "dimensions": [
+        240,
+        320
+      ],
+      "classification": "simulerad förhandsbild",
+      "media_state": "PLAYING",
+      "note": "Gemensam panelmeny öppnad från Bongo, med Bongo markerad.",
+      "sha256": "f46da1b345206ec5ab00948c3fd84f47fd7ed13fdfaa186449519c67becc3f42"
+    },
+    {
+      "id": "menu_player",
+      "name": "Meny – Spelare aktiv",
+      "file": "composed/menu_player.png",
+      "dimensions": [
+        240,
+        320
+      ],
+      "classification": "simulerad förhandsbild",
+      "media_state": "PLAYING",
+      "note": "Samma panelmeny öppnad från mediasidan, med Spelare markerad.",
+      "sha256": "d5ec9484c08bafc48541c013d80a5adb7e6a4d81632edcabb24fe935cdfc4885"
+    },
+    {
+      "id": "media_vinyl",
+      "name": "Medieskärm – vinyl",
+      "file": "composed/media_vinyl.png",
+      "dimensions": [
+        240,
+        320
+      ],
+      "classification": "simulerad förhandsbild",
+      "media_state": "PLAYING",
+      "note": "Windows Spotify, generisk vinyl och styrinstruktioner.",
+      "sha256": "4302db83962686817baa4b9789ce5ce216459f87e15f889510fec6152fe965ab"
+    },
+    {
+      "id": "media_artwork",
+      "name": "Medieskärm – omslag",
+      "file": "composed/media_artwork.png",
+      "dimensions": [
+        240,
+        320
+      ],
+      "classification": "simulerad förhandsbild",
+      "media_state": "PLAYING",
+      "note": "Spotify API, syntetiskt DEMO-omslag och källanpassad hjälptext.",
+      "sha256": "17b955ec116c4465453b16eac718e11188eb34de008f72eec2d4bfabf09d34d2"
+    },
+    {
+      "id": "dj_playing",
+      "name": "DJ – uppspelning",
+      "file": "composed/dj_playing.png",
+      "dimensions": [
+        240,
+        320
+      ],
+      "classification": "simulerad förhandsbild",
+      "media_state": "PLAYING",
+      "note": "En vald bildruta med L1/R2 och effekt R1; lokalt slumpförlopp simuleras inte.",
+      "sha256": "31f427a8caa2dbe480714d18d96ca3698fceeb6a4afca6dc2b59fa73a647d987"
+    },
+    {
+      "id": "dj_paused",
+      "name": "DJ – paus",
+      "file": "composed/dj_paused.png",
+      "dimensions": [
+        240,
+        320
+      ],
+      "classification": "simulerad förhandsbild",
+      "media_state": "PAUSED",
+      "note": "Den senast spelade DJ-rutan förblir stilla när media pausas.",
+      "sha256": "6e0a3a2c6ad276022a29294c681437362de52039cd63c2fb5b7f5f5ece5bb602"
+    }
+  ],
+  "contact_sheet": "contact_sheet_composed.png",
+  "sprite_contact_sheet": "contact_sheet_sprites.png",
+  "sprites": [
+    {
+      "name": "standardbody1",
+      "source": "assets/cat-sprites/body/standardbody1.png",
+      "file": "sprites/standardbody1.png"
+    },
+    {
+      "name": "stock_face",
+      "source": "assets/cat-sprites/face/stock_face.png",
+      "file": "sprites/stock_face.png"
+    },
+    {
+      "name": "table1",
+      "source": "assets/cat-sprites/table/table1.png",
+      "file": "sprites/table1.png"
+    },
+    {
+      "name": "twopawsup",
+      "source": "assets/cat-sprites/paws/twopawsup.png",
+      "file": "sprites/twopawsup.png"
+    },
+    {
+      "name": "dj_glasses",
+      "source": "assets/User-made/Glasses.png",
+      "file": "sprites/dj_glasses.png"
+    },
+    {
+      "name": "dj_mixer_board",
+      "source": "assets/User-made/Mixer bord 1.png",
+      "file": "sprites/dj_mixer_board.png"
+    },
+    {
+      "name": "dj_effect_r1",
+      "source": "assets/User-made/Effects R1.png",
+      "file": "sprites/dj_effect_r1.png"
+    },
+    {
+      "name": "dj_effect_r2",
+      "source": "assets/User-made/Effects R2.png",
+      "file": "sprites/dj_effect_r2.png"
+    },
+    {
+      "name": "dj_notes_l1",
+      "source": "assets/User-made/Music Notes L1.png",
+      "file": "sprites/dj_notes_l1.png"
+    },
+    {
+      "name": "dj_notes_l2",
+      "source": "assets/User-made/Music Notes L2.png",
+      "file": "sprites/dj_notes_l2.png"
+    },
+    {
+      "name": "dj_notes_r1",
+      "source": "assets/User-made/Music Notes R1.png",
+      "file": "sprites/dj_notes_r1.png"
+    },
+    {
+      "name": "dj_notes_r2",
+      "source": "assets/User-made/Music Notes R2.png",
+      "file": "sprites/dj_notes_r2.png"
+    }
+  ],
+  "source_sha256": {
+    "src/bongo_cat_featured.inc": "47c9977f823897801233380f8dd5f69e865a8de4a916b357886367dc9b502847",
+    "animations_sprites.h": "2ff355aacd49aec915676ff689b51d17806b6372fa2591bebd6c49b5dd1d8a13",
+    "animations/dj/dj_sprites.h": "9ea5d39d9c393ac594b19f1bbfc3224a53eff436b82b0b40f1c7ca84adf67a31",
+    "assets/cat-sprites/body/standardbody1.png": "004875a5016576b2e5fbe7eff0f173a53bffea69006a83ab7e763cfdcc5be60a",
+    "assets/cat-sprites/face/stock_face.png": "7338be958b1bad87d09e52de0d2a421847578671048fc159472100a734a117f8",
+    "assets/cat-sprites/table/table1.png": "e8dd649ea1ae6cfd8045463ba044f673b6e97d59f1db605944cf70570ec0796c",
+    "assets/cat-sprites/paws/twopawsup.png": "2b0d635a56ea9ae3605cb598fc653ded73dfde1feb5cf7f26d6fdf27691cb661",
+    "assets/User-made/Glasses.png": "d09662b2d4463ec33541f45d7523e975289ab6544a4e81bc14867b2f0b888ea6",
+    "assets/User-made/Mixer bord 1.png": "7915b9dd6b4aac6d5a1129cc480ae1c2f1c34192d0748f6f40eb6f4cd071137d",
+    "assets/User-made/Effects R1.png": "02ab2858a1d768b87a11db95d731509cbf22f7cb58bded35f387a065737bb22e",
+    "assets/User-made/Effects R2.png": "d461699c4f59e3be83ccdac17a9e6516a431a14a5e90c195df19d3592f0fe788",
+    "assets/User-made/Music Notes L1.png": "ce3b9699c6b9abae277bb58b76b5229f2404545ce8fb44638db82bbbb7a00be1",
+    "assets/User-made/Music Notes L2.png": "9525e85ede42331d1b930cc3ba6f617ec27bd79b56622f22de1ad244655beb0f",
+    "assets/User-made/Music Notes R1.png": "adc1936b9f64cdc4e31433c2fc6295a00fbb82db8d3dd0b55eece5223b5ec36d",
+    "assets/User-made/Music Notes R2.png": "f661a8f962f9ee095b38a4c4791a50d5e7776e3917c61ebe2e2f1f41083d65e3"
+  },
+  "rendering_limits": [
+    "Pillow approximates LVGL font metrics, antialiasing, RGB565 colour and widget borders.",
+    "The Bongo and DJ sprite order and nearest-neighbour zoom follow firmware, but actual TFT clipping and colour need a device photo.",
+    "The album cover is generated example art; it is not a Spotify cover or a serial transfer test.",
+    "The DJ playing image is one selected frame, not a test of random timing or pause transitions.",
+    "Touch targets, gestures, serial communication, progress timing and physical display behaviour require hardware testing."
+  ]
+}
