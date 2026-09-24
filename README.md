@@ -5,6 +5,9 @@ companion som skickar tid, systemvärden, mediastatus och albumomslag via serial
 ESP32 visar Bongo-animationer, en gemensam panelmeny och en mediasida med
 omslag, vinyl och DJ-katt.
 
+> [!Important]
+> Vibe-coded project made by me
+
 ## Aktuell nedladdningsbar firmware
 
 Använd [BongoDesk-panel-menu-hit-2026-09-24-full-0x0.bin](release/BongoDesk-panel-menu-hit-2026-09-24-full-0x0.bin)
