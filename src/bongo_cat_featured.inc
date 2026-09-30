@@ -3,6 +3,9 @@
 #include <WiFi.h>
 #include <EEPROM.h>
 #include <esp_freertos_hooks.h>
+#include <esp_sleep.h>
+#include <driver/rtc_io.h>
+#include <math.h>
 #include "Free_Fonts.h"
 #include "animations_sprites.h"
 
@@ -22,6 +25,19 @@
 #define MEDIA_VINYL_ANGLE_STEP 18
 #define MEDIA_CAT_FRAME_MS 450
 #define MEDIA_CAT_ZOOM 640
+#define COMPANION_IDLE_MS 600000UL
+#define COMPANION_PROBE_MS 8000UL
+#define COMPANION_PROBE_GRACE_MS 4000UL
+#define COMPANION_PROBE_INTERVAL_US 25000000ULL
+#define MEDIA_ART_STALL_MS 15000UL
+constexpr bool companionIdleExpired(uint32_t now, uint32_t last) {
+    return uint32_t(now - last) >= COMPANION_IDLE_MS;
+}
+static_assert(!companionIdleExpired(599999, 0), "companion idle boundary");
+static_assert(companionIdleExpired(600000, 0), "companion idle boundary");
+static_assert(COMPANION_PROBE_INTERVAL_US / 1000 + COMPANION_PROBE_MS +
+                  MEDIA_ART_STALL_MS + COMPANION_PROBE_GRACE_MS < 60000,
+              "timer probe must fit within the wake target");
 // The existing raw touch X axis increases from top to bottom; raw Y runs
 // across the display. Only the menu uses approximate absolute positions.
 #define TOUCH_RAW_TOP 200
@@ -64,6 +80,7 @@ bool animation_paused = false;
 // Enhanced animation control
 bool python_control_mode = true;  // Python controls idle progression
 uint32_t last_command_time = 0;   // Track when last command received
+uint32_t last_companion_stats_ms = 0;  // Independent of the cat's idle stages
 #define TYPING_TIMEOUT_MS 2000    // Stop typing animation after 2 seconds of no commands
 #define PYTHON_TIMEOUT_MS 5000    // Fall back to auto mode after 5 seconds
 
@@ -130,6 +147,7 @@ bool media_art_receiving = false;
 size_t media_art_expected = 0;
 size_t media_art_received = 0;
 size_t media_art_pixels_received = 0;
+uint32_t media_art_last_byte_ms = 0;
 uint8_t media_art_rgb_triplet[3] = {0, 0, 0};
 uint8_t media_art_rgb_triplet_used = 0;
 bool media_art_valid = false;
@@ -555,6 +573,7 @@ bool serviceMediaArtworkReceive() {
         size_t amount = min(min(available, remaining), sizeof(incoming));
         int bytes_read = Serial.read(incoming, amount);
         if (bytes_read > 0) {
+            media_art_last_byte_ms = millis();
             media_art_received += (size_t)bytes_read;
             for (int index = 0; index < bytes_read; index++) {
                 media_art_rgb_triplet[media_art_rgb_triplet_used++] = incoming[index];
@@ -581,6 +600,10 @@ bool serviceMediaArtworkReceive() {
             media_art_valid = false;
             Serial.println("MEDIA_ART_ERROR");
         }
+    } else if (millis() - media_art_last_byte_ms >= MEDIA_ART_STALL_MS) {
+        // A broken upload must not prevent the ten-minute power timeout forever.
+        media_art_receiving = false;
+        Serial.println("MEDIA_ART_ERROR");
     }
     return true;
 }
@@ -669,6 +692,119 @@ void serviceMediaTaps(uint32_t current_time) {
     media_tap_deadline = 0;
 }
 
+bool parseCompanionStats(const String &command, int *cpu, int *ram, int *wpm) {
+    int parsed_length = -1;
+    float cpu_percent;
+    // The existing companion sends CPU with one decimal place. Keep the
+    // display's integer value while validating the complete wire packet.
+    if (sscanf(command.c_str(), "STATS:CPU:%f,RAM:%d,WPM:%d%n",
+               &cpu_percent, ram, wpm, &parsed_length) != 3 ||
+        parsed_length != (int)command.length()) return false;
+    if (!isfinite(cpu_percent) || cpu_percent < 0 || cpu_percent > 100 ||
+        *ram < 0 || *ram > 100 || *wpm < 0 || *wpm > 2000) return false;
+    *cpu = (int)cpu_percent;
+    return true;
+}
+
+// Hold the active-high backlight low across deep sleep and timer resets. GPIO27
+// is an RTC-capable pad on this ESP32 board.
+void holdBacklightOff() {
+    digitalWrite(TFT_BL, LOW);
+    pinMode(TFT_BL, OUTPUT);
+    rtc_gpio_init(GPIO_NUM_27);
+    rtc_gpio_set_level(GPIO_NUM_27, 0);
+    rtc_gpio_set_direction(GPIO_NUM_27, RTC_GPIO_MODE_OUTPUT_ONLY);
+    rtc_gpio_hold_en(GPIO_NUM_27);
+}
+
+void releaseBacklightHold() {
+    // TFT_eSPI sets TFT_BL high in init(). Prepare both muxes at LOW before
+    // releasing the RTC latch so its library write cannot flash the panel.
+    digitalWrite(TFT_BL, LOW);
+    rtc_gpio_set_level(GPIO_NUM_27, 0);
+    rtc_gpio_hold_dis(GPIO_NUM_27);
+    rtc_gpio_deinit(GPIO_NUM_27);
+    pinMode(TFT_BL, OUTPUT);
+    digitalWrite(TFT_BL, LOW);
+}
+
+void enterCompanionDeepSleep(bool display_initialized) {
+    digitalWrite(TFT_BL, LOW);
+    if (display_initialized) {
+        // ILI9341 Display OFF followed by Sleep IN. The backlight is already
+        // electrically off while the controller finishes entering sleep.
+        tft.writecommand(0x28);
+        delay(20);
+        tft.writecommand(0x10);
+        delay(120);
+        if (Serial.available()) {
+            // A new packet arrived while the controller entered sleep. Keep
+            // the UART session and restore the LCD instead of discarding it.
+            tft.writecommand(0x11);
+            delay(120);
+            tft.writecommand(0x29);
+            digitalWrite(TFT_BL, HIGH);
+            return;
+        }
+    }
+    holdBacklightOff();
+    esp_sleep_enable_timer_wakeup(COMPANION_PROBE_INTERVAL_US);
+    esp_deep_sleep_start();
+}
+
+bool probeForCompanion() {
+    uint32_t started = millis();
+    uint32_t first_stats_ms = 0;
+    bool saw_first_stats = false;
+    size_t artwork_bytes_left = 0;
+    uint32_t artwork_last_byte_ms = 0;
+    String line;
+    line.reserve(96);
+    while (millis() - started < COMPANION_PROBE_MS ||
+           (saw_first_stats &&
+            millis() - first_stats_ms < COMPANION_PROBE_GRACE_MS) ||
+           (artwork_bytes_left &&
+            millis() - artwork_last_byte_ms < MEDIA_ART_STALL_MS) ||
+           (artwork_last_byte_ms &&
+            millis() - artwork_last_byte_ms < COMPANION_PROBE_GRACE_MS) ||
+           Serial.available()) {
+        while (Serial.available()) {
+            int incoming = Serial.read();
+            if (artwork_bytes_left) {
+                --artwork_bytes_left;
+                artwork_last_byte_ms = millis();
+                continue;
+            }
+            if (incoming == '\n') {
+                line.trim();
+                if (line == "PING") Serial.println("PONG");
+                if (line == "MEDIA_ART_RGB:112:112:37632") {
+                    artwork_bytes_left = MEDIA_ART_RGB_BYTES;
+                    artwork_last_byte_ms = millis();
+                }
+                int cpu, ram, wpm;
+                if (parseCompanionStats(line, &cpu, &ram, &wpm)) {
+                    uint32_t now = millis();
+                    if (saw_first_stats && now - first_stats_ms >= 1000) {
+                        return true;
+                    }
+                    if (!saw_first_stats) {
+                        saw_first_stats = true;
+                        first_stats_ms = now;
+                    }
+                }
+                line = "";
+            } else if (incoming >= 32 && incoming <= 126 && line.length() < 95) {
+                line += (char)incoming;
+            } else {
+                line = "";
+            }
+        }
+        delay(5);
+    }
+    return false;
+}
+
 // Handle serial commands from Python script
 void handleSerialCommands() {
     if (serviceMediaArtworkReceive()) return;
@@ -714,6 +850,7 @@ void handleSerialCommands() {
                 media_art_received = 0;
                 media_art_pixels_received = 0;
                 media_art_rgb_triplet_used = 0;
+                media_art_last_byte_ms = current_time;
                 media_art_receiving = true;
             }
         } else if (command == "MEDIA_ART_DEFAULT") {
@@ -799,21 +936,11 @@ void handleSerialCommands() {
             }
             Serial.println("😐 Streak mode disabled - normal face");
         } else if (command.startsWith("STATS:")) {
-            // Parse stats: STATS:CPU:45,RAM:67,WPM:23
-            String stats = command.substring(6);
-            
-            int cpuStart = stats.indexOf("CPU:") + 4;
-            int cpuEnd = stats.indexOf(",", cpuStart);
-            int cpu = stats.substring(cpuStart, cpuEnd).toInt();
-            
-            int ramStart = stats.indexOf("RAM:") + 4;
-            int ramEnd = stats.indexOf(",", ramStart);
-            int ram = stats.substring(ramStart, ramEnd).toInt();
-            
-            int wpmStart = stats.indexOf("WPM:") + 4;
-            int wpm = stats.substring(wpmStart).toInt();
-            
-            updateSystemStats(cpu, ram, wpm);
+            int cpu, ram, wpm;
+            if (parseCompanionStats(command, &cpu, &ram, &wpm)) {
+                last_companion_stats_ms = current_time;
+                updateSystemStats(cpu, ram, wpm);
+            }
             
         } else if (command.startsWith("TIME:")) {
             // Handle time updates from Python script
@@ -1297,12 +1424,17 @@ const char* get_state_name(animation_state_t state) {
 }
 
 void setup() {
+    // On every reset, including timer wakeups, keep the backlight dark until
+    // fresh companion traffic has been proved and the first frame is drawn.
+    holdBacklightOff();
     // Covers arrive over the same UART as commands. Keep enough headroom for
     // a chunk while LVGL is rendering a frame, otherwise one lost RGB byte
     // shifts the remaining image into a scrambled pattern.
     Serial.setRxBufferSize(8192);
     Serial.begin(115200);
     Serial.setTimeout(10);
+    if (!probeForCompanion()) enterCompanionDeepSleep(false);
+    last_companion_stats_ms = millis();
     Serial.println("🐱 Bongo Cat with Sprites Starting...");
 
     // Register once; the measurement itself stays disabled until BongoDesk
@@ -1325,7 +1457,7 @@ void setup() {
     
     tft.init();
     tft.setRotation(0);
-    tft.fillScreen(TFT_WHITE);  // White background
+    tft.fillScreen(TFT_BLACK);
     
     lv_init();
     
@@ -1347,6 +1479,13 @@ void setup() {
     
     // Apply loaded settings to display visibility now that UI is created
     updateDisplayVisibility();
+
+    lv_timer_handler();
+    releaseBacklightHold();
+    digitalWrite(TFT_BL, HIGH);
+    // A reset loses RAM state, including the cover. The companion resends its
+    // current snapshot and cached artwork without waiting for a song change.
+    Serial.println("SYNC_REQUEST");
     
     Serial.println("✅ Bongo Cat Ready!");
     Serial.println("✨ BongoDesk Spotify features ready");
@@ -1846,6 +1985,10 @@ void loop() {
     handleSerialCommands();
     
     uint32_t current_time = millis();
+    if (companionIdleExpired(current_time, last_companion_stats_ms) &&
+        !media_art_receiving && Serial.available() == 0) {
+        enterCompanionDeepSleep(true);
+    }
     reportDeviceStatus(current_time);
     handleTouchFeature(current_time);
     serviceMediaTaps(current_time);

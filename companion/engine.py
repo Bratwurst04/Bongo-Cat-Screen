@@ -26,6 +26,7 @@ from windows_integration import get_foreground_app
 ARTWORK_SIZE = 112
 ARTWORK_CHUNK_BYTES = 128
 ARTWORK_CHUNK_PAUSE_SECONDS = 0.015
+DEVICE_REPLY_TIMEOUT_SECONDS = 15
 
 class BongoCatEngine:
     """Bongo Cat engine using proven original implementation with configuration support"""
@@ -54,7 +55,10 @@ class BongoCatEngine:
             self.idle_timeout = 1.0  # Original script value
             self.sleep_timeout = 60  # Default 1 minute sleep timeout when no config
             
+        self._auto_port = self.port in ('AUTO', '')
         self.serial_conn = None
+        self._next_reconnect_at = 0.0
+        self._last_device_reply_at = 0.0
         self.running = False
         self._stop_requested = threading.Event()
         self._lifecycle_lock = threading.RLock()
@@ -77,6 +81,9 @@ class BongoCatEngine:
         self._last_media_time = None
         self._last_media_full_sync = 0.0
         self._last_media_track_key = ""
+        self._last_media_snapshot = None
+        self._cached_artwork = None
+        self._cached_artwork_track_key = ""
         self._artwork_queue = queue.Queue(maxsize=1)
         self._artwork_sender_thread = None
         self._artwork_ack = threading.Event()
@@ -242,7 +249,7 @@ class BongoCatEngine:
         
         print("✅ Configuration applied to Arduino")
 
-    def find_esp32_port(self):
+    def find_esp32_port(self, interactive=True):
         """Auto-detect ESP32 COM port - EXACT ORIGINAL IMPLEMENTATION"""
         print("🔍 Scanning for ESP32...")
         
@@ -286,6 +293,8 @@ class BongoCatEngine:
             for i, port in enumerate(esp32_ports):
                 print(f"   {i+1}: {port.device} - {port.description}")
             
+            if not interactive:
+                return esp32_ports[0].device
             try:
                 choice = input("Enter number (or press Enter for first): ").strip()
                 if not choice:
@@ -322,9 +331,11 @@ class BongoCatEngine:
                 self.serial_conn = serial.Serial(
                     port=self.port,
                     baudrate=self.baudrate,
-                    timeout=1
+                    timeout=1,
+                    write_timeout=1,
                 )
                 time.sleep(2)  # Wait for ESP32 to restart
+                self._last_device_reply_at = time.time()
                 
                 # Test connection
                 self.send_command("PING")
@@ -352,6 +363,12 @@ class BongoCatEngine:
                 
             except Exception as e:
                 print(f"❌ Connection failed: {e}")
+                if self.serial_conn:
+                    try:
+                        self.serial_conn.close()
+                    except Exception:
+                        pass
+                    self.serial_conn = None
                 if attempt < retries - 1:
                     continue
                 # Update tray connection status on failure
@@ -387,24 +404,113 @@ class BongoCatEngine:
             print(f"⚠️ Initial sync error: {e}")
     
     def disconnect_serial(self):
-        """Disconnect from ESP32 - EXACT ORIGINAL IMPLEMENTATION"""
-        if self.serial_conn and self.serial_conn.is_open:
+        """Close the current port without racing an artwork upload."""
+        conn = self.serial_conn
+        if conn and conn.is_open:
             self.send_command("STOP")  # Use explicit stop command
             time.sleep(0.1)
-            self.serial_conn.close()
+        with self._serial_lock:
+            if self.serial_conn is conn:
+                self.serial_conn = None
+                if conn and conn.is_open:
+                    conn.close()
+        if conn:
             print("📱 Disconnected from Bongo Cat")
-            # Update tray connection status
             if self.tray:
                 self.tray.update_connection_status("disconnected")
     
     def send_command(self, command):
-        """EXACT ORIGINAL: Simple command sending like the working script"""
-        if self.serial_conn and self.serial_conn.is_open:
+        """Send one command; a failed handle is retired for timed reconnect."""
+        conn = self.serial_conn
+        if not conn or not conn.is_open:
+            return False
+        try:
+            with self._serial_lock:
+                if self.serial_conn is not conn:
+                    return False
+                conn.write(f"{command}\n".encode())
+            return True
+        except Exception as exc:
+            self._mark_serial_failed(conn, exc)
+            return False
+
+    def _mark_serial_failed(self, conn, error):
+        with self._serial_lock:
+            if self.serial_conn is not conn:
+                return
+            self.serial_conn = None
             try:
+                conn.close()
+            except Exception:
+                pass
+        print(f"⚠️ Serial connection lost: {error}")
+        if self.tray:
+            self.tray.update_connection_status("error")
+
+    def _attempt_reconnect(self):
+        """Retry from the existing update thread; never start another reader."""
+        if not self.running or self._stop_requested.is_set():
+            return
+        conn = self.serial_conn
+        if conn and conn.is_open:
+            if time.time() - self._last_device_reply_at < DEVICE_REPLY_TIMEOUT_SECONDS:
+                return
+            self._mark_serial_failed(conn, "no ESP32 reply after Windows resume")
+        now = time.monotonic()
+        if now < self._next_reconnect_at:
+            return
+        self._next_reconnect_at = now + 5.0
+        ports = [self.port] if self.port and self.port != 'AUTO' else []
+        if self._auto_port:
+            detected = self.find_esp32_port(interactive=False)
+            if detected and detected not in ports:
+                ports.append(detected)
+        for port in ports:
+            try:
+                reopened = serial.Serial(
+                    port=port, baudrate=self.baudrate, timeout=1, write_timeout=1
+                )
+                time.sleep(2)  # Opening some USB-UART bridges resets the ESP32.
                 with self._serial_lock:
-                    self.serial_conn.write(f"{command}\n".encode())
-            except Exception as e:
-                print(f"⚠️ Command '{command}' failed: {e}")
+                    if self._stop_requested.is_set() or not self.running:
+                        reopened.close()
+                        return
+                    self.serial_conn = reopened
+                    self.port = port
+                    self._last_device_reply_at = time.time()
+                self._last_media_meta = None
+                self._last_media_state = None
+                self._last_media_time = None
+                self._last_media_full_sync = 0.0
+                self.send_initial_sync()
+                if self.serial_conn is not reopened:
+                    return
+                print(f"✅ Reconnected to Bongo Cat on {port}")
+                if self.tray:
+                    self.tray.update_connection_status("connected")
+                return
+            except Exception as exc:
+                print(f"⚠️ Reconnect on {port} failed: {exc}")
+
+    def _write_media_payload(self, payload):
+        conn = self.serial_conn
+        if not conn or not conn.is_open:
+            return False
+        if not self._serial_lock.acquire(timeout=0.02):
+            return False
+        sent = False
+        error = None
+        try:
+            if self.serial_conn is conn:
+                conn.write(payload)
+                sent = True
+        except Exception as exc:
+            error = exc
+        finally:
+            self._serial_lock.release()
+        if error:
+            self._mark_serial_failed(conn, error)
+        return sent
 
     def get_media_status(self):
         """Read local media diagnostics without waking Spotify's API."""
@@ -447,6 +553,12 @@ class BongoCatEngine:
 
     def _on_media_update(self, snapshot: MediaSnapshot, artwork):
         """Send Windows now-playing state and optional RGB888 vinyl artwork."""
+        self._last_media_snapshot = snapshot
+        if snapshot.track_key != self._cached_artwork_track_key:
+            self._cached_artwork_track_key = snapshot.track_key
+            self._cached_artwork = None
+        if artwork:
+            self._cached_artwork = artwork
         if not self.serial_conn or not self.serial_conn.is_open:
             return
 
@@ -487,11 +599,7 @@ class BongoCatEngine:
                 # Never stall Spotify polling or touch handling behind a cover
                 # upload. A skipped packet is retried on the next snapshot, and
                 # the complete state is resent every three seconds.
-                if self._serial_lock.acquire(timeout=0.02):
-                    try:
-                        self.serial_conn.write(payload)
-                    finally:
-                        self._serial_lock.release()
+                if self._write_media_payload(payload):
                     if send_meta:
                         self._last_media_meta = meta
                     if send_state:
@@ -527,19 +635,24 @@ class BongoCatEngine:
                 continue
             if not self.serial_conn or not self.serial_conn.is_open:
                 continue
+            conn = self.serial_conn
             try:
                 header = (
                     f"MEDIA_ART_RGB:{ARTWORK_SIZE}:{ARTWORK_SIZE}:{len(artwork)}\n"
                 ).encode("ascii")
                 self._artwork_ack.clear()
                 with self._serial_lock:
-                    self.serial_conn.write(header)
+                    if self.serial_conn is not conn:
+                        continue
+                    conn.write(header)
                     # Do not burst 27 KB into the ESP32's UART while LVGL is
                     # flushing the display. A dropped byte offsets every RGB
                     # triplet after it, which looks like a scrambled cover.
                     for offset in range(0, len(artwork), ARTWORK_CHUNK_BYTES):
+                        if not self.running or self.serial_conn is not conn:
+                            raise serial.SerialException("Artwork upload interrupted")
                         chunk = artwork[offset:offset + ARTWORK_CHUNK_BYTES]
-                        written = self.serial_conn.write(chunk)
+                        written = conn.write(chunk)
                         if written != len(chunk):
                             raise serial.SerialTimeoutException(
                                 f"Artwork write was partial ({written}/{len(chunk)})"
@@ -548,9 +661,9 @@ class BongoCatEngine:
                         # for the ESP32 to drain its UART while LVGL renders.
                         # This prevents a lost RGB byte from scrambling the
                         # lower portion of a cover.
-                        self.serial_conn.flush()
+                        conn.flush()
                         time.sleep(ARTWORK_CHUNK_PAUSE_SECONDS)
-                    self.serial_conn.flush()
+                    conn.flush()
                 print(f"🎨 Sent album artwork ({len(artwork)} bytes)")
                 if not self._artwork_ack.wait(timeout=4.0) and attempt == 0:
                     print("⚠️ Artwork acknowledgement missed; scheduling one retry")
@@ -561,17 +674,44 @@ class BongoCatEngine:
             except Exception as e:
                 if self.running:
                     print(f"⚠️ Artwork send failed: {e}")
+                    self._mark_serial_failed(conn, e)
+
+    def _resync_device(self):
+        """Restore volatile ESP32 state after a timer wake or reset."""
+        self._last_media_meta = None
+        self._last_media_state = None
+        self._last_media_time = None
+        self._last_media_full_sync = 0.0
+        self._last_media_track_key = ""
+        self.send_initial_sync()
+        snapshot = self._last_media_snapshot
+        if snapshot:
+            artwork = (
+                self._cached_artwork
+                if snapshot.track_key == self._cached_artwork_track_key else None
+            )
+            self._on_media_update(snapshot, artwork)
 
     def _serial_reader_loop(self):
         """Receive touch media commands and diagnostics from the ESP32."""
-        while self.running and self.serial_conn and self.serial_conn.is_open:
+        while self.running:
+            conn = self.serial_conn
+            if not conn or not conn.is_open:
+                time.sleep(0.1)
+                continue
             try:
-                raw = self.serial_conn.readline()
+                raw = conn.readline()
                 if not raw:
                     continue
+                if self.serial_conn is not conn:
+                    continue
                 line = raw.decode("utf-8", "ignore").strip()
+                if line:
+                    self._last_device_reply_at = time.time()
                 if line == "MEDIA_ART_OK":
                     self._artwork_ack.set()
+                elif line == "SYNC_REQUEST":
+                    self._resync_device()
                 elif line.startswith("MEDIA_CMD:"):
                     action = line.split(":", 1)[1]
                     self.media_bridge.control(action)
@@ -602,7 +742,7 @@ class BongoCatEngine:
                         self.esp32_status_at = time.time()
             except Exception as e:
                 if self.running:
-                    print(f"⚠️ Serial reader error: {e}")
+                    self._mark_serial_failed(conn, e)
                 time.sleep(0.1)
 
     def _foreground_app_loop(self):
@@ -1042,11 +1182,8 @@ class BongoCatEngine:
                             else:
                                 commands_to_send.append("STREAK_OFF")
                     
-                    # EXACT ORIGINAL: Simple command sending like the working script
                     if commands_to_send:
-                        combined_command = '\n'.join(commands_to_send) + '\n'
-                        with self._serial_lock:
-                            self.serial_conn.write(combined_command.encode())
+                        self.send_command('\n'.join(commands_to_send))
                         
                 except serial.SerialTimeoutException:
                     # Non-blocking write timed out - Arduino buffer full, skip this update
@@ -1094,9 +1231,8 @@ class BongoCatEngine:
                 if time_idle >= self.sleep_timeout and self.sleep_start_time is None:
                     # Time to start sleep progression
                     self.sleep_start_time = current_time
-                    if self.serial_conn and self.serial_conn.is_open:
-                        self.serial_conn.write(b"IDLE_START\n")
-                        print(f"😴 Sleep timeout reached ({self.sleep_timeout}s) - starting sleep progression")
+                    self.send_command("IDLE_START")
+                    print(f"😴 Sleep timeout reached ({self.sleep_timeout}s) - starting sleep progression")
                 
                 # Don't send any more commands when idle
                 return
@@ -1131,6 +1267,7 @@ class BongoCatEngine:
         print("🎬 Animation thread started")
         while self.running:
             try:
+                self._attempt_reconnect()
                 current_time = time.time()
                 
                 self.update_animation()  # Use the new optimized method
