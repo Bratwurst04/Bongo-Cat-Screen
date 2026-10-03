@@ -18,8 +18,11 @@ Den innehåller bootloader vid `0x1000`, partitionstabell vid `0x8000`,
 `boot_app0` vid `0xe000` och appen vid `0x10000`. Appens SHA-256 är
 `F0F7EC82E28AB30607EC59A8409B4B4876578D869403753C09DD33F3747FCFEF`:
 exakt den appbinär som flashades på COM6 och provades den 2026-10-02.
-Hela den sammanslagna bilden är verifierad mot byggfilerna men har ännu inte
-flashats från `0x0`.
+Hela den sammanslagna bilden verifierades mot byggfilerna och flashades sedan
+på COM6 från `0x0` den 2026-10-03. Esptool verifierade bilden i flash. Den
+tidigare NVS-partitionen säkerhetskopierades, återställdes och lästes tillbaka
+med identisk SHA-256. Användaren bekräftade normalt UI utan ljusblixt.
+Detaljer finns i [verifieringsrapporten](release/app-v1.2-verification.md).
 
 Ladda ned [Windows companion](release/BongoDeskSpotify-app-v1.2-2026-10-03.exe)
 och dess [SHA-256-fil](release/BongoDeskSpotify-app-v1.2-2026-10-03.sha256).
@@ -29,12 +32,13 @@ rätt omslag och fungerande play/paus och NEXT med lokal Spotify på datorn,
 även efter flera snabba låtbyten. EXE:n är osignerad och innehåller inga
 personliga inställningar eller Spotify-token. Båda delarna behövs för
 skärmens mediedata. Se [release notes](release/app-v1.2-notes.md) för
-ändringar och återstående mätningar.
+status vid publiceringen och [verifieringsrapporten](release/app-v1.2-verification.md)
+för det senare fullbildsprovet och återstående mätningar.
 
 `app-v1.1` och panelmenyreleasen från 2026-09-24 finns kvar som historiska
 filer. En fullständig flashning från `0x0` raderar enhetens tidigare NVS-värden,
-bland annat sparade fokus- och pausval. Ingen fullbildsflash ingår i denna
-releaseförberedelse.
+bland annat sparade fokus- och pausval. Ta backup av NVS före fullbildsflash;
+i provet 2026-10-03 återställdes backupen före normal start.
 
 ## Föregående app-v1.1: firmware
 
@@ -307,7 +311,7 @@ Den då lokala appbinären hade SHA-256
 Efter uttryckligt godkännande flashades just denna appbinär via COM6 vid
 `0x10000` den 2026-10-01; esptool rapporterade `Hash of data verified`.
 Ingen fullbild vid `0x0` flashades då. Vidareutvecklad Fokus v2 ingår nu i
-`app-v1.2`; den nya fullbilden är fortfarande inte flashad från `0x0`.
+`app-v1.2`; den nya fullbilden provades senare vid `0x0` den 2026-10-03.
 Kompilerade gränstester för tidsval, NVS-packning, cykeln, signaler och touch
 samt companionens 14 regressionstester passerade.
 

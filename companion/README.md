@@ -1,6 +1,6 @@
 # Windows companion
 
-`BongoDeskSpotify` runs on Windows and sends system, typing, and media state to the ESP32 over serial. The engine runs on the main thread; the tray and settings UI run alongside it. The current `app-v1.2` [full flash image](../release/BongoDesk-app-v1.2-2026-10-03-full-0x0.bin) matches the [companion EXE](../release/BongoDeskSpotify-app-v1.2-2026-10-03.exe) below. Both are needed for media state and artwork. The firmware app was physically tested at `0x10000`; the complete image has not been flashed from `0x0`. The 2026-09-30 deep sleep release and 2026-09-24 panel menu release remain available separately.
+`BongoDeskSpotify` runs on Windows and sends system, typing, and media state to the ESP32 over serial. The engine runs on the main thread; the tray and settings UI run alongside it. The current `app-v1.2` [full flash image](../release/BongoDesk-app-v1.2-2026-10-03-full-0x0.bin) matches the [companion EXE](../release/BongoDeskSpotify-app-v1.2-2026-10-03.exe) below. Both are needed for media state and artwork. The complete image was also flashed from `0x0` on 2026-10-03 and verified; the saved NVS partition was restored and read back byte-for-byte before normal startup. The 2026-09-30 deep sleep release and 2026-09-24 panel menu release remain available separately.
 
 ## Diagnostic development build (2026-10-01)
 
