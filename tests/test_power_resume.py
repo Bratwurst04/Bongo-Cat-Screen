@@ -4,7 +4,7 @@ import queue
 import sys
 import unittest
 from pathlib import Path
-from threading import Event, Lock
+from threading import Event, Lock, RLock, Thread
 from unittest.mock import Mock, patch
 
 import serial
@@ -37,7 +37,11 @@ class PowerResumeTests(unittest.TestCase):
         engine._last_media_snapshot = None
         engine._cached_artwork = None
         engine._cached_artwork_track_key = ""
+        engine._media_lock = RLock()
         engine._artwork_queue = queue.Queue(maxsize=1)
+        engine._artwork_ack = Event()
+        engine._artwork_transfer_active = Event()
+        engine._last_artwork_transfer_at = 0.0
         return engine
 
     def test_write_error_retires_port_and_reconnects_once(self):
@@ -84,6 +88,28 @@ class PowerResumeTests(unittest.TestCase):
         stale.close.assert_called_once_with()
         self.assertIs(engine.serial_conn, reopened)
         engine.send_initial_sync.assert_called_once_with()
+
+    def test_artwork_upload_and_ack_grace_do_not_trigger_stale_reconnect(self):
+        engine = self.make_engine()
+        engine._last_device_reply_at = 100
+        engine._artwork_transfer_active.set()
+        with patch("engine.time.time", return_value=120):
+            engine._attempt_reconnect()
+        self.assertTrue(engine.serial_conn.is_open)
+        engine.serial_conn.close.assert_not_called()
+
+        engine._artwork_transfer_active.clear()
+        engine._last_artwork_transfer_at = 120
+        with patch("engine.time.time", return_value=134):
+            engine._attempt_reconnect()
+        engine.serial_conn.close.assert_not_called()
+
+        stale = engine.serial_conn
+        engine._next_reconnect_at = float("inf")
+        with patch("engine.time.time", return_value=136):
+            engine._attempt_reconnect()
+        self.assertIsNone(engine.serial_conn)
+        stale.close.assert_called_once_with()
 
     def test_reader_survives_a_port_error_without_new_thread(self):
         engine = self.make_engine()
@@ -145,7 +171,21 @@ class PowerResumeTests(unittest.TestCase):
         self.assertIn(b"MEDIA_TITLE:Same song\n", payload)
         self.assertIn(b"MEDIA_STATE:PLAYING\n", payload)
         self.assertIn(b"MEDIA_TIME:30:120\n", payload)
-        self.assertEqual(engine._artwork_queue.get_nowait(), (cover, 0))
+        self.assertEqual(engine._artwork_queue.get_nowait(), ("same-track", cover, 0))
+
+    def test_device_artwork_error_is_logged_without_faking_ack(self):
+        engine = self.make_engine()
+        engine._artwork_ack = Event()
+
+        def read_error():
+            engine.running = False
+            return b"MEDIA_ART_ERROR\n"
+
+        engine.serial_conn.readline.side_effect = read_error
+        with patch("engine.diagnostics.event") as record:
+            engine._serial_reader_loop()
+        record.assert_any_call("ART_ACK", result="failure", reason="device_error")
+        self.assertFalse(engine._artwork_ack.is_set())
 
     def test_new_track_cannot_reuse_old_cover(self):
         engine = self.make_engine()
@@ -157,6 +197,77 @@ class PowerResumeTests(unittest.TestCase):
 
         self.assertIs(engine._last_media_snapshot, new)
         self.assertIsNone(engine._cached_artwork)
+
+    def test_cover_waits_for_track_metadata_when_serial_is_busy(self):
+        engine = self.make_engine()
+        song = MediaSnapshot(available=True, source="SPOTIFY", title="New",
+                             artist="Artist", playing=True, track_key="new")
+        engine._serial_lock.acquire()
+        try:
+            engine._on_media_update(song, b"cover")
+        finally:
+            engine._serial_lock.release()
+        self.assertEqual(engine._last_media_track_key, "")
+        self.assertEqual(engine._artwork_queue.get_nowait(), ("new", b"cover", 0))
+        engine._flush_latest_media()
+        payload = b"".join(call.args[0] for call in engine.serial_conn.write.call_args_list)
+        self.assertIn(b"MEDIA_TITLE:New\n", payload)
+        self.assertIn(b"MEDIA_ART_DEFAULT\n", payload)
+        self.assertEqual(engine._last_media_track_key, "new")
+
+    def test_fast_track_change_during_cover_flushes_new_state_before_new_cover(self):
+        engine = self.make_engine()
+        old = MediaSnapshot(available=True, source="SPOTIFY", title="Old",
+                            artist="Artist", playing=True, track_key="old")
+        new = MediaSnapshot(available=True, source="SPOTIFY", title="New",
+                            artist="Artist", playing=True, track_key="new")
+        writes = []
+        switched = False
+
+        def write(payload):
+            nonlocal switched
+            writes.append(payload)
+            if payload == b"old-cover" and not switched:
+                switched = True
+                engine._on_media_update(new, b"new-cover")
+            elif payload == b"new-cover":
+                engine.running = False
+            return len(payload)
+
+        engine.serial_conn.write.side_effect = write
+        engine._artwork_ack.wait = Mock(return_value=True)
+        engine._on_media_update(old, b"old-cover")
+        with patch("engine.time.sleep"):
+            engine._artwork_sender_loop()
+
+        wire = b"".join(writes)
+        old_cover_end = wire.index(b"old-cover") + len(b"old-cover")
+        next_meta = wire.index(b"MEDIA_TITLE:New\n")
+        next_default = wire.index(b"MEDIA_ART_DEFAULT\n", next_meta)
+        new_cover = wire.index(b"new-cover")
+        self.assertLess(old_cover_end, next_meta)
+        self.assertLess(next_meta, next_default)
+        self.assertLess(next_default, new_cover)
+        self.assertEqual(engine._last_media_track_key, "new")
+
+    def test_touch_is_read_while_artwork_holds_outbound_lock(self):
+        engine = self.make_engine()
+        engine.media_bridge = Mock()
+
+        def read_command():
+            engine.running = False
+            return b"MEDIA_CMD:NEXT\n"
+
+        engine.serial_conn.readline.side_effect = read_command
+        engine._serial_lock.acquire()
+        try:
+            reader = Thread(target=engine._serial_reader_loop)
+            reader.start()
+            reader.join(timeout=1)
+            self.assertFalse(reader.is_alive())
+        finally:
+            engine._serial_lock.release()
+        engine.media_bridge.control.assert_called_once_with("NEXT")
 
 
 if __name__ == "__main__":

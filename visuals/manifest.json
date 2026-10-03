@@ -54,7 +54,7 @@
       "classification": "simulerad förhandsbild",
       "media_state": "PLAYING",
       "note": "Gemensam panelmeny öppnad från Bongo, med Bongo markerad.",
-      "sha256": "f46da1b345206ec5ab00948c3fd84f47fd7ed13fdfaa186449519c67becc3f42"
+      "sha256": "0090e03d1660dbbe0d6b0b6e884814a681f224f853c127318abfcb62eb5e4487"
     },
     {
       "id": "menu_player",
@@ -67,7 +67,293 @@
       "classification": "simulerad förhandsbild",
       "media_state": "PLAYING",
       "note": "Samma panelmeny öppnad från mediasidan, med Spelare markerad.",
-      "sha256": "d5ec9484c08bafc48541c013d80a5adb7e6a4d81632edcabb24fe935cdfc4885"
+      "sha256": "0a00f8376c2e3eff0b20387c52b9d10f5d444d5560d35b782f16b18c8a38de68"
+    },
+    {
+      "id": "menu_focus",
+      "name": "Meny – Fokus aktiv",
+      "file": "composed/menu_focus.png",
+      "dimensions": [
+        240,
+        320
+      ],
+      "classification": "simulerad förhandsbild",
+      "media_state": "FOCUS",
+      "note": "Samma meny öppnad från Fokus, med Fokus markerad.",
+      "sha256": "cf413e3b188011c481fd8c3ed154662604167affcf235a7d33e2640a3846f2f5"
+    },
+    {
+      "id": "menu_settings",
+      "name": "Meny – inställningar",
+      "file": "composed/menu_settings.png",
+      "dimensions": [
+        240,
+        320
+      ],
+      "classification": "simulerad förhandsbild",
+      "media_state": "FOCUS",
+      "note": "Fjärde panelvalet är markerat.",
+      "sha256": "d9db98c9f7fc45f7bcd05050334bc515aba228d999e885e2bc928d725e505175"
+    },
+    {
+      "id": "menu_settings_pressed",
+      "name": "Meny – tryckt val",
+      "file": "composed/menu_settings_pressed.png",
+      "dimensions": [
+        240,
+        320
+      ],
+      "classification": "simulerad förhandsbild",
+      "media_state": "FOCUS",
+      "note": "Tryckfeedback under rå touch på inställningsvalet.",
+      "sha256": "9428e3a909ca1838316d41fa2fde8a9553ef1696a612ccf6128ee460fcffd810"
+    },
+    {
+      "id": "focus_idle",
+      "name": "Fokus – redo",
+      "file": "composed/focus_idle.png",
+      "dimensions": [
+        240,
+        320
+      ],
+      "classification": "simulerad förhandsbild",
+      "media_state": "FOCUS",
+      "note": "Fast 25:00 före start; siffror och träffytor är simulerade.",
+      "sha256": "577744d76c0f6ffa42b9f8f8b74fa913812b9bfd994608cdc376f6055b2a6a11"
+    },
+    {
+      "id": "focus_running",
+      "name": "Fokus – aktiv",
+      "file": "composed/focus_running.png",
+      "dimensions": [
+        240,
+        320
+      ],
+      "classification": "simulerad förhandsbild",
+      "media_state": "FOCUS",
+      "note": "Exempel vid 12:34 återstående; nedräkningen körs lokalt på ESP32.",
+      "sha256": "aab3f70c1147888e72fef895df3c8a7da8e07fe4cd9e68f81d51872d9715a9ef"
+    },
+    {
+      "id": "focus_start_pressed",
+      "name": "Fokus – tryckt Start",
+      "file": "composed/focus_start_pressed.png",
+      "dimensions": [
+        240,
+        320
+      ],
+      "classification": "simulerad förhandsbild",
+      "media_state": "FOCUS",
+      "note": "Tryckfeedback visas innan knappen aktiveras vid släpp.",
+      "sha256": "10c8619ab77a654599ded111500415697e19a5fdb822503ca3c90757850d5796"
+    },
+    {
+      "id": "focus_long",
+      "name": "Fokus – 120 min",
+      "file": "composed/focus_long.png",
+      "dimensions": [
+        240,
+        320
+      ],
+      "classification": "simulerad förhandsbild",
+      "media_state": "FOCUS",
+      "note": "Längsta valbara minuter på timer och vald varaktighet.",
+      "sha256": "37ca55a6d8e990c4ec4ce87a734ea26581cc001595d251526d06f848acf05378"
+    },
+    {
+      "id": "focus_settings",
+      "name": "Tider – standard",
+      "file": "composed/focus_settings.png",
+      "dimensions": [
+        240,
+        320
+      ],
+      "classification": "simulerad förhandsbild",
+      "media_state": "FOCUS",
+      "note": "Två kort med egna plus/minus-knappar, standardvärden och SPARA/TILLBAKA.",
+      "sha256": "7e43eac66fee1798dfcb06a7dcf31ca2b514587e500d402ec1559062a52674d9"
+    },
+    {
+      "id": "focus_settings_adjusted",
+      "name": "Tider – ändrade",
+      "file": "composed/focus_settings_adjusted.png",
+      "dimensions": [
+        240,
+        320
+      ],
+      "classification": "simulerad förhandsbild",
+      "media_state": "FOCUS",
+      "note": "Exempelvärden före SPARA; aktiv nedräkning ändras inte.",
+      "sha256": "1b9270685cf9216b559550c15f5e6de626607bf8ead1141bbf187969ed0db4e3"
+    },
+    {
+      "id": "focus_settings_pressed",
+      "name": "Tider – tryckt Plus",
+      "file": "composed/focus_settings_pressed.png",
+      "dimensions": [
+        240,
+        320
+      ],
+      "classification": "simulerad förhandsbild",
+      "media_state": "FOCUS",
+      "note": "Tryckfeedback på ett korts plusknapp.",
+      "sha256": "f725a3d18f1b123ff45a29a4b425d4ea986a301f7e3d03d0b1caa8946dcb4f07"
+    },
+    {
+      "id": "local_settings",
+      "name": "Inställningar – grön",
+      "file": "composed/local_settings.png",
+      "dimensions": [
+        240,
+        320
+      ],
+      "classification": "simulerad förhandsbild",
+      "media_state": "FOCUS",
+      "note": "Separat sparade lokala val; standard är grön, automatisk Fokus av och LED på.",
+      "sha256": "6ba21b6891f8fb55f3089dea6e2efa27f3af12d447aac890595565438ef7fc11"
+    },
+    {
+      "id": "local_settings_cyan",
+      "name": "Inställningar – cyan",
+      "file": "composed/local_settings_cyan.png",
+      "dimensions": [
+        240,
+        320
+      ],
+      "classification": "simulerad förhandsbild",
+      "media_state": "FOCUS",
+      "note": "Alternativ accentfärg; kattens sprites och omslag ändras inte.",
+      "sha256": "3f689dd68707158e2ed9857c4bcce0d89452fe43adcb5c09f8b9fb4cc70d1ed1"
+    },
+    {
+      "id": "local_settings_amber",
+      "name": "Inställningar – amber",
+      "file": "composed/local_settings_amber.png",
+      "dimensions": [
+        240,
+        320
+      ],
+      "classification": "simulerad förhandsbild",
+      "media_state": "FOCUS",
+      "note": "Alternativ accentfärg på knappar och rubrik.",
+      "sha256": "0cd6d04663c3d5839932af45b2761a2231aa8d7783ff485193567ef7c456db25"
+    },
+    {
+      "id": "local_settings_pressed",
+      "name": "Inställningar – tryckt",
+      "file": "composed/local_settings_pressed.png",
+      "dimensions": [
+        240,
+        320
+      ],
+      "classification": "simulerad förhandsbild",
+      "media_state": "FOCUS",
+      "note": "Temaknappen visar tryckfeedback medan fingret hålls kvar.",
+      "sha256": "46c5ffafd936937901068077b1af78f1fb9241d76a2dc4ce5a56276e02156551"
+    },
+    {
+      "id": "focus_break_running",
+      "name": "Paus – aktiv",
+      "file": "composed/focus_break_running.png",
+      "dimensions": [
+        240,
+        320
+      ],
+      "classification": "simulerad förhandsbild",
+      "media_state": "BREAK",
+      "note": "Automatisk paus med lokal nedräkning efter fokusslut.",
+      "sha256": "1e5247883d026c9326cac47c7805a7bbbb573ad91a108f823c53738abb37c5c0"
+    },
+    {
+      "id": "focus_break_done",
+      "name": "Paus – klar",
+      "file": "composed/focus_break_done.png",
+      "dimensions": [
+        240,
+        320
+      ],
+      "classification": "simulerad förhandsbild",
+      "media_state": "BREAK",
+      "note": "00:00 och PAUS KLAR väntar på START FOKUS.",
+      "sha256": "7d708fda08450c974becb82d4ebf8043cedb250cceee22a338971705c0732721"
+    },
+    {
+      "id": "focus_completed",
+      "name": "Fokus – klart",
+      "file": "composed/focus_completed.png",
+      "dimensions": [
+        240,
+        320
+      ],
+      "classification": "simulerad förhandsbild",
+      "media_state": "BREAK",
+      "note": "Stor central FOKUS KLART-avisering medan vald paus startar; LED visas inte.",
+      "sha256": "21f2ebf2123267820d96635975307f8c417834ecacf12a17b26e6a814a70710e"
+    },
+    {
+      "id": "bongo_focus_completed",
+      "name": "Bongo – Fokus klart",
+      "file": "composed/bongo_focus_completed.png",
+      "dimensions": [
+        240,
+        320
+      ],
+      "classification": "simulerad förhandsbild",
+      "media_state": "BREAK",
+      "note": "Stor central slutsignal direkt vid fokusslut, även på Bongo.",
+      "sha256": "698c7366741fdef4c5bf2aa7e0e09dfc33f690dea008e6c686b5bdd704022c0c"
+    },
+    {
+      "id": "bongo_focus_reminder",
+      "name": "Bongo – pausmärke",
+      "file": "composed/bongo_focus_reminder.png",
+      "dimensions": [
+        240,
+        320
+      ],
+      "classification": "simulerad förhandsbild",
+      "media_state": "BREAK",
+      "note": "Litet PAUS-märke mellan CPU och klocka efter tio sekunder.",
+      "sha256": "1a74271a514a90391ee4dabeb8d7c238367715873dd01c719438e7dc2252d80d"
+    },
+    {
+      "id": "player_focus_reminder",
+      "name": "Spelare – pausmärke",
+      "file": "composed/player_focus_reminder.png",
+      "dimensions": [
+        240,
+        320
+      ],
+      "classification": "simulerad förhandsbild",
+      "media_state": "BREAK",
+      "note": "Liten pauspåminnelse efter tio sekunder.",
+      "sha256": "cc763e02077bf1f89737ae0b8d145895be2e88a8439f791f0f934fc172a4a0e6"
+    },
+    {
+      "id": "player_break_done",
+      "name": "Spelare – paus klar",
+      "file": "composed/player_break_done.png",
+      "dimensions": [
+        240,
+        320
+      ],
+      "classification": "simulerad förhandsbild",
+      "media_state": "BREAK",
+      "note": "Kort, stillsam PAUS KLAR-remsa när pausen slutar.",
+      "sha256": "ae00d67adfe4177339d879a64ed25ea7082f5ae69002d928eede6ef970a6abd1"
+    },
+    {
+      "id": "bongo_break_done",
+      "name": "Bongo – paus klar",
+      "file": "composed/bongo_break_done.png",
+      "dimensions": [
+        240,
+        320
+      ],
+      "classification": "simulerad förhandsbild",
+      "media_state": "BREAK",
+      "note": "Kort PAUS KLAR-remsa; inget kvarstående START-märke efter sex sekunder.",
+      "sha256": "d34afc867fa0918633ea8606d163e7fca0b4da84b8ca0b49be0978214f6a497f"
     },
     {
       "id": "media_vinyl",
@@ -80,7 +366,7 @@
       "classification": "simulerad förhandsbild",
       "media_state": "PLAYING",
       "note": "Windows Spotify, generisk vinyl och styrinstruktioner.",
-      "sha256": "4302db83962686817baa4b9789ce5ce216459f87e15f889510fec6152fe965ab"
+      "sha256": "ff863019f2c7d275952bbfd3a018103f51ec91ed6defbdfbdb8d7557672f9523"
     },
     {
       "id": "media_artwork",
@@ -93,7 +379,46 @@
       "classification": "simulerad förhandsbild",
       "media_state": "PLAYING",
       "note": "Spotify API, syntetiskt DEMO-omslag och källanpassad hjälptext.",
-      "sha256": "17b955ec116c4465453b16eac718e11188eb34de008f72eec2d4bfabf09d34d2"
+      "sha256": "94f2a859f06ce7fc32e0f589c0bfa702bb8350c9c5d69bae9cbcf11ab5dbeba4"
+    },
+    {
+      "id": "media_artwork_paused",
+      "name": "Medieskärm – paus",
+      "file": "composed/media_artwork_paused.png",
+      "dimensions": [
+        240,
+        320
+      ],
+      "classification": "simulerad förhandsbild",
+      "media_state": "PAUSED",
+      "note": "Pausat omslag med stillastående status och tidsrad.",
+      "sha256": "2f813416b1a4d22c7d9b94a810dd4a26ce17ec9ce9eaff151d7441e9a7686737"
+    },
+    {
+      "id": "media_long_title",
+      "name": "Medieskärm – lång text",
+      "file": "composed/media_long_title.png",
+      "dimensions": [
+        240,
+        320
+      ],
+      "classification": "simulerad förhandsbild",
+      "media_state": "PLAYING",
+      "note": "Lång titel och artist visas klippta som en stillbild av LVGL:s rullande enradsetiketter.",
+      "sha256": "22d9ffd74a056e85c97fb37c83837ee73c1faed98d694c0264422f671f88348a"
+    },
+    {
+      "id": "media_cyan",
+      "name": "Medieskärm – cyan",
+      "file": "composed/media_cyan.png",
+      "dimensions": [
+        240,
+        320
+      ],
+      "classification": "simulerad förhandsbild",
+      "media_state": "PLAYING",
+      "note": "Temaaccent i Spelarens rubrik, progress och status; omslagets färger är oförändrade.",
+      "sha256": "27128002c5a9b3e4c756c908b5be602e5a30cfa54be00f708234389e12981056"
     },
     {
       "id": "dj_playing",
@@ -106,7 +431,7 @@
       "classification": "simulerad förhandsbild",
       "media_state": "PLAYING",
       "note": "En vald bildruta med L1/R2 och effekt R1; lokalt slumpförlopp simuleras inte.",
-      "sha256": "31f427a8caa2dbe480714d18d96ca3698fceeb6a4afca6dc2b59fa73a647d987"
+      "sha256": "827926f085a7a03cee89f4efb39dfdd77051de923fa8caeb4caa56eaa098ecf1"
     },
     {
       "id": "dj_paused",
@@ -119,7 +444,7 @@
       "classification": "simulerad förhandsbild",
       "media_state": "PAUSED",
       "note": "Den senast spelade DJ-rutan förblir stilla när media pausas.",
-      "sha256": "6e0a3a2c6ad276022a29294c681437362de52039cd63c2fb5b7f5f5ece5bb602"
+      "sha256": "1cd076cf3a8163b547dd347d2a0aad5bab9f99caaa9fd4882b38c5936788fcc8"
     }
   ],
   "contact_sheet": "contact_sheet_composed.png",
@@ -187,9 +512,11 @@
     }
   ],
   "source_sha256": {
-    "src/bongo_cat_featured.inc": "47c9977f823897801233380f8dd5f69e865a8de4a916b357886367dc9b502847",
-    "animations_sprites.h": "2ff355aacd49aec915676ff689b51d17806b6372fa2591bebd6c49b5dd1d8a13",
-    "animations/dj/dj_sprites.h": "9ea5d39d9c393ac594b19f1bbfc3224a53eff436b82b0b40f1c7ca84adf67a31",
+    "src/bongo_cat_featured.inc": "d201f68173653cdc864e345489d7ab140cb4f34d63abe869f888e0a36a1071b1",
+    "src/focus_logic.h": "828071c9d0dc01df93722a1898248a2e0f34b78953106dcb92736c1154e75559",
+    "lv_conf.h": "778b0e468d18bbeee04d38732f3ec7ff04853e09fb6ab8c7e836b5de296c2992",
+    "animations_sprites.h": "730ae1062028efcdc667cebc7e12d00f274c3d9573b728e8df35829ef5e06267",
+    "animations/dj/dj_sprites.h": "63e76f062c9dd02b3f8cad54cb3e0db1fc372b591fa6cf00b51d23f5f2fc8260",
     "assets/cat-sprites/body/standardbody1.png": "004875a5016576b2e5fbe7eff0f173a53bffea69006a83ab7e763cfdcc5be60a",
     "assets/cat-sprites/face/stock_face.png": "7338be958b1bad87d09e52de0d2a421847578671048fc159472100a734a117f8",
     "assets/cat-sprites/table/table1.png": "e8dd649ea1ae6cfd8045463ba044f673b6e97d59f1db605944cf70570ec0796c",
@@ -205,9 +532,12 @@
   },
   "rendering_limits": [
     "Pillow approximates LVGL font metrics, antialiasing, RGB565 colour and widget borders.",
+    "The RGB LED's three green completion pulses and their hardware brightness are not represented in PNG previews.",
     "The Bongo and DJ sprite order and nearest-neighbour zoom follow firmware, but actual TFT clipping and colour need a device photo.",
     "The album cover is generated example art; it is not a Spotify cover or a serial transfer test.",
+    "Long media titles and artists are shown as clipped still frames; LVGL's circular scroll animation needs a device check.",
     "The DJ playing image is one selected frame, not a test of random timing or pause transitions.",
+    "Focus text, the 25-minute countdown, raw button hits, and the completion cue require a physical display test.",
     "Touch targets, gestures, serial communication, progress timing and physical display behaviour require hardware testing."
   ]
 }

@@ -14,6 +14,7 @@ from engine import BongoCatEngine
 from spotify_api import SpotifyApiBridge, SpotifyApiError
 from tray import BongoCatSystemTray
 from windows_integration import SingleInstanceLock, set_start_with_windows
+from diagnostics import diagnostics
 
 _instance_lock = SingleInstanceLock()
 
@@ -83,6 +84,8 @@ class BongoCatApplication:
             
         except Exception as e:
             print(f"❌ Initialization error: {e}")
+            diagnostics.event("APP_INITIALIZE", result="failure", reason="startup_error",
+                              stage="app_start", error_type=type(e))
             return False
 
     def _on_config_change(self, key, value):
@@ -136,6 +139,8 @@ class BongoCatApplication:
             print("\n🛑 Interrupted by user")
         except Exception as e:
             print(f"❌ Runtime error: {e}")
+            diagnostics.event("APP_RUNTIME", result="failure", reason="startup_error",
+                              stage="app_run", error_type=type(e))
             return 1
         finally:
             self.shutdown()
@@ -150,6 +155,7 @@ class BongoCatApplication:
             if self._shutdown_started:
                 return
             self._shutdown_started = True
+            diagnostics.event("APP_STOP")
             print("🛑 Shutting down components...")
             self.running = False
             if self.engine:
@@ -160,6 +166,8 @@ class BongoCatApplication:
 
 def main():
     """Main application entry point"""
+    diagnostics.start()
+    diagnostics.event("APP_START")
     # Parse command line arguments
     parser = argparse.ArgumentParser(description="Bongo Cat Typing Monitor")
     parser.add_argument("--minimized", action="store_true", 

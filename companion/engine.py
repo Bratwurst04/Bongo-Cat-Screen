@@ -22,6 +22,7 @@ from typing import Callable, Optional, Dict, Any
 
 from media_bridge import MediaSnapshot, WindowsMediaBridge
 from windows_integration import get_foreground_app
+from diagnostics import diagnostics
 
 ARTWORK_SIZE = 112
 ARTWORK_CHUNK_BYTES = 128
@@ -58,6 +59,7 @@ class BongoCatEngine:
         self._auto_port = self.port in ('AUTO', '')
         self.serial_conn = None
         self._next_reconnect_at = 0.0
+        self._reconnect_attempts = 0
         self._last_device_reply_at = 0.0
         self.running = False
         self._stop_requested = threading.Event()
@@ -84,9 +86,12 @@ class BongoCatEngine:
         self._last_media_snapshot = None
         self._cached_artwork = None
         self._cached_artwork_track_key = ""
+        self._media_lock = threading.RLock()
         self._artwork_queue = queue.Queue(maxsize=1)
         self._artwork_sender_thread = None
         self._artwork_ack = threading.Event()
+        self._artwork_transfer_active = threading.Event()
+        self._last_artwork_transfer_at = 0.0
         self._app_animation = None
         self._app_animation_last_sent = 0.0
         self._foreground_app_thread = None
@@ -317,6 +322,7 @@ class BongoCatEngine:
                 self.port = detected_port
             else:
                 print("❌ Could not auto-detect ESP32. Please specify port manually.")
+                diagnostics.event("SERIAL_CONNECT", result="failure", reason="no_port")
                 return False
         
         for attempt in range(retries):
@@ -345,6 +351,7 @@ class BongoCatEngine:
                     response = self.serial_conn.readline().decode().strip()
                     if "PONG" in response:
                         print(f"✅ Connected to Bongo Cat on {self.port}")
+                        diagnostics.event("SERIAL_CONNECT", result="success", attempt=attempt + 1)
                         print(f"🐱 ESP32 Response: {response}")
                         # Send initial time sync
                         self.send_initial_sync()
@@ -354,6 +361,7 @@ class BongoCatEngine:
                         return True
                 
                 print(f"✅ Connected to {self.port}")
+                diagnostics.event("SERIAL_CONNECT", result="success", attempt=attempt + 1)
                 # Send initial time sync
                 self.send_initial_sync()
                 # Update tray connection status
@@ -363,6 +371,8 @@ class BongoCatEngine:
                 
             except Exception as e:
                 print(f"❌ Connection failed: {e}")
+                diagnostics.event("SERIAL_CONNECT", result="failure", reason="open_error",
+                                  attempt=attempt + 1, stage="serial_open", error_type=type(e))
                 if self.serial_conn:
                     try:
                         self.serial_conn.close()
@@ -416,6 +426,7 @@ class BongoCatEngine:
                     conn.close()
         if conn:
             print("📱 Disconnected from Bongo Cat")
+            diagnostics.event("SERIAL_DISCONNECT")
             if self.tray:
                 self.tray.update_connection_status("disconnected")
     
@@ -434,7 +445,7 @@ class BongoCatEngine:
             self._mark_serial_failed(conn, exc)
             return False
 
-    def _mark_serial_failed(self, conn, error):
+    def _mark_serial_failed(self, conn, error, reason="write_error"):
         with self._serial_lock:
             if self.serial_conn is not conn:
                 return
@@ -444,6 +455,9 @@ class BongoCatEngine:
             except Exception:
                 pass
         print(f"⚠️ Serial connection lost: {error}")
+        diagnostics.event("SERIAL_LOST", reason=reason,
+                          stage="serial_read" if reason == "read_error" else "serial_write",
+                          error_type=type(error) if isinstance(error, BaseException) else None)
         if self.tray:
             self.tray.update_connection_status("error")
 
@@ -453,13 +467,20 @@ class BongoCatEngine:
             return
         conn = self.serial_conn
         if conn and conn.is_open:
+            if (self._artwork_transfer_active.is_set() or
+                    time.time() - self._last_artwork_transfer_at < DEVICE_REPLY_TIMEOUT_SECONDS):
+                return
             if time.time() - self._last_device_reply_at < DEVICE_REPLY_TIMEOUT_SECONDS:
                 return
-            self._mark_serial_failed(conn, "no ESP32 reply after Windows resume")
+            self._mark_serial_failed(conn, "no ESP32 reply after Windows resume",
+                                     reason="stale_reply")
         now = time.monotonic()
         if now < self._next_reconnect_at:
             return
         self._next_reconnect_at = now + 5.0
+        self._reconnect_attempts = getattr(self, "_reconnect_attempts", 0) + 1
+        if self._reconnect_attempts == 1 or self._reconnect_attempts % 12 == 0:
+            diagnostics.event("SERIAL_RECONNECT_ATTEMPT", attempt=self._reconnect_attempts)
         ports = [self.port] if self.port and self.port != 'AUTO' else []
         if self._auto_port:
             detected = self.find_esp32_port(interactive=False)
@@ -486,11 +507,18 @@ class BongoCatEngine:
                 if self.serial_conn is not reopened:
                     return
                 print(f"✅ Reconnected to Bongo Cat on {port}")
+                diagnostics.event("SERIAL_RECONNECT", result="success",
+                                  attempt=self._reconnect_attempts)
+                self._reconnect_attempts = 0
                 if self.tray:
                     self.tray.update_connection_status("connected")
                 return
             except Exception as exc:
                 print(f"⚠️ Reconnect on {port} failed: {exc}")
+                if self._reconnect_attempts == 1 or self._reconnect_attempts % 12 == 0:
+                    diagnostics.event("SERIAL_RECONNECT", result="failure", reason="open_error",
+                                      attempt=self._reconnect_attempts, stage="serial_open",
+                                      error_type=type(exc))
 
     def _write_media_payload(self, payload):
         conn = self.serial_conn
@@ -553,6 +581,10 @@ class BongoCatEngine:
 
     def _on_media_update(self, snapshot: MediaSnapshot, artwork):
         """Send Windows now-playing state and optional RGB888 vinyl artwork."""
+        with self._media_lock:
+            self._send_media_update_locked(snapshot, artwork)
+
+    def _send_media_update_locked(self, snapshot: MediaSnapshot, artwork):
         self._last_media_snapshot = snapshot
         if snapshot.track_key != self._cached_artwork_track_key:
             self._cached_artwork_track_key = snapshot.track_key
@@ -590,7 +622,9 @@ class BongoCatEngine:
             lines.append(f"MEDIA_STATE:{state}")
         if send_time:
             lines.append(f"MEDIA_TIME:{media_time[0]}:{media_time[1]}")
-        if track_changed and artwork is None:
+        if track_changed:
+            # The ESP32 must clear the previous cover before a new one is
+            # uploaded, even if the new cover is already in the queue.
             lines.append("MEDIA_ART_DEFAULT")
 
         try:
@@ -610,6 +644,10 @@ class BongoCatEngine:
                         self._last_media_full_sync = now
                     if track_changed:
                         self._last_media_track_key = snapshot.track_key
+                        art_source = ("spotify_api" if snapshot.source == "SPOTIFY API" else
+                                      "windows_spotify" if snapshot.source == "SPOTIFY" else
+                                      "windows_other" if snapshot.available else "generic")
+                        diagnostics.event("ART_DEFAULT", source=art_source)
 
             if artwork:
                 # Artwork is much larger than state commands. Queue only the
@@ -617,60 +655,99 @@ class BongoCatEngine:
                 # polling and touch controls never wait for the serial upload.
                 try:
                     self._artwork_queue.get_nowait()
+                    diagnostics.event("ART_QUEUE_REPLACED")
                 except queue.Empty:
                     pass
                 try:
-                    self._artwork_queue.put_nowait((artwork, 0))
+                    self._artwork_queue.put_nowait((snapshot.track_key, artwork, 0))
+                    diagnostics.event("ART_QUEUED", bytes=len(artwork))
                 except queue.Full:
-                    pass
+                    diagnostics.event("ART_QUEUE", result="failure", reason="queue_full")
         except Exception as e:
             print(f"⚠️ Media send failed: {e}")
+            diagnostics.event("MEDIA_SEND", result="failure", reason="write_error",
+                              stage="serial_write", error_type=type(e))
+
+    def _flush_latest_media(self):
+        """Deliver state skipped while a cover held the serial lock."""
+        with self._media_lock:
+            if self._last_media_snapshot is not None:
+                self._send_media_update_locked(self._last_media_snapshot, None)
 
     def _artwork_sender_loop(self):
         """Serialize cover uploads without blocking Spotify API handling."""
         while self.running:
             try:
-                artwork, attempt = self._artwork_queue.get(timeout=0.2)
+                track_key, artwork, attempt = self._artwork_queue.get(timeout=0.2)
             except queue.Empty:
                 continue
             if not self.serial_conn or not self.serial_conn.is_open:
+                diagnostics.event("ART_SEND", result="skipped", reason="connection_lost")
                 continue
             conn = self.serial_conn
             try:
+                self._flush_latest_media()
+                if (self._last_media_snapshot is None or
+                        track_key != self._last_media_snapshot.track_key):
+                    diagnostics.event("ART_SEND", result="skipped", reason="track_mismatch")
+                    continue
+                if track_key != self._last_media_track_key:
+                    # A brief competing write must not discard the only copy
+                    # of the cover. Retry once the matching metadata lands.
+                    try:
+                        self._artwork_queue.put_nowait((track_key, artwork, attempt))
+                    except queue.Full:
+                        pass  # A newer cover already replaced this one.
+                    time.sleep(0.05)
+                    continue
                 header = (
                     f"MEDIA_ART_RGB:{ARTWORK_SIZE}:{ARTWORK_SIZE}:{len(artwork)}\n"
                 ).encode("ascii")
                 self._artwork_ack.clear()
-                with self._serial_lock:
-                    if self.serial_conn is not conn:
-                        continue
-                    conn.write(header)
-                    # Do not burst 27 KB into the ESP32's UART while LVGL is
-                    # flushing the display. A dropped byte offsets every RGB
-                    # triplet after it, which looks like a scrambled cover.
-                    for offset in range(0, len(artwork), ARTWORK_CHUNK_BYTES):
-                        if not self.running or self.serial_conn is not conn:
-                            raise serial.SerialException("Artwork upload interrupted")
-                        chunk = artwork[offset:offset + ARTWORK_CHUNK_BYTES]
-                        written = conn.write(chunk)
-                        if written != len(chunk):
-                            raise serial.SerialTimeoutException(
-                                f"Artwork write was partial ({written}/{len(chunk)})"
-                            )
-                        # Flush every short block, then leave enough wire time
-                        # for the ESP32 to drain its UART while LVGL renders.
-                        # This prevents a lost RGB byte from scrambling the
-                        # lower portion of a cover.
+                self._artwork_transfer_active.set()
+                try:
+                    with self._serial_lock:
+                        if self.serial_conn is not conn:
+                            continue
+                        if (track_key != self._last_media_snapshot.track_key or
+                                track_key != self._last_media_track_key):
+                            diagnostics.event("ART_SEND", result="skipped", reason="track_mismatch")
+                            continue
+                        conn.write(header)
+                        # Do not burst 27 KB into the ESP32's UART while LVGL is
+                        # flushing the display. A dropped byte offsets every RGB
+                        # triplet after it, which looks like a scrambled cover.
+                        for offset in range(0, len(artwork), ARTWORK_CHUNK_BYTES):
+                            if not self.running or self.serial_conn is not conn:
+                                raise serial.SerialException("Artwork upload interrupted")
+                            chunk = artwork[offset:offset + ARTWORK_CHUNK_BYTES]
+                            written = conn.write(chunk)
+                            if written != len(chunk):
+                                raise serial.SerialTimeoutException(
+                                    f"Artwork write was partial ({written}/{len(chunk)})"
+                                )
+                            # Flush every short block, then leave enough wire time
+                            # for the ESP32 to drain its UART while LVGL renders.
+                            # This prevents a lost RGB byte from scrambling the
+                            # lower portion of a cover.
+                            conn.flush()
+                            time.sleep(ARTWORK_CHUNK_PAUSE_SECONDS)
                         conn.flush()
-                        time.sleep(ARTWORK_CHUNK_PAUSE_SECONDS)
-                    conn.flush()
+                        self._last_artwork_transfer_at = time.time()
+                finally:
+                    self._artwork_transfer_active.clear()
                 print(f"🎨 Sent album artwork ({len(artwork)} bytes)")
-                if not self._artwork_ack.wait(timeout=4.0) and attempt == 0:
-                    print("⚠️ Artwork acknowledgement missed; scheduling one retry")
-                    try:
-                        self._artwork_queue.put_nowait((artwork, 1))
-                    except queue.Full:
-                        pass
+                diagnostics.event("ART_SENT", bytes=len(artwork), attempt=attempt + 1)
+                if not self._artwork_ack.wait(timeout=4.0):
+                    diagnostics.event("ART_ACK", result="failure", reason="ack_timeout",
+                                      attempt=attempt + 1)
+                    if attempt == 0:
+                        print("⚠️ Artwork acknowledgement missed; scheduling one retry")
+                        try:
+                            self._artwork_queue.put_nowait((track_key, artwork, 1))
+                        except queue.Full:
+                            diagnostics.event("ART_QUEUE", result="failure", reason="queue_full")
+                self._flush_latest_media()
             except Exception as e:
                 if self.running:
                     print(f"⚠️ Artwork send failed: {e}")
@@ -678,6 +755,7 @@ class BongoCatEngine:
 
     def _resync_device(self):
         """Restore volatile ESP32 state after a timer wake or reset."""
+        diagnostics.event("DEVICE_RESYNC")
         self._last_media_meta = None
         self._last_media_state = None
         self._last_media_time = None
@@ -710,12 +788,17 @@ class BongoCatEngine:
                     self._last_device_reply_at = time.time()
                 if line == "MEDIA_ART_OK":
                     self._artwork_ack.set()
+                    diagnostics.event("ART_ACK", result="success")
+                elif line == "MEDIA_ART_ERROR":
+                    diagnostics.event("ART_ACK", result="failure", reason="device_error")
                 elif line == "SYNC_REQUEST":
                     self._resync_device()
                 elif line.startswith("MEDIA_CMD:"):
                     action = line.split(":", 1)[1]
-                    self.media_bridge.control(action)
-                    print(f"🎵 Touch control: {action}")
+                    if action in ("PLAY_PAUSE", "NEXT", "PREVIOUS"):
+                        diagnostics.event("MEDIA_CMD_RX", action=action)
+                        self.media_bridge.control(action)
+                        print(f"🎵 Touch control: {action}")
                 elif line.startswith("ESP32_STATUS:"):
                     values = {}
                     for item in line.split(":", 1)[1].split(","):
@@ -742,7 +825,7 @@ class BongoCatEngine:
                         self.esp32_status_at = time.time()
             except Exception as e:
                 if self.running:
-                    self._mark_serial_failed(conn, e)
+                    self._mark_serial_failed(conn, e, reason="read_error")
                 time.sleep(0.1)
 
     def _foreground_app_loop(self):

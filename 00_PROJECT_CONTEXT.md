@@ -108,11 +108,18 @@ Inställningsfönstret på Windows ska inte byggas om utan ett konkret behov.
 
 ## Aktuellt fokus
 
-Den gemensamma panelmenyn för Bongo och Spelare är implementerad. Menyn öppnas
-med långtryck från båda skärmarna och behåller de befintliga mediagesterna när
-den är stängd. Råtouchens träffytor behöver fortfarande dokumenterad kontroll
-på den fysiska skärmen.
+Källkoden har en gemensam panelmeny för Bongo, Spelare och den lokala
+Fokus-timern. Menyn öppnas med långtryck från alla tre paneler och behåller
+de befintliga mediagesterna när den är stängd. Tidigare lokalt flashad Fokus v1
+fick begränsad fysisk kontroll, inklusive en kort observerad LED-blinkning.
+Fokus v2 med valbara tider och automatisk paus är nu lokalt flashad som app vid
+`0x10000`. Användaren har bekräftat val och sparning av 5/1 minuter, ett
+kvalitativt 5+1-pass, att 5/1 finns kvar efter fysisk reset och efter ett
+observerat companion-bortfall med släckning/väckning samt fungerande panelbyte,
+mediegester, DJ och albumomslag. Exakta signal- och väcktider samt faktisk
+strömförbrukning i deep sleep återstår före en eventuell release.
 
-Den aktuella panelmenyversionens kompletta flashbild och kontrollsumma finns i
-`release/`. `README.md` beskriver flashning från adress `0x0` och skiljer den
-från appbinären som byggs och laddas vid `0x10000`.
+Den senaste versionsmärkta flashbilden och kontrollsumman i `release/` hör
+till deep sleep-versionen `app-v1.1` och innehåller ännu inte Fokus.
+`README.md` beskriver flashning från adress `0x0` och skiljer den från
+appbinären som byggs och laddas vid `0x10000`.

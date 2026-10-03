@@ -2,29 +2,32 @@
 #include <TFT_eSPI.h>
 #include <WiFi.h>
 #include <EEPROM.h>
+#include <Preferences.h>
 #include <esp_freertos_hooks.h>
 #include <esp_sleep.h>
 #include <driver/rtc_io.h>
 #include <math.h>
 #include "Free_Fonts.h"
 #include "animations_sprites.h"
+#include "focus_logic.h"
 
 // Display settings
 #define SCREEN_WIDTH 240
 #define SCREEN_HEIGHT 320
 #define DRAW_BUFFER_ROWS 40
 #define TOUCH_PRESSURE_THRESHOLD 350
-#define TOUCH_LONG_PRESS_MS 650
 #define TOUCH_BONK_DURATION_MS 1400
 #define MEDIA_MULTI_TAP_WINDOW_MS 320
 #define MEDIA_ART_SIZE 112
 #define MEDIA_ART_LV_BYTES (MEDIA_ART_SIZE * MEDIA_ART_SIZE * 2)
 #define MEDIA_ART_RGB_BYTES (MEDIA_ART_SIZE * MEDIA_ART_SIZE * 3)
 #define MEDIA_SWIPE_THRESHOLD 420
+#define FOCUS_TAP_MOVE_MAX_RAW 180
+#define FOCUS_LED_GREEN_PIN 16  // ESP32-2432S024R RGB green, active low
 #define MEDIA_VINYL_FRAME_MS 60
 #define MEDIA_VINYL_ANGLE_STEP 18
 #define MEDIA_CAT_FRAME_MS 450
-#define MEDIA_CAT_ZOOM 640
+#define MEDIA_CAT_ZOOM 576
 #define COMPANION_IDLE_MS 600000UL
 #define COMPANION_PROBE_MS 8000UL
 #define COMPANION_PROBE_GRACE_MS 4000UL
@@ -38,13 +41,6 @@ static_assert(companionIdleExpired(600000, 0), "companion idle boundary");
 static_assert(COMPANION_PROBE_INTERVAL_US / 1000 + COMPANION_PROBE_MS +
                   MEDIA_ART_STALL_MS + COMPANION_PROBE_GRACE_MS < 60000,
               "timer probe must fit within the wake target");
-// The existing raw touch X axis increases from top to bottom; raw Y runs
-// across the display. Only the menu uses approximate absolute positions.
-#define TOUCH_RAW_TOP 200
-#define TOUCH_RAW_BOTTOM 3900
-#define TOUCH_RAW_SIDE_MIN 200
-#define TOUCH_RAW_SIDE_MAX 3900
-
 // Configuration settings structure
 struct BongoCatSettings {
     bool show_cpu = true;
@@ -99,16 +95,17 @@ lv_obj_t * time_label = NULL;
 
 // One menu on LVGL's top layer stays above either underlying screen.
 lv_obj_t * feature_overlay = NULL;
+lv_obj_t * feature_overlay_backdrop = NULL;
 lv_obj_t * feature_overlay_label = NULL;
 lv_obj_t * feature_overlay_bongo_button = NULL;
 lv_obj_t * feature_overlay_player_button = NULL;
+lv_obj_t * feature_overlay_focus_button = NULL;
+lv_obj_t * feature_overlay_settings_button = NULL;
 lv_obj_t * feature_overlay_bongo_label = NULL;
 lv_obj_t * feature_overlay_player_label = NULL;
-lv_obj_t * feature_overlay_stats_label = NULL;
-lv_obj_t * feature_overlay_media_label = NULL;
-lv_obj_t * feature_overlay_title_label = NULL;
+lv_obj_t * feature_overlay_focus_label = NULL;
+lv_obj_t * feature_overlay_settings_label = NULL;
 lv_obj_t * feature_overlay_hint_label = NULL;
-lv_obj_t * feature_overlay_count_label = NULL;
 bool touch_is_down = false;
 bool touch_long_press_fired = false;
 bool touch_started_in_menu = false;
@@ -121,6 +118,10 @@ uint16_t touch_start_x = 0;
 uint16_t touch_start_y = 0;
 uint16_t touch_last_x = 0;
 uint16_t touch_last_y = 0;
+lv_obj_t *touch_feedback_button = NULL;
+bool touch_button_cancelled = false;
+PanelId touch_start_panel = PanelId::Bongo;
+bool touch_start_times_open = false;
 
 // Bongo DJ / Windows media screen. Artwork arrives as RGB888 so the ESP32 can
 // convert through LVGL itself without any controller-specific byte ordering.
@@ -128,6 +129,7 @@ lv_obj_t * media_screen = NULL;
 lv_obj_t * media_art_box = NULL;
 lv_obj_t * media_art_image = NULL;
 lv_obj_t * media_source_label = NULL;
+lv_obj_t * media_brand_label = NULL;
 lv_obj_t * media_playback_status_label = NULL;
 lv_obj_t * media_gesture_hint_label = NULL;
 lv_obj_t * media_title_label = NULL;
@@ -151,7 +153,7 @@ uint32_t media_art_last_byte_ms = 0;
 uint8_t media_art_rgb_triplet[3] = {0, 0, 0};
 uint8_t media_art_rgb_triplet_used = 0;
 bool media_art_valid = false;
-bool spotify_screen_active = false;
+PanelId active_panel = PanelId::Bongo;
 bool media_is_playing = false;
 bool media_has_track = false;
 uint16_t media_vinyl_angle = 0;
@@ -186,6 +188,109 @@ bool cpuIdleHookCore1();
 void setCpuDiagnostics(bool enabled, uint32_t current_time);
 uint32_t media_cat_last_frame = 0;
 
+// Only selected durations persist; the active cycle is volatile.
+FocusDurations focus_durations = focusDefaultDurations();
+FocusDurations focus_draft_durations = focusDefaultDurations();
+FocusUiSettings focus_ui_settings = focusDefaultUiSettings();
+FocusState focus_state = focusInitial();
+lv_obj_t * focus_screen = NULL;
+lv_obj_t * focus_progress_ring = NULL;
+lv_obj_t * focus_phase_label = NULL;
+lv_obj_t * focus_time_label = NULL;
+lv_obj_t * focus_status_label = NULL;
+lv_obj_t * focus_next_label = NULL;
+lv_obj_t * focus_start_button = NULL;
+lv_obj_t * focus_start_label = NULL;
+lv_obj_t * focus_reset_button = NULL;
+lv_obj_t * focus_settings_button = NULL;
+lv_obj_t * focus_settings_screen = NULL;
+lv_obj_t * focus_settings_heading = NULL;
+lv_obj_t * focus_settings_focus_card = NULL;
+lv_obj_t * focus_settings_break_card = NULL;
+lv_obj_t * focus_settings_focus_label = NULL;
+lv_obj_t * focus_settings_break_label = NULL;
+lv_obj_t * focus_settings_info_label = NULL;
+lv_obj_t * focus_settings_focus_minus = NULL;
+lv_obj_t * focus_settings_focus_plus = NULL;
+lv_obj_t * focus_settings_break_minus = NULL;
+lv_obj_t * focus_settings_break_plus = NULL;
+lv_obj_t * focus_settings_save = NULL;
+bool focus_settings_open = false;
+lv_obj_t * local_settings_screen = NULL;
+lv_obj_t * local_settings_heading = NULL;
+lv_obj_t * local_settings_theme_button = NULL;
+lv_obj_t * local_settings_auto_button = NULL;
+lv_obj_t * local_settings_led_button = NULL;
+lv_obj_t * local_settings_back_button = NULL;
+lv_obj_t * local_settings_theme_label = NULL;
+lv_obj_t * local_settings_auto_label = NULL;
+lv_obj_t * local_settings_led_label = NULL;
+lv_obj_t * local_settings_info_label = NULL;
+PanelId panel_before_settings = PanelId::Bongo;
+lv_obj_t * focus_completion_banner = NULL;
+lv_obj_t * focus_completion_label = NULL;
+lv_obj_t * focus_completion_sub_label = NULL;
+int32_t focus_last_display_seconds = -1;
+int32_t focus_last_progress = -1;
+FocusMode focus_last_display_mode = FocusMode::Completed;
+FocusPhase focus_last_display_phase = FocusPhase::Break;
+FocusCueState focus_cue = focusCueInitial();
+bool focus_banner_visible = false;
+bool focus_banner_compact = false;
+FocusCueKind focus_banner_kind = FocusCueKind::None;
+PanelId focus_banner_panel = PanelId::Bongo;
+bool focus_led_on = false;
+
+void focusLedOff() {
+    // Preload the inactive HIGH level before enabling the output. During reset
+    // the pad floats high through the LED to 3.3 V on this active-low board.
+    digitalWrite(FOCUS_LED_GREEN_PIN, HIGH);
+    pinMode(FOCUS_LED_GREEN_PIN, OUTPUT);
+    focus_led_on = false;
+}
+
+void driveFocusLed(bool on) {
+    if (focus_led_on == on) return;
+    digitalWrite(FOCUS_LED_GREEN_PIN, on ? LOW : HIGH);
+    focus_led_on = on;
+}
+
+FocusDurations loadFocusDurations() {
+    Preferences prefs;
+    if (!prefs.begin("bongofocus", true)) return focusDefaultDurations();
+    uint32_t packed = prefs.getUInt("durations",
+                                   focusPackDurations(focusDefaultDurations()));
+    prefs.end();
+    return focusDurationsFromPacked(packed);
+}
+
+bool saveFocusDurations(FocusDurations values) {
+    if (!focusDurationsValid(values)) return false;
+    Preferences prefs;
+    if (!prefs.begin("bongofocus", false)) return false;
+    bool saved = prefs.putUInt("durations", focusPackDurations(values)) ==
+                 sizeof(uint32_t);
+    prefs.end();
+    return saved;
+}
+
+FocusUiSettings loadFocusUiSettings() {
+    Preferences prefs;
+    if (!prefs.begin("bongofocus", true)) return focusDefaultUiSettings();
+    uint32_t packed = prefs.getUInt("ui", focusPackUiSettings(focusDefaultUiSettings()));
+    prefs.end();
+    return focusUiSettingsFromPacked(packed);
+}
+
+bool saveFocusUiSettings(FocusUiSettings values) {
+    if (!focusUiSettingsValid(values)) return false;
+    Preferences prefs;
+    if (!prefs.begin("bongofocus", false)) return false;
+    bool saved = prefs.putUInt("ui", focusPackUiSettings(values)) == sizeof(uint32_t);
+    prefs.end();
+    return saved;
+}
+
 // Stats data
 int cpu_usage = 0;
 int ram_usage = 0;
@@ -193,50 +298,53 @@ int wpm_speed = 0;
 String current_time_str = "00:00";
 bool time_initialized = false;  // Track if we've received time from Python
 
+uint32_t focusAccentHex() {
+    switch (focus_ui_settings.theme) {
+        case AccentTheme::Cyan: return 0x26D4E4;
+        case AccentTheme::Amber: return 0xFFC14D;
+        default: return 0x1ED760;
+    }
+}
+
+uint32_t focusDarkAccentHex() {
+    switch (focus_ui_settings.theme) {
+        case AccentTheme::Cyan: return 0x15343A;
+        case AccentTheme::Amber: return 0x3B2F1C;
+        default: return 0x1B3025;
+    }
+}
+
+uint32_t focusPressedHex() {
+    switch (focus_ui_settings.theme) {
+        case AccentTheme::Cyan: return 0x285E66;
+        case AccentTheme::Amber: return 0x66502D;
+        default: return 0x2E6140;
+    }
+}
+
 void refreshFeatureOverlay() {
     if (!feature_overlay || lv_obj_has_flag(feature_overlay, LV_OBJ_FLAG_HIDDEN)) return;
-
-    bool player_active = spotify_screen_active;
-    lv_label_set_text(feature_overlay_bongo_label,
-                      player_active ? "BONGO" : "BONGO  AKTIV");
-    lv_label_set_text(feature_overlay_player_label,
-                      player_active ? "SPELARE  AKTIV" : "SPELARE");
-    for (lv_obj_t *button : {feature_overlay_bongo_button,
-                             feature_overlay_player_button}) {
-        bool active = button == (player_active ? feature_overlay_player_button
-                                               : feature_overlay_bongo_button);
+    lv_obj_t *buttons[] = {feature_overlay_bongo_button,
+                           feature_overlay_player_button,
+                           feature_overlay_focus_button,
+                           feature_overlay_settings_button};
+    lv_obj_t *labels[] = {feature_overlay_bongo_label,
+                          feature_overlay_player_label,
+                          feature_overlay_focus_label,
+                          feature_overlay_settings_label};
+    const char *names[] = {"BONGO", "SPELARE", "FOKUS", "INSTALLNINGAR"};
+    for (uint8_t i = 0; i < 4; ++i) {
+        bool active = static_cast<uint8_t>(active_panel) == i;
+        lv_obj_t *button = buttons[i];
         lv_obj_set_style_bg_color(button,
-                                  lv_color_hex(active ? 0x1B3025 : 0x171A1F), 0);
+                                  lv_color_hex(active ? focusDarkAccentHex() : 0x171A1F), 0);
         lv_obj_set_style_border_color(button,
-                                      lv_color_hex(active ? 0x1ED760 : 0x4C555D), 0);
+                                      lv_color_hex(active ? focusAccentHex() : 0x4C555D), 0);
         lv_obj_set_style_border_width(button, active ? 2 : 1, 0);
+        lv_obj_set_style_text_color(labels[i],
+                                    active ? lv_color_hex(focusAccentHex()) : lv_color_white(), 0);
+        lv_label_set_text_fmt(labels[i], "%s%s", names[i], active ? "  AKTIV" : "");
     }
-    lv_obj_set_style_text_color(feature_overlay_bongo_label,
-                                player_active ? lv_color_white() : lv_color_hex(0x1ED760), 0);
-    lv_obj_set_style_text_color(feature_overlay_player_label,
-                                player_active ? lv_color_hex(0x1ED760) : lv_color_white(), 0);
-
-    char cpu[18] = "", ram[18] = "", wpm[18] = "", time[20] = "";
-    if (settings.show_cpu) snprintf(cpu, sizeof(cpu), "CPU %d%%", cpu_usage);
-    if (settings.show_ram) snprintf(ram, sizeof(ram), "RAM %d%%", ram_usage);
-    if (settings.show_wpm) snprintf(wpm, sizeof(wpm), "WPM %d", wpm_speed);
-    if (settings.show_time) {
-        snprintf(time, sizeof(time), "TIME %s",
-                 time_label ? lv_label_get_text(time_label) : current_time_str.c_str());
-    }
-
-    char row1[40], row2[44], stats[88];
-    snprintf(row1, sizeof(row1), "%s%s%s", cpu, cpu[0] && ram[0] ? "   " : "", ram);
-    snprintf(row2, sizeof(row2), "%s%s%s", wpm, wpm[0] && time[0] ? "   " : "", time);
-    snprintf(stats, sizeof(stats), "%s%s%s", row1,
-             row1[0] && row2[0] ? "\n" : "", row2);
-    lv_label_set_text(feature_overlay_stats_label,
-                      stats[0] ? stats : "STATS HIDDEN");
-    lv_label_set_text_fmt(feature_overlay_media_label, "MEDIA  %s",
-                          media_is_playing ? "PLAYING" :
-                          (media_has_track ? "PAUSED" : "NO MEDIA"));
-    lv_label_set_text(feature_overlay_title_label,
-                      media_has_track ? media_title.c_str() : "Nothing playing");
 }
 
 // Function to flush the display buffer
@@ -516,7 +624,7 @@ void activateMediaArtwork(uint8_t buffer_index, bool acknowledge) {
     lv_img_cache_invalidate_src(&media_art_descriptor);
     lv_img_set_src(media_art_image, &media_art_descriptor);
     lv_img_set_pivot(media_art_image, MEDIA_ART_SIZE / 2, MEDIA_ART_SIZE / 2);
-    lv_img_set_zoom(media_art_image, 384);
+    lv_img_set_zoom(media_art_image, 328);
     media_vinyl_angle = 0;
     lv_img_set_angle(media_art_image, media_vinyl_angle);
     lv_img_set_antialias(media_art_image, false);
@@ -609,7 +717,7 @@ bool serviceMediaArtworkReceive() {
 }
 
 void updateMediaVinyl(uint32_t current_time) {
-    if (!spotify_screen_active || media_cat_mode || !media_art_valid || !media_is_playing ||
+    if (active_panel != PanelId::Player || media_cat_mode || !media_art_valid || !media_is_playing ||
         !media_art_image) {
         return;
     }
@@ -625,7 +733,7 @@ void updateMediaVinyl(uint32_t current_time) {
 }
 
 void updateMediaCat(uint32_t current_time) {
-    if (!spotify_screen_active || !media_cat_mode || !media_cat_canvas) return;
+    if (active_panel != PanelId::Player || !media_cat_mode || !media_cat_canvas) return;
     if (!media_is_playing) return;
     if (current_time - media_cat_last_frame < MEDIA_CAT_FRAME_MS) return;
     media_cat_last_frame = current_time;
@@ -729,6 +837,12 @@ void releaseBacklightHold() {
 }
 
 void enterCompanionDeepSleep(bool display_initialized) {
+    focus_cue = focusCueInitial();
+    focusLedOff();
+    if (focus_completion_banner) {
+        lv_obj_add_flag(focus_completion_banner, LV_OBJ_FLAG_HIDDEN);
+        focus_banner_visible = false;
+    }
     digitalWrite(TFT_BL, LOW);
     if (display_initialized) {
         // ILI9341 Display OFF followed by Sleep IN. The backlight is already
@@ -1426,6 +1540,7 @@ const char* get_state_name(animation_state_t state) {
 void setup() {
     // On every reset, including timer wakeups, keep the backlight dark until
     // fresh companion traffic has been proved and the first frame is drawn.
+    focusLedOff();
     holdBacklightOff();
     // Covers arrive over the same UART as commands. Keep enough headroom for
     // a chunk while LVGL is rendering a frame, otherwise one lost RGB byte
@@ -1451,6 +1566,9 @@ void setup() {
     
     // Load settings from EEPROM (will use defaults if invalid)
     loadSettings();
+    focus_durations = loadFocusDurations();
+    focus_ui_settings = loadFocusUiSettings();
+    focus_state = focusInitial(focus_durations);
     
     // Initialize random seed for animations
     randomSeed(analogRead(0));
@@ -1476,6 +1594,10 @@ void setup() {
     
     createBongoCat();
     createMediaScreen();
+    createFocusScreen();
+    createFocusSettingsScreen();
+    createLocalSettingsScreen();
+    refreshAccentTheme();
     
     // Apply loaded settings to display visibility now that UI is created
     updateDisplayVisibility();
@@ -1544,8 +1666,21 @@ void createBongoCat() {
 }
 
 void createFeatureOverlay() {
+    // Cover the full display behind the centered menu so edge controls from
+    // the active panel cannot peek through above or beside it.
+    feature_overlay_backdrop = lv_obj_create(lv_layer_top());
+    lv_obj_set_pos(feature_overlay_backdrop, 0, 0);
+    lv_obj_set_size(feature_overlay_backdrop, SCREEN_WIDTH, SCREEN_HEIGHT);
+    lv_obj_set_style_bg_color(feature_overlay_backdrop, lv_color_hex(0x101419), 0);
+    lv_obj_set_style_bg_opa(feature_overlay_backdrop, LV_OPA_COVER, 0);
+    lv_obj_set_style_border_width(feature_overlay_backdrop, 0, 0);
+    lv_obj_set_style_pad_all(feature_overlay_backdrop, 0, 0);
+    lv_obj_clear_flag(feature_overlay_backdrop, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_clear_flag(feature_overlay_backdrop, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_add_flag(feature_overlay_backdrop, LV_OBJ_FLAG_HIDDEN);
+
     feature_overlay = lv_obj_create(lv_layer_top());
-    lv_obj_set_size(feature_overlay, 220, 244);
+    lv_obj_set_size(feature_overlay, 220, 304);
     lv_obj_align(feature_overlay, LV_ALIGN_CENTER, 0, 0);
     lv_obj_set_style_bg_color(feature_overlay, lv_color_hex(0x101419), 0);
     lv_obj_set_style_bg_opa(feature_overlay, LV_OPA_COVER, 0);
@@ -1565,8 +1700,8 @@ void createFeatureOverlay() {
     lv_obj_align(feature_overlay_label, LV_ALIGN_TOP_MID, 0, 0);
 
     feature_overlay_bongo_button = lv_obj_create(feature_overlay);
-    lv_obj_set_pos(feature_overlay_bongo_button, 0, 26);
-    lv_obj_set_size(feature_overlay_bongo_button, 196, 56);
+    lv_obj_set_pos(feature_overlay_bongo_button, 0, 27);
+    lv_obj_set_size(feature_overlay_bongo_button, 196, 50);
     lv_obj_set_style_bg_opa(feature_overlay_bongo_button, LV_OPA_COVER, 0);
     lv_obj_set_style_radius(feature_overlay_bongo_button, 10, 0);
     lv_obj_set_style_pad_all(feature_overlay_bongo_button, 0, 0);
@@ -1577,8 +1712,8 @@ void createFeatureOverlay() {
     lv_obj_center(feature_overlay_bongo_label);
 
     feature_overlay_player_button = lv_obj_create(feature_overlay);
-    lv_obj_set_pos(feature_overlay_player_button, 0, 90);
-    lv_obj_set_size(feature_overlay_player_button, 196, 56);
+    lv_obj_set_pos(feature_overlay_player_button, 0, 88);
+    lv_obj_set_size(feature_overlay_player_button, 196, 50);
     lv_obj_set_style_bg_opa(feature_overlay_player_button, LV_OPA_COVER, 0);
     lv_obj_set_style_radius(feature_overlay_player_button, 10, 0);
     lv_obj_set_style_pad_all(feature_overlay_player_button, 0, 0);
@@ -1588,40 +1723,37 @@ void createFeatureOverlay() {
     lv_label_set_text(feature_overlay_player_label, "SPELARE");
     lv_obj_center(feature_overlay_player_label);
 
-    feature_overlay_stats_label = lv_label_create(feature_overlay);
-    lv_obj_set_width(feature_overlay_stats_label, 196);
-    lv_obj_set_style_text_font(feature_overlay_stats_label, &lv_font_montserrat_10, 0);
-    lv_obj_set_style_text_color(feature_overlay_stats_label, lv_color_white(), 0);
-    lv_label_set_text(feature_overlay_stats_label, "");
-    lv_obj_set_pos(feature_overlay_stats_label, 0, 151);
+    feature_overlay_focus_button = lv_obj_create(feature_overlay);
+    lv_obj_set_pos(feature_overlay_focus_button, 0, 149);
+    lv_obj_set_size(feature_overlay_focus_button, 196, 50);
+    lv_obj_set_style_bg_opa(feature_overlay_focus_button, LV_OPA_COVER, 0);
+    lv_obj_set_style_radius(feature_overlay_focus_button, 10, 0);
+    lv_obj_set_style_pad_all(feature_overlay_focus_button, 0, 0);
+    lv_obj_clear_flag(feature_overlay_focus_button, LV_OBJ_FLAG_SCROLLABLE);
+    feature_overlay_focus_label = lv_label_create(feature_overlay_focus_button);
+    lv_obj_set_style_text_font(feature_overlay_focus_label, &lv_font_montserrat_14, 0);
+    lv_label_set_text(feature_overlay_focus_label, "FOKUS");
+    lv_obj_center(feature_overlay_focus_label);
 
-    feature_overlay_media_label = lv_label_create(feature_overlay);
-    lv_obj_set_width(feature_overlay_media_label, 196);
-    lv_obj_set_style_text_font(feature_overlay_media_label, &lv_font_montserrat_10, 0);
-    lv_obj_set_style_text_color(feature_overlay_media_label, lv_color_hex(0x1ED760), 0);
-    lv_label_set_text(feature_overlay_media_label, "MEDIA  NO MEDIA");
-    lv_obj_set_pos(feature_overlay_media_label, 0, 179);
-
-    feature_overlay_title_label = lv_label_create(feature_overlay);
-    lv_obj_set_size(feature_overlay_title_label, 196, 14);
-    lv_label_set_long_mode(feature_overlay_title_label, LV_LABEL_LONG_DOT);
-    lv_obj_set_style_text_font(feature_overlay_title_label, &lv_font_montserrat_10, 0);
-    lv_obj_set_style_text_color(feature_overlay_title_label, lv_color_white(), 0);
-    lv_label_set_text(feature_overlay_title_label, "Nothing playing");
-    lv_obj_set_pos(feature_overlay_title_label, 0, 196);
+    feature_overlay_settings_button = lv_obj_create(feature_overlay);
+    lv_obj_set_pos(feature_overlay_settings_button, 0, 210);
+    lv_obj_set_size(feature_overlay_settings_button, 196, 50);
+    lv_obj_set_style_bg_opa(feature_overlay_settings_button, LV_OPA_COVER, 0);
+    lv_obj_set_style_radius(feature_overlay_settings_button, 10, 0);
+    lv_obj_set_style_pad_all(feature_overlay_settings_button, 0, 0);
+    lv_obj_clear_flag(feature_overlay_settings_button, LV_OBJ_FLAG_SCROLLABLE);
+    feature_overlay_settings_label = lv_label_create(feature_overlay_settings_button);
+    lv_obj_set_style_text_font(feature_overlay_settings_label, &lv_font_montserrat_14, 0);
+    lv_label_set_text(feature_overlay_settings_label, "INSTALLNINGAR");
+    lv_obj_center(feature_overlay_settings_label);
 
     feature_overlay_hint_label = lv_label_create(feature_overlay);
-    lv_obj_set_width(feature_overlay_hint_label, 130);
+    lv_obj_set_width(feature_overlay_hint_label, 196);
     lv_obj_set_style_text_font(feature_overlay_hint_label, &lv_font_montserrat_10, 0);
     lv_obj_set_style_text_color(feature_overlay_hint_label, lv_color_hex(0xD5D9DE), 0);
+    lv_obj_set_style_text_align(feature_overlay_hint_label, LV_TEXT_ALIGN_CENTER, 0);
     lv_label_set_text(feature_overlay_hint_label, "HOLD  CLOSE");
-    lv_obj_set_pos(feature_overlay_hint_label, 0, 218);
-
-    feature_overlay_count_label = lv_label_create(feature_overlay);
-    lv_label_set_text(feature_overlay_count_label, "BONKS  0");
-    lv_obj_set_style_text_font(feature_overlay_count_label, &lv_font_montserrat_10, 0);
-    lv_obj_set_style_text_color(feature_overlay_count_label, lv_color_hex(0x1ED760), 0);
-    lv_obj_set_pos(feature_overlay_count_label, 136, 218);
+    lv_obj_set_pos(feature_overlay_hint_label, 0, 269);
 }
 
 lv_obj_t *createMediaControlButton(lv_obj_t *parent, const char *symbol,
@@ -1652,11 +1784,11 @@ void createMediaScreen() {
     lv_obj_set_style_pad_all(media_screen, 0, 0);
     lv_obj_clear_flag(media_screen, LV_OBJ_FLAG_SCROLLABLE);
 
-    lv_obj_t *brand = lv_label_create(media_screen);
-    lv_label_set_text(brand, "BONGO DJ");
-    lv_obj_set_style_text_font(brand, &lv_font_montserrat_10, 0);
-    lv_obj_set_style_text_color(brand, lv_color_hex(0x1ED760), 0);
-    lv_obj_set_pos(brand, 10, 4);
+    media_brand_label = lv_label_create(media_screen);
+    lv_label_set_text(media_brand_label, "BONGO DJ");
+    lv_obj_set_style_text_font(media_brand_label, &lv_font_montserrat_10, 0);
+    lv_obj_set_style_text_color(media_brand_label, lv_color_hex(0x1ED760), 0);
+    lv_obj_set_pos(media_brand_label, 10, 4);
 
     media_source_label = lv_label_create(media_screen);
     lv_label_set_text(media_source_label, "WINDOWS");
@@ -1665,13 +1797,13 @@ void createMediaScreen() {
     lv_obj_align(media_source_label, LV_ALIGN_TOP_RIGHT, -10, 4);
 
     media_art_box = lv_obj_create(media_screen);
-    lv_obj_set_pos(media_art_box, 36, 17);
-    lv_obj_set_size(media_art_box, 168, 168);
+    lv_obj_set_pos(media_art_box, 46, 26);
+    lv_obj_set_size(media_art_box, 148, 148);
     lv_obj_set_style_bg_color(media_art_box, lv_color_hex(0x080A0C), 0);
     lv_obj_set_style_bg_opa(media_art_box, LV_OPA_COVER, 0);
     lv_obj_set_style_border_width(media_art_box, 1, 0);
     lv_obj_set_style_border_color(media_art_box, lv_color_hex(0x252A30), 0);
-    lv_obj_set_style_radius(media_art_box, 84, 0);
+    lv_obj_set_style_radius(media_art_box, 74, 0);
     lv_obj_set_style_clip_corner(media_art_box, true, 0);
     lv_obj_set_style_pad_all(media_art_box, 0, 0);
     lv_obj_clear_flag(media_art_box, LV_OBJ_FLAG_SCROLLABLE);
@@ -1697,8 +1829,8 @@ void createMediaScreen() {
     renderMediaCat();
 
     lv_obj_t *info_panel = lv_obj_create(media_screen);
-    lv_obj_set_pos(info_panel, 6, 188);
-    lv_obj_set_size(info_panel, 228, 64);
+    lv_obj_set_pos(info_panel, 8, 181);
+    lv_obj_set_size(info_panel, 224, 90);
     lv_obj_set_style_bg_color(info_panel, lv_color_hex(0x15191E), 0);
     lv_obj_set_style_bg_opa(info_panel, LV_OPA_COVER, 0);
     lv_obj_set_style_border_width(info_panel, 1, 0);
@@ -1709,23 +1841,23 @@ void createMediaScreen() {
 
     media_title_label = lv_label_create(info_panel);
     lv_label_set_text(media_title_label, "Nothing playing");
-    lv_obj_set_pos(media_title_label, 8, 5);
-    lv_obj_set_width(media_title_label, 212);
+    lv_obj_set_pos(media_title_label, 10, 7);
+    lv_obj_set_width(media_title_label, 204);
     lv_label_set_long_mode(media_title_label, LV_LABEL_LONG_SCROLL_CIRCULAR);
-    lv_obj_set_style_text_font(media_title_label, &lv_font_montserrat_14, 0);
+    lv_obj_set_style_text_font(media_title_label, &lv_font_montserrat_16, 0);
     lv_obj_set_style_text_color(media_title_label, lv_color_hex(0xFFFFFF), 0);
 
     media_artist_label = lv_label_create(info_panel);
     lv_label_set_text(media_artist_label, "Start Spotify on this PC");
-    lv_obj_set_pos(media_artist_label, 8, 25);
-    lv_obj_set_width(media_artist_label, 212);
+    lv_obj_set_pos(media_artist_label, 10, 32);
+    lv_obj_set_width(media_artist_label, 204);
     lv_label_set_long_mode(media_artist_label, LV_LABEL_LONG_SCROLL_CIRCULAR);
     lv_obj_set_style_text_font(media_artist_label, &lv_font_montserrat_14, 0);
     lv_obj_set_style_text_color(media_artist_label, lv_color_hex(0xD7DBE0), 0);
 
     media_progress_bar = lv_bar_create(info_panel);
-    lv_obj_set_pos(media_progress_bar, 8, 50);
-    lv_obj_set_size(media_progress_bar, 212, 6);
+    lv_obj_set_pos(media_progress_bar, 10, 58);
+    lv_obj_set_size(media_progress_bar, 204, 6);
     lv_bar_set_range(media_progress_bar, 0, 1000);
     lv_bar_set_value(media_progress_bar, 0, LV_ANIM_OFF);
     lv_obj_set_style_bg_color(media_progress_bar, lv_color_hex(0x343940), LV_PART_MAIN);
@@ -1734,12 +1866,12 @@ void createMediaScreen() {
     lv_obj_set_style_radius(media_progress_bar, 3, LV_PART_MAIN);
     lv_obj_set_style_radius(media_progress_bar, 3, LV_PART_INDICATOR);
 
-    media_elapsed_label = lv_label_create(media_screen);
+    media_elapsed_label = lv_label_create(info_panel);
     lv_label_set_text(media_elapsed_label, "0:00");
-    lv_obj_set_pos(media_elapsed_label, 12, 255);
-    media_duration_label = lv_label_create(media_screen);
+    lv_obj_set_pos(media_elapsed_label, 10, 72);
+    media_duration_label = lv_label_create(info_panel);
     lv_label_set_text(media_duration_label, "0:00");
-    lv_obj_align(media_duration_label, LV_ALIGN_TOP_RIGHT, -12, 255);
+    lv_obj_align(media_duration_label, LV_ALIGN_TOP_RIGHT, -10, 72);
     for (lv_obj_t *time_label_item : {media_elapsed_label, media_duration_label}) {
         lv_obj_set_style_text_font(time_label_item, &lv_font_montserrat_10, 0);
         lv_obj_set_style_text_color(time_label_item, lv_color_hex(0xC7CCD2), 0);
@@ -1751,29 +1883,538 @@ void createMediaScreen() {
     lv_obj_set_style_text_font(media_playback_status_label, &lv_font_montserrat_10, 0);
     lv_obj_set_style_text_color(media_playback_status_label, lv_color_hex(0x1ED760), 0);
     lv_obj_set_style_text_align(media_playback_status_label, LV_TEXT_ALIGN_CENTER, 0);
-    lv_obj_set_pos(media_playback_status_label, 8, 268);
+    lv_obj_set_pos(media_playback_status_label, 8, 278);
 
     media_gesture_hint_label = lv_label_create(media_screen);
-    lv_obj_set_size(media_gesture_hint_label, 224, 28);
+    lv_obj_set_size(media_gesture_hint_label, 224, 24);
     lv_obj_set_style_text_font(media_gesture_hint_label, &lv_font_montserrat_10, 0);
     lv_obj_set_style_text_color(media_gesture_hint_label, lv_color_hex(0x747B84), 0);
     lv_obj_set_style_text_align(media_gesture_hint_label, LV_TEXT_ALIGN_CENTER, 0);
-    lv_obj_align(media_gesture_hint_label, LV_ALIGN_BOTTOM_MID, 0, -13);
+    lv_obj_set_pos(media_gesture_hint_label, 8, 294);
 
     loadGenericVinyl();
     refreshMediaUi();
 }
 
+void refreshFocusUi(bool force = false) {
+    if (!focus_time_label ||
+        ((active_panel != PanelId::Focus || focus_settings_open) && !force)) return;
+    int32_t seconds = (int32_t)focusDisplaySeconds(focus_state);
+    int32_t progress = (int32_t)focusProgressPermille(focus_state);
+    if (!force && seconds == focus_last_display_seconds &&
+        focus_state.mode == focus_last_display_mode &&
+        focus_state.phase == focus_last_display_phase &&
+        progress == focus_last_progress) return;
+    focus_last_display_seconds = seconds;
+    if (progress != focus_last_progress || force) {
+        lv_arc_set_value(focus_progress_ring, progress);
+        focus_last_progress = progress;
+    }
+    focus_last_display_mode = focus_state.mode;
+    focus_last_display_phase = focus_state.phase;
+    lv_label_set_text(focus_phase_label,
+                      focus_state.phase == FocusPhase::Focus ? "FOKUS" : "PAUS");
+    lv_label_set_text_fmt(focus_time_label, "%02ld:%02ld",
+                          (long)(seconds / 60), (long)(seconds % 60));
+    const char *status = focus_state.mode == FocusMode::Completed ? "PAUS KLAR" :
+                         focus_state.phase == FocusPhase::Break ?
+                             (focus_state.mode == FocusMode::Running ? "PAUS AKTIV" :
+                                                                      "PAUS PAUSAD") :
+                         focus_state.mode == FocusMode::Running ? "FOKUS AKTIV" :
+                         focus_state.mode == FocusMode::Paused ? "FOKUS PAUSAD" :
+                                                                  "REDO FOR FOKUS";
+    lv_label_set_text(focus_status_label, status);
+    lv_obj_set_style_text_font(focus_status_label,
+                               focus_state.mode == FocusMode::Completed ?
+                                   &lv_font_montserrat_20 : &lv_font_montserrat_14, 0);
+    lv_label_set_text(focus_start_label,
+                      focus_state.mode == FocusMode::Running ? "PAUS" :
+                      focus_state.mode == FocusMode::Completed ? "START FOKUS" : "START");
+    lv_label_set_text_fmt(focus_next_label, "VALT %u / %u MIN",
+                          unsigned(focus_durations.focus_minutes),
+                          unsigned(focus_durations.break_minutes));
+}
+
+void createFocusScreen() {
+    focus_screen = lv_obj_create(NULL);
+    lv_obj_set_style_bg_color(focus_screen, lv_color_hex(0x101419), 0);
+    lv_obj_set_style_bg_opa(focus_screen, LV_OPA_COVER, 0);
+    lv_obj_set_style_border_width(focus_screen, 0, 0);
+    lv_obj_set_style_pad_all(focus_screen, 0, 0);
+    lv_obj_clear_flag(focus_screen, LV_OBJ_FLAG_SCROLLABLE);
+
+    focus_progress_ring = lv_arc_create(focus_screen);
+    lv_obj_set_pos(focus_progress_ring, 43, 53);
+    lv_obj_set_size(focus_progress_ring, 154, 154);
+    lv_arc_set_rotation(focus_progress_ring, 270);
+    lv_arc_set_bg_angles(focus_progress_ring, 0, 360);
+    lv_arc_set_range(focus_progress_ring, 0, 1000);
+    lv_arc_set_value(focus_progress_ring, 0);
+    lv_obj_set_style_bg_opa(focus_progress_ring, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_arc_color(focus_progress_ring, lv_color_hex(0x303A42), LV_PART_MAIN);
+    lv_obj_set_style_arc_width(focus_progress_ring, 5, LV_PART_MAIN);
+    lv_obj_set_style_arc_width(focus_progress_ring, 6, LV_PART_INDICATOR);
+    lv_obj_set_style_bg_opa(focus_progress_ring, LV_OPA_TRANSP, LV_PART_KNOB);
+    lv_obj_clear_flag(focus_progress_ring, LV_OBJ_FLAG_CLICKABLE);
+
+    focus_phase_label = lv_label_create(focus_screen);
+    lv_obj_set_style_text_font(focus_phase_label, &lv_font_montserrat_14, 0);
+    lv_obj_set_style_text_color(focus_phase_label, lv_color_hex(0x1ED760), 0);
+    lv_label_set_text(focus_phase_label, "FOKUS");
+    lv_obj_set_pos(focus_phase_label, 12, 12);
+
+    focus_time_label = lv_label_create(focus_screen);
+    lv_obj_set_size(focus_time_label, 224, 60);
+    lv_obj_set_style_text_font(focus_time_label, &lv_font_montserrat_40, 0);
+    lv_obj_set_style_text_color(focus_time_label, lv_color_white(), 0);
+    lv_obj_set_style_text_align(focus_time_label, LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_align(focus_time_label, LV_ALIGN_TOP_MID, 0, 102);
+
+    focus_status_label = lv_label_create(focus_screen);
+    lv_obj_set_width(focus_status_label, 220);
+    lv_obj_set_style_text_font(focus_status_label, &lv_font_montserrat_14, 0);
+    lv_obj_set_style_text_color(focus_status_label, lv_color_hex(0x1ED760), 0);
+    lv_obj_set_style_text_align(focus_status_label, LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_align(focus_status_label, LV_ALIGN_TOP_MID, 0, 208);
+
+    focus_start_button = lv_obj_create(focus_screen);
+    lv_obj_set_pos(focus_start_button, 22, 229);
+    lv_obj_set_size(focus_start_button, 196, 44);
+    lv_obj_set_style_bg_color(focus_start_button, lv_color_hex(0x1B3025), 0);
+    lv_obj_set_style_border_color(focus_start_button, lv_color_hex(0x1ED760), 0);
+    lv_obj_set_style_border_width(focus_start_button, 2, 0);
+    lv_obj_set_style_radius(focus_start_button, 10, 0);
+    lv_obj_set_style_pad_all(focus_start_button, 0, 0);
+    lv_obj_clear_flag(focus_start_button, LV_OBJ_FLAG_SCROLLABLE);
+    focus_start_label = lv_label_create(focus_start_button);
+    lv_obj_set_style_text_font(focus_start_label, &lv_font_montserrat_14, 0);
+    lv_obj_set_style_text_color(focus_start_label, lv_color_hex(0x1ED760), 0);
+    lv_obj_center(focus_start_label);
+
+    focus_reset_button = lv_obj_create(focus_screen);
+    lv_obj_set_pos(focus_reset_button, 22, 276);
+    lv_obj_set_size(focus_reset_button, 196, 44);
+    lv_obj_set_style_bg_color(focus_reset_button, lv_color_hex(0x171A1F), 0);
+    lv_obj_set_style_border_color(focus_reset_button, lv_color_hex(0x4C555D), 0);
+    lv_obj_set_style_border_width(focus_reset_button, 1, 0);
+    lv_obj_set_style_radius(focus_reset_button, 10, 0);
+    lv_obj_set_style_pad_all(focus_reset_button, 0, 0);
+    lv_obj_clear_flag(focus_reset_button, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_t *reset_label = lv_label_create(focus_reset_button);
+    lv_obj_set_style_text_font(reset_label, &lv_font_montserrat_14, 0);
+    lv_obj_set_style_text_color(reset_label, lv_color_white(), 0);
+    lv_label_set_text(reset_label, "NOLLA");
+    lv_obj_center(reset_label);
+
+    focus_settings_button = lv_obj_create(focus_screen);
+    lv_obj_set_pos(focus_settings_button, 158, 4);
+    lv_obj_set_size(focus_settings_button, 74, 44);
+    lv_obj_set_style_bg_color(focus_settings_button, lv_color_hex(0x171A1F), 0);
+    lv_obj_set_style_border_color(focus_settings_button, lv_color_hex(0x1ED760), 0);
+    lv_obj_set_style_border_width(focus_settings_button, 1, 0);
+    lv_obj_set_style_radius(focus_settings_button, 8, 0);
+    lv_obj_set_style_pad_all(focus_settings_button, 0, 0);
+    lv_obj_clear_flag(focus_settings_button, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_t *settings_label = lv_label_create(focus_settings_button);
+    lv_obj_set_style_text_font(settings_label, &lv_font_montserrat_14, 0);
+    lv_obj_set_style_text_color(settings_label, lv_color_hex(0x1ED760), 0);
+    lv_label_set_text(settings_label, "TIDER");
+    lv_obj_center(settings_label);
+
+    focus_next_label = lv_label_create(focus_screen);
+    lv_obj_set_width(focus_next_label, 132);
+    lv_obj_set_style_text_font(focus_next_label, &lv_font_montserrat_10, 0);
+    lv_obj_set_style_text_color(focus_next_label, lv_color_hex(0x747B84), 0);
+    lv_obj_set_style_text_align(focus_next_label, LV_TEXT_ALIGN_LEFT, 0);
+    lv_obj_set_pos(focus_next_label, 12, 39);
+
+    // A central focus-complete cue becomes a small reminder after ten seconds.
+    // Raw touch handling and non-clickable LVGL objects leave both inert.
+    focus_completion_banner = lv_obj_create(lv_layer_top());
+    lv_obj_set_pos(focus_completion_banner, 10, 84);
+    lv_obj_set_size(focus_completion_banner, 220, 104);
+    lv_obj_set_style_bg_color(focus_completion_banner, lv_color_hex(0x1ED760), 0);
+    lv_obj_set_style_bg_opa(focus_completion_banner, LV_OPA_COVER, 0);
+    lv_obj_set_style_border_width(focus_completion_banner, 0, 0);
+    lv_obj_set_style_radius(focus_completion_banner, 12, 0);
+    lv_obj_set_style_pad_all(focus_completion_banner, 0, 0);
+    lv_obj_clear_flag(focus_completion_banner, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_clear_flag(focus_completion_banner, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_add_flag(focus_completion_banner, LV_OBJ_FLAG_HIDDEN);
+    focus_completion_label = lv_label_create(focus_completion_banner);
+    lv_obj_set_style_text_font(focus_completion_label, &lv_font_montserrat_28, 0);
+    lv_obj_set_style_text_color(focus_completion_label, lv_color_hex(0x101419), 0);
+    lv_label_set_text(focus_completion_label, "FOKUS KLART");
+    lv_obj_align(focus_completion_label, LV_ALIGN_TOP_MID, 0, 20);
+    focus_completion_sub_label = lv_label_create(focus_completion_banner);
+    lv_obj_set_style_text_font(focus_completion_sub_label, &lv_font_montserrat_14, 0);
+    lv_obj_set_style_text_color(focus_completion_sub_label, lv_color_hex(0x101419), 0);
+    lv_label_set_text(focus_completion_sub_label, "PAUSEN HAR STARTAT");
+    lv_obj_align(focus_completion_sub_label, LV_ALIGN_TOP_MID, 0, 72);
+    refreshFocusUi(true);
+}
+
+lv_obj_t *createFocusSettingsButton(lv_obj_t *parent, const char *caption,
+                                     int x, int y, int width, int height) {
+    lv_obj_t *button = lv_obj_create(parent);
+    lv_obj_set_pos(button, x, y);
+    lv_obj_set_size(button, width, height);
+    lv_obj_set_style_bg_color(button, lv_color_hex(0x1B3025), 0);
+    lv_obj_set_style_border_color(button, lv_color_hex(0x1ED760), 0);
+    lv_obj_set_style_border_width(button, 1, 0);
+    lv_obj_set_style_radius(button, 9, 0);
+    lv_obj_set_style_pad_all(button, 0, 0);
+    lv_obj_clear_flag(button, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_t *label = lv_label_create(button);
+    lv_label_set_text(label, caption);
+    lv_obj_set_style_text_font(label, &lv_font_montserrat_20, 0);
+    lv_obj_set_style_text_color(label, lv_color_hex(0x1ED760), 0);
+    lv_obj_center(label);
+    return button;
+}
+
+void refreshFocusSettingsUi() {
+    if (!focus_settings_focus_label) return;
+    lv_label_set_text_fmt(focus_settings_focus_label, "FOKUS  %u MIN",
+                          unsigned(focus_draft_durations.focus_minutes));
+    lv_label_set_text_fmt(focus_settings_break_label, "PAUS  %u MIN",
+                          unsigned(focus_draft_durations.break_minutes));
+}
+
+void createFocusSettingsScreen() {
+    focus_settings_screen = lv_obj_create(NULL);
+    lv_obj_set_style_bg_color(focus_settings_screen, lv_color_hex(0x101419), 0);
+    lv_obj_set_style_bg_opa(focus_settings_screen, LV_OPA_COVER, 0);
+    lv_obj_set_style_border_width(focus_settings_screen, 0, 0);
+    lv_obj_set_style_pad_all(focus_settings_screen, 0, 0);
+    lv_obj_clear_flag(focus_settings_screen, LV_OBJ_FLAG_SCROLLABLE);
+
+    focus_settings_heading = lv_label_create(focus_settings_screen);
+    lv_label_set_text(focus_settings_heading, "TIDER");
+    lv_obj_set_style_text_font(focus_settings_heading, &lv_font_montserrat_20, 0);
+    lv_obj_set_style_text_color(focus_settings_heading, lv_color_hex(0x1ED760), 0);
+    lv_obj_set_pos(focus_settings_heading, 14, 3);
+
+    focus_settings_info_label = lv_label_create(focus_settings_screen);
+    lv_obj_set_width(focus_settings_info_label, 148);
+    lv_obj_set_style_text_font(focus_settings_info_label, &lv_font_montserrat_10, 0);
+    lv_obj_set_style_text_color(focus_settings_info_label, lv_color_hex(0xD5D9DE), 0);
+    lv_obj_set_style_text_align(focus_settings_info_label, LV_TEXT_ALIGN_RIGHT, 0);
+    lv_label_set_text(focus_settings_info_label, "AKTIV TIMER BEHALLS");
+    lv_obj_set_pos(focus_settings_info_label, 78, 9);
+
+    focus_settings_focus_card = lv_obj_create(focus_settings_screen);
+    lv_obj_set_pos(focus_settings_focus_card, 12, 31);
+    lv_obj_set_size(focus_settings_focus_card, 216, 115);
+    lv_obj_set_style_bg_color(focus_settings_focus_card, lv_color_hex(0x171A1F), 0);
+    lv_obj_set_style_border_color(focus_settings_focus_card, lv_color_hex(0x4C555D), 0);
+    lv_obj_set_style_border_width(focus_settings_focus_card, 1, 0);
+    lv_obj_set_style_radius(focus_settings_focus_card, 9, 0);
+    lv_obj_set_style_pad_all(focus_settings_focus_card, 0, 0);
+    lv_obj_clear_flag(focus_settings_focus_card, LV_OBJ_FLAG_SCROLLABLE);
+    focus_settings_focus_label = lv_label_create(focus_settings_focus_card);
+    lv_obj_set_width(focus_settings_focus_label, 200);
+    lv_obj_set_style_text_font(focus_settings_focus_label, &lv_font_montserrat_16, 0);
+    lv_obj_set_style_text_color(focus_settings_focus_label, lv_color_white(), 0);
+    lv_obj_set_style_text_align(focus_settings_focus_label, LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_set_pos(focus_settings_focus_label, 8, 4);
+    focus_settings_focus_plus = createFocusSettingsButton(
+        focus_settings_focus_card, "+ 5 MIN", 8, 26, 200, 44);
+    focus_settings_focus_minus = createFocusSettingsButton(
+        focus_settings_focus_card, "- 5 MIN", 8, 70, 200, 44);
+
+    focus_settings_break_card = lv_obj_create(focus_settings_screen);
+    lv_obj_set_pos(focus_settings_break_card, 12, 149);
+    lv_obj_set_size(focus_settings_break_card, 216, 115);
+    lv_obj_set_style_bg_color(focus_settings_break_card, lv_color_hex(0x171A1F), 0);
+    lv_obj_set_style_border_color(focus_settings_break_card, lv_color_hex(0x4C555D), 0);
+    lv_obj_set_style_border_width(focus_settings_break_card, 1, 0);
+    lv_obj_set_style_radius(focus_settings_break_card, 9, 0);
+    lv_obj_set_style_pad_all(focus_settings_break_card, 0, 0);
+    lv_obj_clear_flag(focus_settings_break_card, LV_OBJ_FLAG_SCROLLABLE);
+    focus_settings_break_label = lv_label_create(focus_settings_break_card);
+    lv_obj_set_width(focus_settings_break_label, 200);
+    lv_obj_set_style_text_font(focus_settings_break_label, &lv_font_montserrat_16, 0);
+    lv_obj_set_style_text_color(focus_settings_break_label, lv_color_white(), 0);
+    lv_obj_set_style_text_align(focus_settings_break_label, LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_set_pos(focus_settings_break_label, 8, 4);
+    focus_settings_break_plus = createFocusSettingsButton(
+        focus_settings_break_card, "+ 1 MIN", 8, 26, 200, 44);
+    focus_settings_break_minus = createFocusSettingsButton(
+        focus_settings_break_card, "- 1 MIN", 8, 70, 200, 44);
+    focus_settings_save = createFocusSettingsButton(
+        focus_settings_screen, "SPARA / TILLBAKA", 22, 269, 196, 48);
+    lv_obj_t *save_label = lv_obj_get_child(focus_settings_save, 0);
+    lv_obj_set_style_text_font(save_label, &lv_font_montserrat_14, 0);
+    refreshFocusSettingsUi();
+}
+
+lv_obj_t *createLocalSettingsButton(const char *caption, int y, int height,
+                                    lv_obj_t **caption_label) {
+    lv_obj_t *button = createFocusSettingsButton(
+        local_settings_screen, caption, 16, y, 208, height);
+    *caption_label = lv_obj_get_child(button, 0);
+    lv_obj_set_width(*caption_label, 194);
+    lv_obj_set_style_text_align(*caption_label, LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_set_style_text_font(*caption_label, &lv_font_montserrat_14, 0);
+    lv_obj_center(*caption_label);
+    return button;
+}
+
+void refreshLocalSettingsUi() {
+    if (!local_settings_theme_label) return;
+    const char *theme = focus_ui_settings.theme == AccentTheme::Cyan ? "CYAN" :
+                        focus_ui_settings.theme == AccentTheme::Amber ? "AMBER" :
+                                                                    "GRON";
+    lv_label_set_text_fmt(local_settings_theme_label, "TEMA: %s  >", theme);
+    lv_label_set_text_fmt(local_settings_auto_label, "VISA FOKUS VID FASSLUT\n%s",
+                          focus_ui_settings.auto_show_focus ? "PA" : "AV");
+    lv_label_set_text_fmt(local_settings_led_label, "LED VID FASSLUT\n%s",
+                          focus_ui_settings.led_at_phase_end ? "PA" : "AV");
+    lv_obj_center(local_settings_theme_label);
+    lv_obj_center(local_settings_auto_label);
+    lv_obj_center(local_settings_led_label);
+}
+
+void createLocalSettingsScreen() {
+    local_settings_screen = lv_obj_create(NULL);
+    lv_obj_set_style_bg_color(local_settings_screen, lv_color_hex(0x101419), 0);
+    lv_obj_set_style_bg_opa(local_settings_screen, LV_OPA_COVER, 0);
+    lv_obj_set_style_border_width(local_settings_screen, 0, 0);
+    lv_obj_set_style_pad_all(local_settings_screen, 0, 0);
+    lv_obj_clear_flag(local_settings_screen, LV_OBJ_FLAG_SCROLLABLE);
+
+    local_settings_heading = lv_label_create(local_settings_screen);
+    lv_label_set_text(local_settings_heading, "INSTALLNINGAR");
+    lv_obj_set_style_text_font(local_settings_heading, &lv_font_montserrat_20, 0);
+    lv_obj_set_style_text_color(local_settings_heading, lv_color_hex(0x1ED760), 0);
+    lv_obj_align(local_settings_heading, LV_ALIGN_TOP_MID, 0, 9);
+
+    local_settings_theme_button = createLocalSettingsButton(
+        "TEMA: GRON  >", 48, 48, &local_settings_theme_label);
+    local_settings_auto_button = createLocalSettingsButton(
+        "VISA FOKUS VID FASSLUT\nAV", 105, 58, &local_settings_auto_label);
+    local_settings_led_button = createLocalSettingsButton(
+        "LED VID FASSLUT\nPA", 171, 58, &local_settings_led_label);
+    local_settings_info_label = lv_label_create(local_settings_screen);
+    lv_obj_set_width(local_settings_info_label, 208);
+    lv_obj_set_style_text_font(local_settings_info_label, &lv_font_montserrat_10, 0);
+    lv_obj_set_style_text_color(local_settings_info_label, lv_color_hex(0xD5D9DE), 0);
+    lv_obj_set_style_text_align(local_settings_info_label, LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_set_pos(local_settings_info_label, 16, 237);
+    lv_label_set_text(local_settings_info_label, "TRYCK FOR ATT ANDRA");
+    local_settings_back_button = createFocusSettingsButton(
+        local_settings_screen, "TILLBAKA", 16, 259, 208, 48);
+    refreshLocalSettingsUi();
+}
+
+void refreshAccentTheme() {
+    lv_color_t accent = lv_color_hex(focusAccentHex());
+    lv_color_t dark = lv_color_hex(focusDarkAccentHex());
+    lv_color_t pressed = lv_color_hex(focusPressedHex());
+    if (feature_overlay) {
+        lv_obj_set_style_border_color(feature_overlay, accent, 0);
+        lv_obj_set_style_text_color(feature_overlay_label, accent, 0);
+    }
+    lv_obj_t *menu_buttons[] = {feature_overlay_bongo_button,
+                                feature_overlay_player_button,
+                                feature_overlay_focus_button,
+                                feature_overlay_settings_button};
+    for (lv_obj_t *button : menu_buttons) {
+        if (button) lv_obj_set_style_bg_color(button, pressed, LV_STATE_PRESSED);
+    }
+    if (feature_overlay) refreshFeatureOverlay();
+    if (focus_progress_ring) {
+        lv_obj_set_style_arc_color(focus_progress_ring, accent, LV_PART_INDICATOR);
+    }
+    if (media_brand_label) lv_obj_set_style_text_color(media_brand_label, accent, 0);
+    if (media_playback_status_label)
+        lv_obj_set_style_text_color(media_playback_status_label, accent, 0);
+    if (media_progress_bar)
+        lv_obj_set_style_bg_color(media_progress_bar, accent, LV_PART_INDICATOR);
+    if (focus_phase_label) lv_obj_set_style_text_color(focus_phase_label, accent, 0);
+    if (focus_status_label) lv_obj_set_style_text_color(focus_status_label, accent, 0);
+    if (focus_start_label) lv_obj_set_style_text_color(focus_start_label, accent, 0);
+    if (focus_settings_heading) lv_obj_set_style_text_color(focus_settings_heading, accent, 0);
+    if (local_settings_heading) lv_obj_set_style_text_color(local_settings_heading, accent, 0);
+    lv_obj_t *accent_buttons[] = {
+        focus_start_button, focus_settings_button,
+        focus_settings_focus_plus, focus_settings_focus_minus,
+        focus_settings_break_plus, focus_settings_break_minus,
+        focus_settings_save, local_settings_theme_button,
+        local_settings_auto_button, local_settings_led_button,
+        local_settings_back_button
+    };
+    for (lv_obj_t *button : accent_buttons) {
+        if (!button) continue;
+        lv_obj_set_style_bg_color(button, dark, 0);
+        lv_obj_set_style_border_color(button, accent, 0);
+        lv_obj_set_style_bg_color(button, pressed, LV_STATE_PRESSED);
+        lv_obj_t *label = lv_obj_get_child(button, 0);
+        if (label) lv_obj_set_style_text_color(label, accent, 0);
+    }
+    if (focus_reset_button) {
+        lv_obj_set_style_bg_color(focus_reset_button, pressed, LV_STATE_PRESSED);
+    }
+    if (focus_completion_banner) {
+        lv_obj_set_style_bg_color(focus_completion_banner,
+                                  focus_banner_compact ? dark : accent, 0);
+        lv_obj_set_style_text_color(focus_completion_label,
+                                    focus_banner_compact ? accent : lv_color_hex(0x101419), 0);
+    }
+    refreshLocalSettingsUi();
+}
+
+void updateFocusCue(uint32_t now) {
+    driveFocusLed(focus_ui_settings.led_at_phase_end &&
+                  focusCueLedOn(focus_cue, now));
+    if (!focus_completion_banner) return;
+    bool visible = focusCueVisible(focus_cue, now, active_panel);
+    bool compact = visible && !focusCueLarge(focus_cue, now);
+    if (visible && (compact != focus_banner_compact || !focus_banner_visible ||
+                    focus_banner_kind != focus_cue.kind ||
+                    focus_banner_panel != active_panel)) {
+        // The small badge fits between Bongo's CPU and clock, and between
+        // Player's brand and source labels. It leaves their status visible.
+        bool focus_done = focus_cue.kind == FocusCueKind::FocusDone;
+        lv_obj_set_pos(focus_completion_banner,
+                       compact ? 85 : focus_done ? 10 : 0,
+                       compact ? (active_panel == PanelId::Settings ? 232 : 0) :
+                       focus_done ? 84 : 0);
+        lv_obj_set_size(focus_completion_banner,
+                        compact ? 70 : focus_done ? 220 : SCREEN_WIDTH,
+                        compact ? 22 : focus_done ? 104 : 46);
+        lv_obj_set_style_bg_color(focus_completion_banner,
+                                  lv_color_hex(compact ? focusDarkAccentHex() :
+                                              focusAccentHex()), 0);
+        lv_obj_set_style_radius(focus_completion_banner,
+                                compact ? 7 : focus_done ? 12 : 0, 0);
+        lv_obj_set_style_text_font(focus_completion_label,
+                                   compact ? &lv_font_montserrat_10 :
+                                   focus_done ? &lv_font_montserrat_28 :
+                                                &lv_font_montserrat_20, 0);
+        lv_obj_set_style_text_color(focus_completion_label,
+                                    lv_color_hex(compact ? focusAccentHex() : 0x101419), 0);
+        lv_label_set_text(focus_completion_label,
+                          compact ? (focus_done ? "PAUS" : "START") :
+                          focus_done ? "FOKUS KLART" : "PAUS KLAR");
+        if (!compact && focus_done) {
+            lv_obj_align(focus_completion_label, LV_ALIGN_TOP_MID, 0, 20);
+            lv_obj_clear_flag(focus_completion_sub_label, LV_OBJ_FLAG_HIDDEN);
+        } else {
+            lv_obj_center(focus_completion_label);
+            lv_obj_add_flag(focus_completion_sub_label, LV_OBJ_FLAG_HIDDEN);
+        }
+        lv_obj_clear_flag(focus_completion_banner, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_move_foreground(focus_completion_banner);
+        if (feature_overlay && !lv_obj_has_flag(feature_overlay, LV_OBJ_FLAG_HIDDEN)) {
+            lv_obj_move_foreground(feature_overlay_backdrop);
+            lv_obj_move_foreground(feature_overlay);
+        }
+    } else if (!visible && focus_banner_visible) {
+        lv_obj_add_flag(focus_completion_banner, LV_OBJ_FLAG_HIDDEN);
+    }
+    focus_banner_visible = visible;
+    focus_banner_compact = compact;
+    focus_banner_kind = focus_cue.kind;
+    focus_banner_panel = active_panel;
+    if (local_settings_info_label) {
+        if (visible && compact && active_panel == PanelId::Settings)
+            lv_obj_add_flag(local_settings_info_label, LV_OBJ_FLAG_HIDDEN);
+        else lv_obj_clear_flag(local_settings_info_label, LV_OBJ_FLAG_HIDDEN);
+    }
+}
+
+void setFocusState(FocusState next, uint32_t now) {
+    FocusState before = focus_state;
+    focus_cue = focusCueForTransition(focus_cue, before, next, now);
+    focus_state = next;
+    updateFocusCue(now);
+    if (focusUiShouldAutoShow(focus_ui_settings, before, next)) {
+        showFocusScreen(false);
+    }
+    refreshFocusUi();
+}
+
+void serviceFocusTimer(uint32_t now) {
+    if (focus_state.mode == FocusMode::Running) {
+        setFocusState(focusAdvance(focus_state, now, focus_durations), now);
+    }
+    updateFocusCue(now);
+}
+
 void showMediaScreen() {
-    if (!media_screen || spotify_screen_active) return;
-    spotify_screen_active = true;
+    if (!media_screen || active_panel == PanelId::Player) return;
+    focus_settings_open = false;
+    active_panel = PanelId::Player;
     lv_scr_load_anim(media_screen, LV_SCR_LOAD_ANIM_FADE_ON, 220, 0, false);
 }
 
 void showBongoScreen() {
-    if (!screen || !spotify_screen_active) return;
-    spotify_screen_active = false;
+    if (!screen || active_panel == PanelId::Bongo) return;
+    focus_settings_open = false;
+    active_panel = PanelId::Bongo;
     lv_scr_load_anim(screen, LV_SCR_LOAD_ANIM_FADE_ON, 220, 0, false);
+}
+
+void showFocusScreen(bool acknowledge_cue) {
+    if (!focus_screen) return;
+    if (active_panel == PanelId::Focus && !focus_settings_open) return;
+    if (!acknowledge_cue && touch_is_down) {
+        if (touch_feedback_button)
+            lv_obj_clear_state(touch_feedback_button, LV_STATE_PRESSED);
+        touch_feedback_button = NULL;
+        touch_button_cancelled = true;
+    }
+    active_panel = PanelId::Focus;
+    focus_settings_open = false;
+    if (acknowledge_cue && focus_cue.kind != FocusCueKind::None) {
+        focus_cue = focusCueAfterPanelShow(focus_cue, true);
+        updateFocusCue(millis());
+    }
+    media_tap_count = 0;
+    media_tap_deadline = 0;
+    focus_last_display_seconds = -1;
+    focus_last_progress = -1;
+    refreshFocusUi(true);
+    lv_scr_load_anim(focus_screen, LV_SCR_LOAD_ANIM_FADE_ON, 220, 0, false);
+}
+
+void showFocusScreen() { showFocusScreen(true); }
+
+void showFocusSettings() {
+    if (!focus_settings_screen || active_panel != PanelId::Focus) return;
+    focus_draft_durations = focus_durations;
+    refreshFocusSettingsUi();
+    lv_label_set_text(focus_settings_info_label, "AKTIV TIMER BEHALLS");
+    focus_settings_open = true;
+    lv_scr_load_anim(focus_settings_screen, LV_SCR_LOAD_ANIM_FADE_ON,
+                     220, 0, false);
+}
+
+void closeFocusSettings() {
+    focus_settings_open = false;
+    refreshFocusUi(true);
+    lv_scr_load_anim(focus_screen, LV_SCR_LOAD_ANIM_FADE_ON, 220, 0, false);
+}
+
+void showLocalSettingsScreen() {
+    if (!local_settings_screen || active_panel == PanelId::Settings) return;
+    panel_before_settings = active_panel;
+    focus_settings_open = false;
+    active_panel = PanelId::Settings;
+    media_tap_count = 0;
+    media_tap_deadline = 0;
+    lv_label_set_text(local_settings_info_label, "TRYCK FOR ATT ANDRA");
+    refreshLocalSettingsUi();
+    lv_scr_load_anim(local_settings_screen, LV_SCR_LOAD_ANIM_FADE_ON, 220, 0, false);
+}
+
+void closeLocalSettingsScreen() {
+    PanelId target = panel_before_settings;
+    if (target == PanelId::Player) showMediaScreen();
+    else if (target == PanelId::Focus) showFocusScreen();
+    else showBongoScreen();
 }
 
 void cancelTouchBonk() {
@@ -1846,17 +2487,13 @@ void triggerTouchBonk(uint32_t current_time) {
     sprite_manager.animation_speed_ms = 85;
     sprite_manager_set_state(&sprite_manager, ANIM_STATE_TYPING_FAST, current_time);
 
-    if (feature_overlay_count_label) {
-        lv_label_set_text_fmt(feature_overlay_count_label,
-                              "BONKS  %lu",
-                              (unsigned long)touch_bonk_count);
-    }
     Serial.printf("BONK:%lu\n", (unsigned long)touch_bonk_count);
 }
 
 void hideFeatureOverlay() {
     if (!feature_overlay) return;
     lv_obj_add_flag(feature_overlay, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_add_flag(feature_overlay_backdrop, LV_OBJ_FLAG_HIDDEN);
     overlay_hide_time = 0;
 }
 
@@ -1866,6 +2503,8 @@ void toggleFeatureOverlay(uint32_t current_time) {
         // A media tap preceding this long press must not fire after opening.
         media_tap_count = 0;
         media_tap_deadline = 0;
+        lv_obj_clear_flag(feature_overlay_backdrop, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_move_foreground(feature_overlay_backdrop);
         lv_obj_clear_flag(feature_overlay, LV_OBJ_FLAG_HIDDEN);
         lv_obj_move_foreground(feature_overlay);
         overlay_hide_time = current_time + 6000;
@@ -1876,39 +2515,175 @@ void toggleFeatureOverlay(uint32_t current_time) {
     }
 }
 
-bool touchWithinMenuButton(lv_obj_t *button, uint16_t raw_x, uint16_t raw_y) {
-    int bounded_x = constrain((int)raw_x, TOUCH_RAW_TOP, TOUCH_RAW_BOTTOM);
-    int bounded_y = constrain((int)raw_y, TOUCH_RAW_SIDE_MIN, TOUCH_RAW_SIDE_MAX);
-    int screen_y = (bounded_x - TOUCH_RAW_TOP) * SCREEN_HEIGHT /
-                   (TOUCH_RAW_BOTTOM - TOUCH_RAW_TOP);
-    int screen_x = (bounded_y - TOUCH_RAW_SIDE_MIN) * SCREEN_WIDTH /
-                   (TOUCH_RAW_SIDE_MAX - TOUCH_RAW_SIDE_MIN);
-    // Horizontal direction is uncalibrated. Both buttons are centered, so
-    // mirroring X gives the same hit result; the real ranges need device test.
+TouchRect touchButtonRect(lv_obj_t *button) {
     lv_area_t area;
     lv_obj_get_coords(button, &area);
-    return screen_x >= area.x1 && screen_x <= area.x2 &&
-           screen_y >= area.y1 && screen_y <= area.y2;
+    return {area.x1, area.y1, area.x2, area.y2};
+}
+
+void setTouchFeedback(lv_obj_t *button) {
+    if (touch_feedback_button == button) return;
+    if (touch_feedback_button) {
+        lv_obj_clear_state(touch_feedback_button, LV_STATE_PRESSED);
+    }
+    touch_feedback_button = button;
+    if (button) lv_obj_add_state(button, LV_STATE_PRESSED);
+}
+
+lv_obj_t *pressedButtonAt(uint16_t raw_x, uint16_t raw_y) {
+    lv_obj_t *candidates[5] = {};
+    uint8_t count = 0;
+    if (touch_started_in_menu && feature_overlay &&
+        !lv_obj_has_flag(feature_overlay, LV_OBJ_FLAG_HIDDEN)) {
+        lv_obj_update_layout(feature_overlay);
+        candidates[0] = feature_overlay_bongo_button;
+        candidates[1] = feature_overlay_player_button;
+        candidates[2] = feature_overlay_focus_button;
+        candidates[3] = feature_overlay_settings_button;
+        count = 4;
+    } else if (active_panel == PanelId::Settings) {
+        lv_obj_update_layout(local_settings_screen);
+        candidates[0] = local_settings_theme_button;
+        candidates[1] = local_settings_auto_button;
+        candidates[2] = local_settings_led_button;
+        candidates[3] = local_settings_back_button;
+        count = 4;
+    } else if (active_panel == PanelId::Focus && focus_settings_open) {
+        lv_obj_update_layout(focus_settings_screen);
+        candidates[0] = focus_settings_focus_plus;
+        candidates[1] = focus_settings_focus_minus;
+        candidates[2] = focus_settings_break_plus;
+        candidates[3] = focus_settings_break_minus;
+        candidates[4] = focus_settings_save;
+        count = 5;
+    } else if (active_panel == PanelId::Focus) {
+        lv_obj_update_layout(focus_screen);
+        candidates[0] = focus_start_button;
+        candidates[1] = focus_reset_button;
+        candidates[2] = focus_settings_button;
+        count = 3;
+    }
+    for (uint8_t i = 0; i < count; ++i) {
+        if (candidates[i] && rawPointInRect(touchButtonRect(candidates[i]),
+                                            raw_x, raw_y)) {
+            if (!touch_started_in_menu && focus_banner_visible &&
+                focusCueLarge(focus_cue, millis()) &&
+                rawPointInRect(touchButtonRect(focus_completion_banner),
+                               raw_x, raw_y)) return NULL;
+            return candidates[i];
+        }
+    }
+    return NULL;
 }
 
 void selectFeaturePanel() {
     // A menu swipe is consumed. A tap must start and end inside one button.
-    if (abs((int)touch_last_x - (int)touch_start_x) >= MEDIA_SWIPE_THRESHOLD ||
-        abs((int)touch_last_y - (int)touch_start_y) >= MEDIA_SWIPE_THRESHOLD) return;
     lv_obj_update_layout(feature_overlay);
-    bool choose_player;
-    if (touchWithinMenuButton(feature_overlay_bongo_button, touch_start_x, touch_start_y) &&
-        touchWithinMenuButton(feature_overlay_bongo_button, touch_last_x, touch_last_y)) {
-        choose_player = false;
-    } else if (touchWithinMenuButton(feature_overlay_player_button, touch_start_x, touch_start_y) &&
-               touchWithinMenuButton(feature_overlay_player_button, touch_last_x, touch_last_y)) {
-        choose_player = true;
-    } else {
+    MenuChoice selected = menuChoiceForTap(
+        touchButtonRect(feature_overlay_bongo_button),
+        touchButtonRect(feature_overlay_player_button),
+        touchButtonRect(feature_overlay_focus_button),
+        touchButtonRect(feature_overlay_settings_button),
+        touch_start_x, touch_start_y, touch_last_x, touch_last_y,
+        MEDIA_SWIPE_THRESHOLD - 1);
+    if (selected == MenuChoice::None) return;
+    hideFeatureOverlay();
+    if (selected == MenuChoice::Bongo) showBongoScreen();
+    else if (selected == MenuChoice::Player) showMediaScreen();
+    else if (selected == MenuChoice::Focus) showFocusScreen();
+    else showLocalSettingsScreen();
+}
+
+void handleFocusTap(uint32_t current_time) {
+    if (focus_settings_open) {
+        lv_obj_update_layout(focus_settings_screen);
+        // A central completion message temporarily covers the settings
+        // controls. Raw touch must not act on obscured buttons.
+        if (focusCueLarge(focus_cue, current_time) &&
+            focus_cue.kind == FocusCueKind::FocusDone &&
+            rawTapInRect(touchButtonRect(focus_completion_banner),
+                         touch_start_x, touch_start_y, touch_last_x, touch_last_y,
+                         FOCUS_TAP_MOVE_MAX_RAW)) return;
+        FocusSettingsAction action = focusSettingsActionForTap(
+            touchButtonRect(focus_settings_focus_minus),
+            touchButtonRect(focus_settings_focus_plus),
+            touchButtonRect(focus_settings_break_minus),
+            touchButtonRect(focus_settings_break_plus),
+            touchButtonRect(focus_settings_save),
+            touch_start_x, touch_start_y, touch_last_x, touch_last_y,
+            FOCUS_TAP_MOVE_MAX_RAW);
+        if (action == FocusSettingsAction::Save) {
+            if (focusPackDurations(focus_draft_durations) !=
+                focusPackDurations(focus_durations)) {
+                if (!saveFocusDurations(focus_draft_durations)) {
+                    lv_label_set_text(focus_settings_info_label, "KUNDE INTE SPARA");
+                    return;
+                }
+                focus_durations = focus_draft_durations;
+                setFocusState(focusAfterSettingsSave(
+                    focus_state, focus_durations, current_time), current_time);
+            }
+            closeFocusSettings();
+        } else if (action != FocusSettingsAction::None) {
+            bool adjust_focus = action == FocusSettingsAction::FocusMinus ||
+                                action == FocusSettingsAction::FocusPlus;
+            int direction = action == FocusSettingsAction::FocusMinus ||
+                            action == FocusSettingsAction::BreakMinus ? -1 : 1;
+            focus_draft_durations = focusAdjustDurations(
+                focus_draft_durations, adjust_focus, direction);
+            refreshFocusSettingsUi();
+        }
         return;
     }
-    hideFeatureOverlay();
-    if (choose_player && !spotify_screen_active) showMediaScreen();
-    if (!choose_player && spotify_screen_active) showBongoScreen();
+    lv_obj_update_layout(focus_screen);
+    FocusAction action = focusActionForTap(
+        touchButtonRect(focus_start_button), touchButtonRect(focus_reset_button),
+        touchButtonRect(focus_settings_button),
+        touch_start_x, touch_start_y, touch_last_x, touch_last_y,
+        FOCUS_TAP_MOVE_MAX_RAW);
+    if (action == FocusAction::Toggle) {
+        setFocusState(focusToggle(focus_state, current_time, focus_durations),
+                      current_time);
+    } else if (action == FocusAction::Reset) {
+        setFocusState(focusReset(current_time, focus_durations), current_time);
+    } else if (action == FocusAction::Settings) {
+        showFocusSettings();
+    }
+}
+
+void handleLocalSettingsTap(uint32_t current_time) {
+    lv_obj_update_layout(local_settings_screen);
+    if (focus_banner_visible && focusCueLarge(focus_cue, current_time) &&
+        rawTapInRect(touchButtonRect(focus_completion_banner),
+                     touch_start_x, touch_start_y, touch_last_x, touch_last_y,
+                     FOCUS_TAP_MOVE_MAX_RAW)) return;
+    LocalSettingsAction action = localSettingsActionForTap(
+        touchButtonRect(local_settings_theme_button),
+        touchButtonRect(local_settings_auto_button),
+        touchButtonRect(local_settings_led_button),
+        touchButtonRect(local_settings_back_button),
+        touch_start_x, touch_start_y, touch_last_x, touch_last_y,
+        FOCUS_TAP_MOVE_MAX_RAW);
+    if (action == LocalSettingsAction::Back) {
+        closeLocalSettingsScreen();
+        return;
+    }
+    FocusUiSettings next = focus_ui_settings;
+    if (action == LocalSettingsAction::Theme) next = focusUiNextTheme(next);
+    else if (action == LocalSettingsAction::AutoShow)
+        next.auto_show_focus = !next.auto_show_focus;
+    else if (action == LocalSettingsAction::Led)
+        next.led_at_phase_end = !next.led_at_phase_end;
+    else return;
+    if (focusPackUiSettings(next) == focusPackUiSettings(focus_ui_settings)) return;
+    if (!saveFocusUiSettings(next)) {
+        lv_label_set_text(local_settings_info_label, "KUNDE INTE SPARA");
+        return;
+    }
+    focus_ui_settings = next;
+    lv_label_set_text(local_settings_info_label, "SPARAT");
+    refreshAccentTheme();
+    updateFocusCue(current_time);
 }
 
 void handleTouchFeature(uint32_t current_time) {
@@ -1923,27 +2698,57 @@ void handleTouchFeature(uint32_t current_time) {
         touch_long_press_fired = false;
         touch_started_in_menu = feature_overlay &&
                                 !lv_obj_has_flag(feature_overlay, LV_OBJ_FLAG_HIDDEN);
+        touch_start_panel = active_panel;
+        touch_start_times_open = focus_settings_open;
         touch_down_time = current_time;
         tft.getTouchRaw(&touch_start_x, &touch_start_y);
         touch_last_x = touch_start_x;
         touch_last_y = touch_start_y;
+        touch_button_cancelled = false;
+        setTouchFeedback(pressedButtonAt(touch_start_x, touch_start_y));
     } else if (pressed && touch_is_down) {
         tft.getTouchRaw(&touch_last_x, &touch_last_y);
+        if (touch_feedback_button &&
+            !rawPointInRect(touchButtonRect(touch_feedback_button),
+                            touch_last_x, touch_last_y)) {
+            setTouchFeedback(NULL);
+            touch_button_cancelled = true;
+        }
         if (!touch_long_press_fired &&
             current_time - touch_down_time >= TOUCH_LONG_PRESS_MS) {
             touch_long_press_fired = true;
+            setTouchFeedback(NULL);
+            touch_button_cancelled = true;
             toggleFeatureOverlay(current_time);
         }
     } else if (!pressed && touch_is_down) {
         uint32_t press_duration = current_time - touch_down_time;
         touch_is_down = false;
-        if (!touch_long_press_fired && press_duration >= 35) {
-            if (touch_started_in_menu) {
+        setTouchFeedback(NULL);
+        if (!touch_long_press_fired && press_duration >= TOUCH_LONG_PRESS_MS) {
+            touch_long_press_fired = true;
+            touch_button_cancelled = true;
+            toggleFeatureOverlay(current_time);
+        }
+        if (touchIsTap(press_duration, touch_long_press_fired)) {
+            TouchRoute route = routeTouch(touch_start_panel, touch_started_in_menu);
+            if (touchPanelChangedCancelsTap(touch_start_panel, active_panel,
+                                            touch_started_in_menu) ||
+                (route == TouchRoute::Focus &&
+                 touch_start_times_open != focus_settings_open) ||
+                ((route == TouchRoute::Menu || route == TouchRoute::Focus ||
+                  route == TouchRoute::Settings) && touch_button_cancelled)) {
+                // Dragging outside the pressed button cancels a short tap.
+            } else if (route == TouchRoute::Menu) {
                 if (feature_overlay &&
                     !lv_obj_has_flag(feature_overlay, LV_OBJ_FLAG_HIDDEN)) {
                     selectFeaturePanel();
                 }
-            } else if (spotify_screen_active) {
+            } else if (route == TouchRoute::Focus) {
+                handleFocusTap(current_time);
+            } else if (route == TouchRoute::Settings) {
+                handleLocalSettingsTap(current_time);
+            } else if (route == TouchRoute::Media) {
                 int delta_x = (int)touch_last_x - (int)touch_start_x;
                 int delta_y = (int)touch_last_y - (int)touch_start_y;
                 // The touch controller's raw axes are rotated relative to
@@ -1963,11 +2768,12 @@ void handleTouchFeature(uint32_t current_time) {
                 } else {
                     queueMediaTap(current_time);
                 }
-            } else {
+            } else if (route == TouchRoute::Bongo) {
                 triggerTouchBonk(current_time);
             }
         }
         touch_started_in_menu = false;
+        touch_button_cancelled = false;
     }
 
     if (overlay_hide_time && current_time >= overlay_hide_time) {
@@ -1991,6 +2797,7 @@ void loop() {
     }
     reportDeviceStatus(current_time);
     handleTouchFeature(current_time);
+    serviceFocusTimer(current_time);
     serviceMediaTaps(current_time);
     updateMediaProgressClock(current_time);
     updateMediaVinyl(current_time);
@@ -2023,7 +2830,6 @@ void loop() {
     static uint32_t last_time_update = 0;
     if (current_time - last_time_update >= 1000) {
         updateTimeDisplay();
-        refreshFeatureOverlay();
         last_time_update = current_time;
     }
     

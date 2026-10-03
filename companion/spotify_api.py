@@ -23,11 +23,15 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 from typing import Optional, Tuple
 
+from diagnostics import diagnostics
+
 
 ACCOUNTS_URL = "https://accounts.spotify.com"
 API_URL = "https://api.spotify.com/v1"
 REDIRECT_URI = "http://127.0.0.1:43821/callback"
 SCOPES = "user-read-playback-state user-read-currently-playing user-modify-playback-state"
+API_USAGE_WINDOW_SECONDS = 15 * 60
+API_REQUEST_KINDS = ("playback_poll", "playback_urgent", "artwork_fallback", "control")
 
 
 class SpotifyApiError(RuntimeError):
@@ -35,8 +39,12 @@ class SpotifyApiError(RuntimeError):
 
 
 class SpotifyRateLimitError(SpotifyApiError):
-    def __init__(self, retry_after_seconds: float):
+    def __init__(self, retry_after_seconds: float, reason: str = "unspecified_429",
+                 request_kind: str = "other", cached: bool = False):
         self.retry_after_seconds = max(1.0, retry_after_seconds)
+        self.reason = reason
+        self.request_kind = request_kind
+        self.cached = cached
         super().__init__(f"Spotify rate limit; retry after {self.retry_after_seconds:.0f}s")
 
 
@@ -57,6 +65,8 @@ class SpotifyApiBridge:
         self._last_is_playing = False
         self._lock = threading.Lock()
         self._request_times = deque()
+        self._api_usage_started_at = time.time()
+        self._api_usage_counts = {kind: 0 for kind in (*API_REQUEST_KINDS, "other")}
         self._pacing_settings = {}
         self._configure_pacing_locked(pacing_settings or {}, reset_if_missing=True)
 
@@ -84,6 +94,8 @@ class SpotifyApiBridge:
                 "state": "rate_limited",
                 "retry_until": retry_until,
                 "retry_remaining_seconds": remaining,
+                "limit_reason": self._tokens.get("adaptive_last_limit_reason", "unspecified_429"),
+                "limit_request_kind": self._tokens.get("adaptive_last_limit_request_kind", "other"),
                 "pacing": pacing,
             }
         return {"state": "ready", "pacing": pacing}
@@ -175,7 +187,8 @@ class SpotifyApiBridge:
         self._set_tokens(payload)
         return True
 
-    def get_playback(self, urgent: bool = False) -> Tuple[Optional[dict], Optional[str]]:
+    def get_playback(self, urgent: bool = False,
+                     artwork_fallback: bool = False) -> Tuple[Optional[dict], Optional[str]]:
         """Return playback metadata immediately and an optional artwork URL.
 
         Artwork is downloaded by the media bridge after metadata has already
@@ -185,7 +198,9 @@ class SpotifyApiBridge:
         if not self.is_ready:
             return None, None
         data = self._api_request(
-            "GET", "/me/player?additional_types=track%2Cepisode", urgent=urgent
+            "GET", "/me/player?additional_types=track%2Cepisode", urgent=urgent,
+            request_kind=("artwork_fallback" if artwork_fallback else
+                          "playback_urgent" if urgent else "playback_poll"),
         )
         if not data or not data.get("item"):
             return None, None
@@ -261,20 +276,28 @@ class SpotifyApiBridge:
         self._set_tokens(payload)
 
     def _api_request(
-        self, method: str, endpoint: str, empty_ok: bool = False, urgent: bool = False
+        self, method: str, endpoint: str, empty_ok: bool = False, urgent: bool = False,
+        request_kind: str = "control",
     ):
         with self._lock:
-            return self._api_request_locked(method, endpoint, empty_ok, retry=True, urgent=urgent)
+            return self._api_request_locked(method, endpoint, empty_ok, retry=True,
+                                            urgent=urgent, request_kind=request_kind)
 
     def _api_request_locked(
-        self, method: str, endpoint: str, empty_ok: bool, retry: bool, urgent: bool = False
+        self, method: str, endpoint: str, empty_ok: bool, retry: bool, urgent: bool = False,
+        request_kind: str = "control",
     ):
         now = time.time()
         retry_remaining = max(0, math.ceil(self._rate_limit_until() - now))
         if retry_remaining:
             # Spotify's Retry-After is authoritative.  Persisting this means a
             # restart cannot turn into a burst of retries while it is active.
-            raise SpotifyRateLimitError(retry_remaining)
+            raise SpotifyRateLimitError(
+                retry_remaining,
+                reason=self._tokens.get("adaptive_last_limit_reason", "unspecified_429"),
+                request_kind=self._tokens.get("adaptive_last_limit_request_kind", "other"),
+                cached=True,
+            )
         # A screen-originated track change is an explicit user action, not a
         # polling loop. Allow it to confirm immediately, while keeping a
         # small local guard so rapid swiping cannot turn into a request burst.
@@ -287,6 +310,7 @@ class SpotifyApiBridge:
         if not urgent and next_allowed_at > now:
             raise SpotifyPacingError(next_allowed_at - now)
         self._request_times.append(now)
+        self._record_api_request(request_kind, now)
         self._tokens["adaptive_next_allowed_at"] = now + self._current_interval()
         self._tokens["adaptive_request_total"] = int(
             self._tokens.get("adaptive_request_total", 0)
@@ -309,20 +333,63 @@ class SpotifyApiBridge:
             if exc.code == 401 and retry:
                 self._refresh()
                 return self._api_request_locked(
-                    method, endpoint, empty_ok, retry=False, urgent=urgent
+                    method, endpoint, empty_ok, retry=False, urgent=urgent,
+                    request_kind=request_kind,
                 )
             if exc.code == 204 and empty_ok:
                 return None
             if exc.code == 429:
                 try:
                     retry_after = float(exc.headers.get("Retry-After", "60"))
-                except (TypeError, ValueError):
+                except (AttributeError, TypeError, ValueError):
                     retry_after = 60.0
-                self._record_rate_limit(retry_after)
+                if not math.isfinite(retry_after):
+                    retry_after = 60.0
+                retry_after = max(1.0, retry_after)
+                reason = self._classify_429(exc.read(4096))
+                interval_before = self._current_interval()
+                self._record_rate_limit(retry_after, reason, request_kind)
                 self._save_tokens()
-                raise SpotifyRateLimitError(retry_after) from exc
+                self._trim_request_times()
+                diagnostics.event(
+                    "SPOTIFY_API_429", reason=reason, request_kind=request_kind,
+                    wait_seconds=int(retry_after), calls_30s=len(self._request_times),
+                    window_seconds=int(max(0, now - self._api_usage_started_at)),
+                    interval_ms=int(round(interval_before * 1000)),
+                    next_interval_ms=int(round(self._current_interval() * 1000)),
+                    request_total=int(self._tokens.get("adaptive_request_total", 0)),
+                    **self._api_usage_counts,
+                )
+                raise SpotifyRateLimitError(retry_after, reason, request_kind) from exc
             detail = exc.read().decode("utf-8", "replace")[:300]
             raise SpotifyApiError(f"Spotify API {exc.code}: {detail}") from exc
+
+    @staticmethod
+    def _classify_429(body: bytes) -> str:
+        """Whitelist Spotify's structured reason; never retain the response body."""
+        try:
+            payload = json.loads(body.decode("utf-8"))
+            reason = payload.get("error", {}).get("reason")
+        except (AttributeError, UnicodeError, ValueError, TypeError):
+            return "unspecified_429"
+        if reason == "QUOTA_EXCEEDED":
+            return "quota_exceeded"
+        if reason in ("RATE_LIMIT_EXCEEDED", "RATE_LIMITED"):
+            return "rate_limited"
+        return "unspecified_429"
+
+    def _record_api_request(self, request_kind: str, now: float) -> None:
+        if now - self._api_usage_started_at >= API_USAGE_WINDOW_SECONDS:
+            diagnostics.event(
+                "SPOTIFY_API_USAGE", window_seconds=int(now - self._api_usage_started_at),
+                interval_ms=int(round(self._current_interval() * 1000)),
+                request_total=int(self._tokens.get("adaptive_request_total", 0)),
+                **self._api_usage_counts,
+            )
+            self._api_usage_started_at = now
+            self._api_usage_counts = {kind: 0 for kind in (*API_REQUEST_KINDS, "other")}
+        kind = request_kind if request_kind in API_REQUEST_KINDS else "other"
+        self._api_usage_counts[kind] += 1
 
     @staticmethod
     def _download(url: str) -> bytes:
@@ -437,7 +504,8 @@ class SpotifyApiBridge:
                 }
             self._save_tokens()
 
-    def _record_rate_limit(self, retry_after: float) -> None:
+    def _record_rate_limit(self, retry_after: float, reason: str = "unspecified_429",
+                           request_kind: str = "other") -> None:
         now = time.time()
         current = self._current_interval()
         # A 25% margin below the rate that hit 429 avoids repeatedly tapping
@@ -455,6 +523,8 @@ class SpotifyApiBridge:
         self._tokens["adaptive_last_limit_at"] = now
         self._tokens["adaptive_last_adjustment_at"] = now
         self._tokens["adaptive_last_retry_after_seconds"] = max(1.0, retry_after)
+        self._tokens["adaptive_last_limit_reason"] = reason
+        self._tokens["adaptive_last_limit_request_kind"] = request_kind
         self._tokens["rate_limit_until"] = now + max(1.0, retry_after)
         events = self._tokens.get("adaptive_rate_limit_events", [])
         if not isinstance(events, list):

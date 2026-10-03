@@ -14,6 +14,7 @@ import os
 import subprocess
 from pathlib import Path
 from typing import Optional, Callable
+from diagnostics import diagnostics
 
 class BongoCatSystemTray:
     """System tray integration for Bongo Cat application"""
@@ -244,6 +245,10 @@ class BongoCatSystemTray:
                 self.toggle_notifications,
                 checked=lambda item: self.get_notifications_setting()
             ),
+            item(
+                "Export diagnostics ZIP...",
+                self.export_diagnostics
+            ),
             pystray.Menu.SEPARATOR,
             item(
                 "Exit",
@@ -283,6 +288,21 @@ class BongoCatSystemTray:
             "About Bongo Cat",
             "Bongo Cat Typing Monitor v2.0\n\nMonitors your typing and shows cute cat animations!\n\nRight-click for more options."
         )
+
+    def export_diagnostics(self, item=None):
+        """Save a bounded support package and reveal it in Explorer."""
+        try:
+            path = diagnostics.export()
+        except Exception:
+            diagnostics.event("DIAGNOSTICS_EXPORTED", result="failure")
+            self.show_notification("Bongo Cat", "Could not export diagnostics ZIP.")
+            return
+        try:
+            os.startfile(str(path.parent))
+        except OSError:
+            self.show_notification("Bongo Cat", f"Diagnostics saved on Desktop: {path.name}")
+        else:
+            self.show_notification("Bongo Cat", f"Diagnostics saved: {path.name}")
     
     def show_settings(self, item=None):
         """Open the dependency-free native Windows settings window."""
