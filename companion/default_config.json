@@ -24,7 +24,8 @@
     "show_notifications": true
   },
   "spotify": {
-    "client_id": ""
+    "client_id": "",
+    "api_only_poll_interval_seconds": 15.0
   },
   "app_animations": {
     "enabled": false,

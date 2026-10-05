@@ -18,16 +18,24 @@ function Format-CallsPerSecond([double]$seconds) {
     if ($seconds -le 0) { return '0' }
     return ('{0:0.0}' -f (1 / $seconds))
 }
+function Format-429-Baseline($limits) {
+    if ($null -eq $limits -or [double]$limits.total_since -le 0) { return 'äldre historik kan saknas' }
+    $since = [DateTimeOffset]::FromUnixTimeSeconds([long][math]::Floor([double]$limits.total_since)).ToLocalTime().ToString('yyyy-MM-dd')
+    $legacy = [int]$limits.legacy_events_included
+    return "från $since, +$legacy äldre; äldre kan saknas"
+}
 
 function Parse-Decimal([string]$text) {
     # Swedish Windows commonly uses a comma while JSON uses a decimal point.
     # Accept either form, but never interpret the comma as a thousands separator.
     $normalised = $text.Trim().Replace(',', '.')
-    return [double]::Parse(
+    $number = [double]::Parse(
         $normalised,
         [Globalization.NumberStyles]::Float,
         [Globalization.CultureInfo]::InvariantCulture
     )
+    if ([double]::IsNaN($number) -or [double]::IsInfinity($number)) { throw 'Ange ett ändligt tal.' }
+    return $number
 }
 
 function Enable-DoubleBuffering($control) {
@@ -53,7 +61,7 @@ if ($null -eq $config.startup) { $config | Add-Member -NotePropertyName startup 
 
 $form = New-Object System.Windows.Forms.Form
 $form.Text = 'Bongo Cat - Inställningar'
-$form.ClientSize = New-Object System.Drawing.Size(660, 520)
+$form.ClientSize = New-Object System.Drawing.Size(660, 602)
 $form.FormBorderStyle = 'FixedDialog'
 $form.MaximizeBox = $false
 $form.StartPosition = 'CenterScreen'
@@ -78,7 +86,7 @@ $apiInfo.ForeColor = [System.Drawing.Color]::FromArgb(35, 100, 170)
 $apiInfo.Location = New-Object System.Drawing.Point(24, 50)
 $apiInfo.Size = New-Object System.Drawing.Size(270, 22)
 [void]$form.Controls.Add($apiInfo)
-$toolTip.SetToolTip($apiInfo, 'Intervallen används bara när BongoDesk behöver Spotify Web API. 1 sekund betyder högst 1 API-anrop per sekund; 0,5 sekunder betyder högst 2. Spotify kan tillfälligt välja långsammare takt efter en begränsning.')
+$toolTip.SetToolTip($apiInfo, 'Snabbast-gränsen är ett teoretiskt tak, inte faktisk anropsfrekvens. När Spotify spelas på en annan enhet styr Connect-intervallet automatiska läsningar. Windows lokala Spotify-session använder inte återkommande API-läsningar. Retry-After och inlärd säkerhetsgräns kan ge längre väntan.')
 
 $diagnosticsButton = New-Object System.Windows.Forms.Button
 $diagnosticsButton.Text = 'API-diagnostik...'
@@ -90,14 +98,14 @@ $toolTip.SetToolTip($diagnosticsButton, 'Visar API-gränser, senaste adaptiva ä
 $statusGroup = New-Object System.Windows.Forms.GroupBox
 $statusGroup.Text = 'Live-status (uppdateras varje sekund)'
 $statusGroup.Location = New-Object System.Drawing.Point(20, 76)
-$statusGroup.Size = New-Object System.Drawing.Size(620, 142)
+$statusGroup.Size = New-Object System.Drawing.Size(620, 170)
 [void]$form.Controls.Add($statusGroup)
 
 $status = New-Object System.Windows.Forms.Label
 $status.Text = 'Väntar på BongoDesks status...'
 $status.Font = New-Object System.Drawing.Font('Segoe UI', 9)
 $status.Location = New-Object System.Drawing.Point(14, 24)
-$status.Size = New-Object System.Drawing.Size(592, 108)
+$status.Size = New-Object System.Drawing.Size(592, 138)
 [void]$statusGroup.Controls.Add($status)
 
 function Add-Field([string]$label, [string]$help, [string]$value, [int]$top, [string]$suffix) {
@@ -138,37 +146,39 @@ function Config-Value([string]$name, [string]$fallback) {
     return "$($property.Value)"
 }
 
-$initialBox = Add-Field 'Vanlig uppdatering' 'Startintervallet när en låt spelas. BongoDesk anpassar sedan takten försiktigt.' (Config-Value 'api_initial_interval_seconds' '3') 238 'sekunder'
-$minimumBox = Add-Field 'Snabbast automatiskt' 'Den lägsta tillåtna väntetiden. Du kan skriva 0,5 eller 0.5 – båda betyder högst 2 API-anrop per sekund.' (Config-Value 'api_min_interval_seconds' '1') 278 'sekunder'
-$idleBox = Add-Field 'Uppdatering vid paus' 'Väntetid när musik är pausad eller när inget spelas. Den ska vara minst lika lång som vanlig uppdatering.' (Config-Value 'api_idle_interval_seconds' '10') 318 'sekunder'
-$retryBox = Add-Field 'Försök med albumomslag' 'Hur många gånger BongoDesk försöker hämta ett saknat omslag innan den fortsätter utan det.' (Config-Value 'artwork_retry_attempts' '5') 358 'gånger'
+$initialBox = Add-Field 'Vanlig API-gräns' 'Startintervall och adaptiv gräns för Web API-anrop. Connect-intervallet nedan kan vara längre.' (Config-Value 'api_initial_interval_seconds' '3') 266 'sekunder'
+$minimumBox = Add-Field 'Snabbast tillåtet' 'Lägsta adaptiva intervall; ett teoretiskt tak, inte uppmätt anropstakt. 0,5 s tillåter högst 2 anrop/s men Connect kan vänta 15 s eller längre.' (Config-Value 'api_min_interval_seconds' '1') 306 'sekunder'
+$idleBox = Add-Field 'API-gräns vid paus' 'Minsta väntan när musik pausats. Connect-intervallet, säkerhetsgränsen och Retry-After kan vara längre.' (Config-Value 'api_idle_interval_seconds' '10') 346 'sekunder'
+$connectBox = Add-Field 'Connect-uppdatering' 'Normal väntan när Spotify spelas på annan enhet och ingen lokal Windows Spotify-session finns. 10–120 s, standard 15 s. Vid ständig drift ger 10 s cirka 8 640 grundfrågor/dygn, 15 s cirka 5 760. En extra läsning nära låtslut kan göras en gång per spår; touch ger egna anrop. Lägre värde ökar risken för 429 eller kontokvot.' (Config-Value 'api_only_poll_interval_seconds' '15') 386 'sekunder'
+$retryBox = Add-Field 'Försök med albumomslag' 'Hur många gånger BongoDesk försöker hämta ett saknat omslag innan den fortsätter utan det.' (Config-Value 'artwork_retry_attempts' '5') 426 'gånger'
 $script:savedFastest = Parse-Decimal $minimumBox.Text
+$script:savedConnect = Parse-Decimal $connectBox.Text
 
 $startup = New-Object System.Windows.Forms.CheckBox
 $startup.Text = 'Starta BongoDesk när du loggar in i Windows'
 $startup.Checked = [bool]$config.startup.start_with_windows
-$startup.Location = New-Object System.Drawing.Point(22, 406)
+$startup.Location = New-Object System.Drawing.Point(22, 474)
 $startup.AutoSize = $true
 [void]$form.Controls.Add($startup)
 $toolTip.SetToolTip($startup, 'Startar BongoDesk i bakgrunden när du loggar in i Windows.')
 
 $resourceInfo = New-Object System.Windows.Forms.Label
 $resourceInfo.Text = '?  Vad betyder CPU och RAM?'
-$resourceInfo.Location = New-Object System.Drawing.Point(22, 432)
+$resourceInfo.Location = New-Object System.Drawing.Point(22, 500)
 $resourceInfo.Size = New-Object System.Drawing.Size(220, 22)
 $resourceInfo.ForeColor = [System.Drawing.Color]::FromArgb(35, 100, 170)
 [void]$form.Controls.Add($resourceInfo)
 $toolTip.SetToolTip($resourceInfo, 'Datorn totalt är hela datorns sammanlagda CPU- och RAM-användning. BongoDesk visas på samma 0–100-skala: dess andel av datorns totala CPU-kapacitet. I diagnostikens hjälptext kan du även se motsvarigheten per logisk CPU-kärna. ESP32-skärmen räknas inte in i någon av siffrorna.')
 
 $message = New-Object System.Windows.Forms.Label
-$message.Location = New-Object System.Drawing.Point(22, 470)
+$message.Location = New-Object System.Drawing.Point(22, 550)
 $message.Size = New-Object System.Drawing.Size(385, 28)
 $message.ForeColor = [System.Drawing.Color]::FromArgb(35, 100, 170)
 [void]$form.Controls.Add($message)
 
 $save = New-Object System.Windows.Forms.Button
 $save.Text = 'Spara ändringar'
-$save.Location = New-Object System.Drawing.Point(482, 466)
+$save.Location = New-Object System.Drawing.Point(482, 546)
 $save.Size = New-Object System.Drawing.Size(158, 34)
 [void]$form.Controls.Add($save)
 
@@ -177,9 +187,10 @@ $save.Add_Click({
         $initial = Parse-Decimal $initialBox.Text
         $minimum = Parse-Decimal $minimumBox.Text
         $idle = Parse-Decimal $idleBox.Text
+        $connect = Parse-Decimal $connectBox.Text
         $retries = [int]::Parse($retryBox.Text)
-        if ($minimum -lt 0.5 -or $initial -lt $minimum -or $idle -lt $initial -or $idle -gt 300 -or $retries -lt 1 -or $retries -gt 5) {
-            throw 'Använd minst 0,5 s och välj snabbast ≤ vanlig ≤ paus. Omslagsförsök måste vara 1–5.'
+        if ($minimum -lt 0.5 -or $initial -lt $minimum -or $initial -gt 120 -or $idle -lt $initial -or $idle -gt 300 -or $connect -lt 10 -or $connect -gt 120 -or $retries -lt 1 -or $retries -gt 5) {
+            throw 'Välj snabbast ≤ vanlig ≤ paus; Connect 10–120 s; omslagsförsök 1–5.'
         }
         $fresh = Read-JsonFile $ConfigPath
         if ($null -eq $fresh) { throw 'Kunde inte läsa inställningsfilen igen.' }
@@ -188,14 +199,16 @@ $save.Add_Click({
         $fresh.spotify | Add-Member api_initial_interval_seconds $initial -Force
         $fresh.spotify | Add-Member api_min_interval_seconds $minimum -Force
         $fresh.spotify | Add-Member api_idle_interval_seconds $idle -Force
+        $fresh.spotify | Add-Member api_only_poll_interval_seconds $connect -Force
         $fresh.spotify | Add-Member artwork_retry_attempts $retries -Force
         $fresh.startup | Add-Member start_with_windows ([bool]$startup.Checked) -Force
         $temporary = "$ConfigPath.tmp"
         [IO.File]::WriteAllText($temporary, ($fresh | ConvertTo-Json -Depth 8), [Text.UTF8Encoding]::new($false))
         Move-Item -LiteralPath $temporary -Destination $ConfigPath -Force
         $script:savedFastest = $minimum
+        $script:savedConnect = $connect
         $message.ForeColor = [System.Drawing.Color]::FromArgb(35, 100, 170)
-        $message.Text = "Sparat. Snabbast automatiskt: $(Format-Seconds $minimum) s (högst $(Format-CallsPerSecond $minimum) API-anrop/s)."
+        $message.Text = "Sparat. Connect: $(Format-Seconds $connect) s (cirka $([math]::Round(86400 / $connect)) grundfrågor/dygn)."
     } catch {
         $message.ForeColor = [System.Drawing.Color]::Firebrick
         $message.Text = $_.Exception.Message
@@ -220,7 +233,7 @@ function Get-DiagnosticsText($info) {
     } else {
         $limits = $pacing.rate_limits
         $change = $pacing.last_change
-        $limitText = "Spotify-gränser (HTTP 429): 15 min: $($limits.last_15_minutes)  |  1 h: $($limits.last_hour)  |  24 h: $($limits.last_24_hours)"
+        $limitText = "HTTP 429: totalt registrerade $($limits.total) ($(Format-429-Baseline $limits)); 15 min: $($limits.last_15_minutes)  |  1 h: $($limits.last_hour)  |  24 h: $($limits.last_24_hours)"
         if ($null -ne $change) {
             $from = [double]$change.from_seconds
             $to = [double]$change.to_seconds
@@ -278,7 +291,7 @@ function Set-CpuDiagnosticsEnabled([bool]$enabled) {
 
 function Get-DiagnosticValues($info) {
     if ($null -eq $info) {
-        return [pscustomobject]@{ Alert='Väntar på status från BongoDesk...'; HasLimit=$false; Api='—'; Adaptive='—'; Change='—'; Heap='—'; Cpu='—'; Connection='—'; CpuEnabled=$false }
+        return [pscustomobject]@{ Alert='Väntar på status från BongoDesk...'; HasLimit=$false; Api='—'; Windows='—'; Adaptive='—'; Change='—'; Calls='—'; Heap='—'; Cpu='—'; Connection='—'; CpuEnabled=$false }
     }
     $pacing = $info.media.spotify.pacing
     $hasLimit = $false
@@ -287,9 +300,13 @@ function Get-DiagnosticValues($info) {
         $last15 = [int]$limits.last_15_minutes
         $lastHour = [int]$limits.last_hour
         $lastDay = [int]$limits.last_24_hours
-        $hasLimit = ($last15 -gt 0 -or $lastHour -gt 0 -or $lastDay -gt 0)
-        $api = "429-träffar: $last15 senaste 15 min  |  $lastHour senaste timmen  |  $lastDay senaste dygnet"
-        $adaptive = if ([bool]$pacing.adjusting_now) { 'Anpassar takten aktivt nu' } else { 'Ingen ändring just nu' }
+        $hasLimit = ($last15 -gt 0 -or $lastHour -gt 0 -or $lastDay -gt 0 -or
+                     "$($info.media.spotify.state)" -eq 'rate_limited')
+        $api = "Totalt $($limits.total) ($(Format-429-Baseline $limits))"
+        $windows = "15 min: $last15  |  1 h: $lastHour  |  24 h: $lastDay"
+        $effective = $info.media.effective_poll_interval_seconds
+        $adaptive = if ($null -ne $effective) { "Connect: minst $(Format-Seconds ([double]$effective)) s; adaptiv $(Format-Seconds ([double]$pacing.interval_seconds)) s; säker $(Format-Seconds ([double]$pacing.safe_interval_seconds)) s" } else { "API-gräns: $(Format-Seconds ([double]$pacing.interval_seconds)) s; lokal Windows-källa behöver ingen Connect-poll" }
+        $callsText = "$($pacing.calls_last_15_minutes) senaste 15 min, $($pacing.calls_last_30_seconds) senaste 30 s (denna körning)"
         $change = $pacing.last_change
         if ($null -ne $change) {
             $direction = if ([double]$change.to_seconds -gt [double]$change.from_seconds) { 'långsammare' } elseif ([double]$change.to_seconds -lt [double]$change.from_seconds) { 'snabbare' } else { 'oförändrad' }
@@ -297,7 +314,7 @@ function Get-DiagnosticValues($info) {
             $changeText = "$(Format-Seconds ([double]$change.from_seconds)) s → $(Format-Seconds ([double]$change.to_seconds)) s ($direction, $reason; $(Format-Age ((Get-UnixTime) - [double]$change.at)))"
         } else { $changeText = 'Ingen adaptiv ändring under denna session.' }
     } else {
-        $api = 'Spotify API används inte just nu.'; $adaptive = '—'; $changeText = '—'
+        $api = 'Spotify API används inte just nu.'; $windows = '—'; $adaptive = '—'; $changeText = '—'; $callsText = '—'
     }
     $esp32 = $info.esp32
     if ($null -ne $esp32 -and $null -ne $esp32.free_heap_bytes) {
@@ -315,7 +332,7 @@ function Get-DiagnosticValues($info) {
         $heapText = 'Väntar på ESP32.'; $cpuText = '—'; $connection = 'ESP32 är inte ansluten.'; $cpuEnabled = $false
     }
     $alert = if ($hasLimit) { 'Spotify API-gränsen har nåtts. BongoDesk bevakar eller har saktat ned takten.' } else { 'Ingen Spotify-gräns har nåtts i de sparade tidsfönstren.' }
-    return [pscustomobject]@{ Alert=$alert; HasLimit=$hasLimit; Api=$api; Adaptive=$adaptive; Change=$changeText; Heap=$heapText; Cpu=$cpuText; Connection=$connection; CpuEnabled=$cpuEnabled }
+    return [pscustomobject]@{ Alert=$alert; HasLimit=$hasLimit; Api=$api; Windows=$windows; Adaptive=$adaptive; Change=$changeText; Calls=$callsText; Heap=$heapText; Cpu=$cpuText; Connection=$connection; CpuEnabled=$cpuEnabled }
 }
 
 function Add-DiagnosticRow($table, [int]$row, [string]$caption, [string]$help, $toolTip) {
@@ -343,7 +360,7 @@ function Add-DiagnosticRow($table, [int]$row, [string]$caption, [string]$help, $
 function Show-ApiDiagnostics {
     $dialog = New-Object System.Windows.Forms.Form
     $dialog.Text = 'Bongo Cat - API-diagnostik'
-    $dialog.ClientSize = New-Object System.Drawing.Size(730, 430)
+    $dialog.ClientSize = New-Object System.Drawing.Size(730, 506)
     $dialog.FormBorderStyle = 'FixedDialog'
     $dialog.MaximizeBox = $false
     $dialog.StartPosition = 'CenterParent'
@@ -369,27 +386,29 @@ function Show-ApiDiagnostics {
     [void]$dialog.Controls.Add($alert)
 
     $table = New-Object System.Windows.Forms.Panel
-    $table.Location = New-Object System.Drawing.Point(20, 96); $table.Size = New-Object System.Drawing.Size(690, 232)
+    $table.Location = New-Object System.Drawing.Point(20, 96); $table.Size = New-Object System.Drawing.Size(690, 306)
     $table.BorderStyle = 'FixedSingle'
     Enable-DoubleBuffering $table
     [void]$dialog.Controls.Add($table)
-    $apiRow = Add-DiagnosticRow $table 0 'Spotify-gränser' 'Antal HTTP 429-svar. Det röda utropstecknet visas när en gräns har nåtts.' $toolTip
-    $adaptiveRow = Add-DiagnosticRow $table 1 'Adaptiv takt' 'BongoDesk höjer väntetiden efter en gräns och sänker den stegvis när det är lugnt.' $toolTip
-    $changeRow = Add-DiagnosticRow $table 2 'Senaste ändring' 'Exakt förändring av API-takten och varför den gjordes.' $toolTip
-    $heapRow = Add-DiagnosticRow $table 3 'ESP32-minne' 'Heap är ESP32:ns arbetsminne. Lägsta värdet sedan start hjälper att upptäcka minnesläckor.' $toolTip
-    $cpuRow = Add-DiagnosticRow $table 4 'ESP32 CPU' 'Valfri grov aktivitetsuppskattning från FreeRTOS-idleticks. Inte en exakt profilerare per uppgift.' $toolTip
-    $connectionRow = Add-DiagnosticRow $table 5 'Anslutning' 'Tidpunkten för den senast mottagna statusraden från ESP32.' $toolTip
+    $apiRow = Add-DiagnosticRow $table 0 'Spotify-gränser' 'Totalt registrerade verkliga HTTP 429-svar. Äldre historia före denna räknare kan saknas; sparad cooldown räknas inte igen.' $toolTip
+    $windowsRow = Add-DiagnosticRow $table 1 '429 senaste' 'Fönstren visar nyligen registrerade verkliga HTTP 429. Den totala räknaren ovan rensas inte när de löper ut.' $toolTip
+    $adaptiveRow = Add-DiagnosticRow $table 2 'Normalt intervall' 'Regelbunden Connect-läsning följer det längsta av vald tid, adaptiv säkerhetsgräns, paus och kvotåterhämtning. Ett prov nära låtslut kan komma tidigare, men aldrig förbi den adaptiva säkerhetsgränsen eller Retry-After.' $toolTip
+    $changeRow = Add-DiagnosticRow $table 3 'Senaste ändring' 'Exakt förändring av API-takten och varför den gjordes.' $toolTip
+    $callsRow = Add-DiagnosticRow $table 4 'API-anrop' 'Verkliga anrop i denna körning; 15 minuter och 30 sekunder är rullande fönster. Noll på ett kort fönster är normalt vid 15-sekunders Connect-pollning.' $toolTip
+    $heapRow = Add-DiagnosticRow $table 5 'ESP32-minne' 'Heap är ESP32:ns arbetsminne. Lägsta värdet sedan start hjälper att upptäcka minnesläckor.' $toolTip
+    $cpuRow = Add-DiagnosticRow $table 6 'ESP32 CPU' 'Valfri grov aktivitetsuppskattning från FreeRTOS-idleticks. Inte en exakt profilerare per uppgift.' $toolTip
+    $connectionRow = Add-DiagnosticRow $table 7 'Anslutning' 'Tidpunkten för den senast mottagna statusraden från ESP32.' $toolTip
 
     $close = New-Object System.Windows.Forms.Button
     $close.Text = 'Stäng'
-    $close.Location = New-Object System.Drawing.Point(590, 374)
+    $close.Location = New-Object System.Drawing.Point(590, 450)
     $close.Size = New-Object System.Drawing.Size(100, 32)
     $close.Add_Click({ $dialog.Close() })
     [void]$dialog.Controls.Add($close)
 
     $resetSafety = New-Object System.Windows.Forms.Button
     $resetSafety.Text = 'Använd vald snabbast-takt nu'
-    $resetSafety.Location = New-Object System.Drawing.Point(310, 374)
+    $resetSafety.Location = New-Object System.Drawing.Point(310, 450)
     $resetSafety.Size = New-Object System.Drawing.Size(260, 32)
     $resetSafety.Add_Click({
         try {
@@ -403,7 +422,7 @@ function Show-ApiDiagnostics {
 
     $cpuToggle = New-Object System.Windows.Forms.Button
     $cpuToggle.Text = 'Aktivera CPU-mätning'
-    $cpuToggle.Location = New-Object System.Drawing.Point(20, 374); $cpuToggle.Size = New-Object System.Drawing.Size(270, 32)
+    $cpuToggle.Location = New-Object System.Drawing.Point(20, 450); $cpuToggle.Size = New-Object System.Drawing.Size(270, 32)
     $cpuToggle.Add_Click({
         try {
             $current = Read-JsonFile $StatusPath
@@ -416,7 +435,7 @@ function Show-ApiDiagnostics {
     })
     [void]$dialog.Controls.Add($cpuToggle)
 
-    $dialog.Tag = [pscustomobject]@{ Api=$apiRow; Adaptive=$adaptiveRow; Change=$changeRow; Heap=$heapRow; Cpu=$cpuRow; Connection=$connectionRow; Alert=$alert; AlertIcon=$alertIcon; CpuToggle=$cpuToggle }
+    $dialog.Tag = [pscustomobject]@{ Api=$apiRow; Windows=$windowsRow; Adaptive=$adaptiveRow; Change=$changeRow; Calls=$callsRow; Heap=$heapRow; Cpu=$cpuRow; Connection=$connectionRow; Alert=$alert; AlertIcon=$alertIcon; CpuToggle=$cpuToggle }
 
     $diagnosticTimer = New-Object System.Windows.Forms.Timer
     $diagnosticTimer.Interval = 1000
@@ -424,7 +443,7 @@ function Show-ApiDiagnostics {
         $values = Get-DiagnosticValues (Read-JsonFile $StatusPath)
         $view = $dialog.Tag
         $table.SuspendLayout()
-        Set-ControlTextIfChanged $view.Api $values.Api; Set-ControlTextIfChanged $view.Adaptive $values.Adaptive; Set-ControlTextIfChanged $view.Change $values.Change
+        Set-ControlTextIfChanged $view.Api $values.Api; Set-ControlTextIfChanged $view.Windows $values.Windows; Set-ControlTextIfChanged $view.Adaptive $values.Adaptive; Set-ControlTextIfChanged $view.Change $values.Change; Set-ControlTextIfChanged $view.Calls $values.Calls
         Set-ControlTextIfChanged $view.Heap $values.Heap; Set-ControlTextIfChanged $view.Cpu $values.Cpu; Set-ControlTextIfChanged $view.Connection $values.Connection
         Set-ControlTextIfChanged $view.Alert $values.Alert
         if ($view.AlertIcon.Visible -ne $values.HasLimit) { $view.AlertIcon.Visible = $values.HasLimit }
@@ -461,11 +480,16 @@ $timer.Add_Tick({
     if ($null -ne $api) {
         $current = [double]$api.interval_seconds
         $floor = [double]$api.safe_interval_seconds
-        $rate = [double]$api.calls_per_second
         $fastest = $script:savedFastest
-        $apiText = "Källa: $sourceText`r`nMätt API-takt: $([math]::Round($rate, 1)) anrop/s de senaste 5 sekunderna. Nuvarande intervall: $(Format-Seconds $current) s.`r`nAdaptiv säkerhetsgräns: $(Format-Seconds $floor) s. Sparat snabbast-värde: $(Format-Seconds $fastest) s (högst $(Format-CallsPerSecond $fastest) anrop/s)."
+        $connect = $script:savedConnect
+        $effective = $info.media.effective_poll_interval_seconds
+        $pollText = if ($null -ne $effective) { "Normalt Connect-intervall: $(Format-Seconds ([double]$effective)) s (ett tidigare prov kan ske nära låtslut)." } else { 'Ingen återkommande Connect-pollning med lokal Windows-Spotify.' }
+        $apiText = "Källa: $sourceText`r`nVald snabbast-gräns: $(Format-Seconds $fastest) s (teoretiskt högst $(Format-CallsPerSecond $fastest)/s). Connect valt: $(Format-Seconds $connect) s, cirka $([math]::Round(86400 / $connect)) grundfrågor/dygn.`r`n$pollText Adaptiv: $(Format-Seconds $current) s; sparad säkerhetsgräns: $(Format-Seconds $floor) s.`r`nVerkliga API-anrop denna körning: $($api.calls_last_15_minutes) senaste 15 min; $($api.calls_last_30_seconds) senaste 30 s.`r`nHTTP 429 totalt registrerade: $($api.rate_limits.total) ($(Format-429-Baseline $api.rate_limits))."
+        if ("$($info.media.spotify.state)" -eq 'rate_limited') { $apiText += "`r`nRetry-After: cirka $($info.media.spotify.retry_remaining_seconds) s kvar; inga API-anrop före dess." }
+        elseif ([double]$api.quota_poll_floor_seconds -gt 0) { $apiText += "`r`nKvotåterhämtning: automatisk Connect-poll minst $(Format-Seconds ([double]$api.quota_poll_floor_seconds)) s." }
         $limits = $api.rate_limits
-        $hasApiLimit = ([int]$limits.last_15_minutes -gt 0 -or [int]$limits.last_hour -gt 0 -or [int]$limits.last_24_hours -gt 0)
+        $hasApiLimit = ([int]$limits.last_15_minutes -gt 0 -or [int]$limits.last_hour -gt 0 -or [int]$limits.last_24_hours -gt 0 -or
+                        "$($info.media.spotify.state)" -eq 'rate_limited')
     } else {
         $apiText = "Källa: $sourceText`r`nSpotify API är inte anslutet eller används inte just nu."
         $hasApiLimit = $false

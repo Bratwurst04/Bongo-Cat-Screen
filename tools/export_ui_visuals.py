@@ -595,8 +595,8 @@ def media_view(source: str, sample: dict, *, mode: str, state: str,
     radius = match_int(body, r"lv_obj_set_style_radius\(media_art_box,\s*(\d+)", "media art radius")
     if radius != art_w // 2 or art_w != art_h:
         raise ValueError("Unsupported noncircular media art box")
-    if not 144 <= art_w <= 152 or art_x * 2 + art_w != width:
-        raise ValueError("Media circle must be centered at 144–152 px")
+    if not 168 <= art_w <= 176 or art_x * 2 + art_w != width:
+        raise ValueError("Media circle must be centered at 168–176 px")
     box_color = WHITE if mode == "dj" else color(body, "media_art_box", "bg_color")
     border_color = WHITE if mode == "dj" else color(body, "media_art_box", "border_color")
     draw.ellipse((art_x, art_y, art_x + art_w - 1, art_y + art_h - 1),
@@ -662,27 +662,23 @@ def media_view(source: str, sample: dict, *, mode: str, state: str,
          (0xC7, 0xCC, 0xD2), 10, right=True)
     status_x, status_y = pos(body, "media_playback_status_label")
     status_width = match_int(body, r"lv_obj_set_width\(media_playback_status_label,\s*(\d+)\)", "status width")
-    text(draw, (status_x + status_width // 2, status_y), state, accent, 10, center=True)
-    hint_width, hint_height = size(body, "media_gesture_hint_label")
-    hint_x, hint_y = pos(body, "media_gesture_hint_label")
-    if media_source == sample["source_api"]:
-        hint = "SWIPE DOWN  DJ CAT"
-    else:
-        hint = "TAP  PLAY/PAUSE\nSWIPE  PREV/NEXT  |  DOWN  DJ CAT"
-    for index, line in enumerate(hint.split("\n")):
-        text(draw, (hint_x + hint_width // 2, hint_y + index * 13), line,
-             (0x74, 0x7B, 0x84), 10, center=True)
-    if not (art_y + art_h + 4 <= py and
+    status_font = match_int(
+        body,
+        r"lv_obj_set_style_text_font\(media_playback_status_label,\s*&lv_font_montserrat_(\d+)",
+        "media status font",
+    )
+    text(draw, (status_x + status_width // 2, status_y), state, accent,
+         status_font, center=True)
+    if not (art_y + art_h + 6 <= py and
             py + ty + 20 < py + ay and
             py + ay + 17 < py + gy and
             py + gy + gh + 5 < py + ey and
             py + ey + 12 < py + ph and
             py + ph + 4 < status_y and
-            status_y + 12 < hint_y and
-            hint_y + (13 if "\n" in hint else 0) + 11 <= height):
+            status_y + status_font + 4 <= height):
         raise ValueError("Media layout has a vertical collision")
-    if font(10).getlength(max(hint.split("\n"), key=len)) > hint_width - 8:
-        raise ValueError("Media gesture hint clips horizontally")
+    if font(status_font).getlength(state) > status_width - 8:
+        raise ValueError("Media playback status clips horizontally")
     return image
 
 
@@ -746,9 +742,11 @@ def export(output: Path) -> None:
     require(section(source, "renderMediaCat"), "drawDjSprite(dj_glasses)")
     require(section(source, "renderMediaCat"), "drawDjSprite(dj_mixer_board)")
     require(section(source, "updateMediaCat"), "if (!media_is_playing) return")
-    require(section(source, "refreshMediaUi"), 'media_source == "SPOTIFY API"')
-    require(section(source, "refreshMediaUi"), '"SWIPE DOWN  DJ CAT"')
-    require(section(source, "refreshMediaUi"), '"TAP  PLAY/PAUSE\\nSWIPE  PREV/NEXT  |  DOWN  DJ CAT"')
+    require(section(source, "serviceMediaTaps"), '"MEDIA_CMD:PLAY_PAUSE"')
+    require(section(source, "serviceMediaTaps"), '"MEDIA_CMD:NEXT"')
+    require(section(source, "serviceMediaTaps"), '"MEDIA_CMD:PREVIOUS"')
+    require(section(source, "handleTouchFeature"), "toggleMediaCatMode()")
+    require(section(source, "handleTouchFeature"), "MEDIA_SWIPE_THRESHOLD")
     require(section(source, "loadGenericVinyl"), "radius2 <= 46 * 46")
     require(section(source, "createFeatureOverlay"), "lv_obj_create(lv_layer_top())")
     require(section(source, "createFeatureOverlay"),
@@ -803,8 +801,8 @@ def export(output: Path) -> None:
         ("player_focus_reminder", "Spelare – pausmärke", focus_cue_preview(source, artwork, kind="focus", compact=True), "BREAK", "Liten pauspåminnelse efter tio sekunder."),
         ("player_break_done", "Spelare – paus klar", focus_cue_preview(source, artwork, kind="break", compact=False), "BREAK", "Kort, stillsam PAUS KLAR-remsa när pausen slutar."),
         ("bongo_break_done", "Bongo – paus klar", focus_cue_preview(source, bongo, kind="break", compact=False), "BREAK", "Kort PAUS KLAR-remsa; inget kvarstående START-märke efter sex sekunder."),
-        ("media_vinyl", "Medieskärm – vinyl", media_view(source, SAMPLE, mode="vinyl", state="PLAYING", media_source=SAMPLE["source_windows"]), "PLAYING", "Windows Spotify, generisk vinyl och styrinstruktioner."),
-        ("media_artwork", "Medieskärm – omslag", artwork, "PLAYING", "Spotify API, syntetiskt DEMO-omslag och källanpassad hjälptext."),
+        ("media_vinyl", "Medieskärm – vinyl", media_view(source, SAMPLE, mode="vinyl", state="PLAYING", media_source=SAMPLE["source_windows"]), "PLAYING", "Windows Spotify och större generisk vinyl. Gesterna finns kvar utan text längst ned."),
+        ("media_artwork", "Medieskärm – omslag", artwork, "PLAYING", "Spotify API och större syntetiskt DEMO-omslag; status ligger under informationskortet."),
         ("media_artwork_paused", "Medieskärm – paus", media_view(source, SAMPLE, mode="artwork", state="PAUSED", media_source=SAMPLE["source_api"]), "PAUSED", "Pausat omslag med stillastående status och tidsrad."),
         ("media_long_title", "Medieskärm – lång text", media_view(source, long_media, mode="artwork", state="PLAYING", media_source=SAMPLE["source_windows"]), "PLAYING", "Lång titel och artist visas klippta som en stillbild av LVGL:s rullande enradsetiketter."),
         ("media_cyan", "Medieskärm – cyan", media_view(source, SAMPLE, mode="artwork", state="PLAYING", media_source=SAMPLE["source_api"], theme="cyan"), "PLAYING", "Temaaccent i Spelarens rubrik, progress och status; omslagets färger är oförändrade."),

@@ -58,6 +58,7 @@ class ConfigManager:
                 "api_min_interval_seconds": 1.0,
                 "api_max_interval_seconds": 30.0,
                 "api_idle_interval_seconds": 10.0,
+                "api_only_poll_interval_seconds": 15.0,
                 "artwork_retry_attempts": 5,
             },
             "diagnostics": {
@@ -124,7 +125,7 @@ class ConfigManager:
             
             # Validate connection settings
             connection = config["connection"]
-            if not (9600 <= connection.get("baudrate", 0) <= 115200):
+            if connection.get("baudrate", 0) not in (9600, 19200, 38400, 57600, 115200, 230400):
                 print("❌ Invalid baudrate")
                 return False
             if not (1 <= connection.get("timeout_seconds", 0) <= 30):
@@ -136,12 +137,16 @@ class ConfigManager:
             initial = float(spotify.get("api_initial_interval_seconds", 3.0))
             maximum = float(spotify.get("api_max_interval_seconds", 30.0))
             idle = float(spotify.get("api_idle_interval_seconds", 10.0))
+            api_only = float(spotify.get("api_only_poll_interval_seconds", 15.0))
             retries = int(spotify.get("artwork_retry_attempts", 5))
             if not (0.5 <= minimum <= initial <= maximum <= 120.0):
                 print("Invalid Spotify API polling intervals")
                 return False
             if not (initial <= idle <= 300.0) or not (1 <= retries <= 5):
                 print("Invalid Spotify idle interval or artwork retry count")
+                return False
+            if not (10.0 <= api_only <= 120.0):
+                print("Invalid Spotify Connect poll interval (10-120 seconds)")
                 return False
 
             diagnostics = config.get("diagnostics", {})

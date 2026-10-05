@@ -6,10 +6,14 @@
 #include <esp_freertos_hooks.h>
 #include <esp_sleep.h>
 #include <driver/rtc_io.h>
+#include <mbedtls/base64.h>
+#include <ctype.h>
 #include <math.h>
+#include <stdlib.h>
 #include "Free_Fonts.h"
 #include "animations_sprites.h"
 #include "focus_logic.h"
+#include "media_art_v2.h"
 
 // Display settings
 #define SCREEN_WIDTH 240
@@ -27,12 +31,15 @@
 #define MEDIA_VINYL_FRAME_MS 60
 #define MEDIA_VINYL_ANGLE_STEP 18
 #define MEDIA_CAT_FRAME_MS 450
-#define MEDIA_CAT_ZOOM 576
+#define MEDIA_CAT_ZOOM 672
 #define COMPANION_IDLE_MS 600000UL
 #define COMPANION_PROBE_MS 8000UL
 #define COMPANION_PROBE_GRACE_MS 4000UL
+#define COMPANION_PROBE_DRAIN_MS 50UL
 #define COMPANION_PROBE_INTERVAL_US 25000000ULL
 #define MEDIA_ART_STALL_MS 15000UL
+#define MEDIA_ART2_STALL_MS 3000UL
+#define MEDIA_ART2_MAX_MS 20000UL
 constexpr bool companionIdleExpired(uint32_t now, uint32_t last) {
     return uint32_t(now - last) >= COMPANION_IDLE_MS;
 }
@@ -131,7 +138,6 @@ lv_obj_t * media_art_image = NULL;
 lv_obj_t * media_source_label = NULL;
 lv_obj_t * media_brand_label = NULL;
 lv_obj_t * media_playback_status_label = NULL;
-lv_obj_t * media_gesture_hint_label = NULL;
 lv_obj_t * media_title_label = NULL;
 lv_obj_t * media_artist_label = NULL;
 lv_obj_t * media_state_label = NULL;
@@ -153,6 +159,9 @@ uint32_t media_art_last_byte_ms = 0;
 uint8_t media_art_rgb_triplet[3] = {0, 0, 0};
 uint8_t media_art_rgb_triplet_used = 0;
 bool media_art_valid = false;
+MediaArtV2Transfer media_art_v2(MEDIA_ART_RGB_BYTES);
+uint32_t media_art_v2_started_ms = 0;
+uint32_t media_art_v2_last_chunk_ms = 0;
 PanelId active_panel = PanelId::Bongo;
 bool media_is_playing = false;
 bool media_has_track = false;
@@ -577,11 +586,6 @@ void refreshMediaUi() {
                           media_is_playing ? "PLAYING" :
                           (media_has_track ? "PAUSED" : "NO MEDIA"));
     }
-    if (media_gesture_hint_label) {
-        lv_label_set_text(media_gesture_hint_label,
-                          media_source == "SPOTIFY API" ? "SWIPE DOWN  DJ CAT" :
-                          "TAP  PLAY/PAUSE\nSWIPE  PREV/NEXT  |  DOWN  DJ CAT");
-    }
     if (media_play_label) {
         lv_label_set_text(media_play_label,
                           media_is_playing ? LV_SYMBOL_PAUSE : LV_SYMBOL_PLAY);
@@ -624,7 +628,7 @@ void activateMediaArtwork(uint8_t buffer_index, bool acknowledge) {
     lv_img_cache_invalidate_src(&media_art_descriptor);
     lv_img_set_src(media_art_image, &media_art_descriptor);
     lv_img_set_pivot(media_art_image, MEDIA_ART_SIZE / 2, MEDIA_ART_SIZE / 2);
-    lv_img_set_zoom(media_art_image, 328);
+    lv_img_set_zoom(media_art_image, 384);
     media_vinyl_angle = 0;
     lv_img_set_angle(media_art_image, media_vinyl_angle);
     lv_img_set_antialias(media_art_image, false);
@@ -712,6 +716,134 @@ bool serviceMediaArtworkReceive() {
         // A broken upload must not prevent the ten-minute power timeout forever.
         media_art_receiving = false;
         Serial.println("MEDIA_ART_ERROR");
+    }
+    return true;
+}
+
+bool parseMediaArt2Number(const String &text, uint32_t *value, int base = 10) {
+    if (text.length() == 0 || text.length() > 10) return false;
+    for (size_t index = 0; index < text.length(); ++index) {
+        char ch = text[index];
+        if (base == 10 && (ch < '0' || ch > '9')) return false;
+        if (base == 16 && !isxdigit(static_cast<unsigned char>(ch))) return false;
+    }
+    char *end = nullptr;
+    unsigned long parsed = strtoul(text.c_str(), &end, base);
+    if (!end || *end != '\0') return false;
+    *value = static_cast<uint32_t>(parsed);
+    return true;
+}
+
+void failMediaArt2(uint16_t id) {
+    media_art_v2.abort();
+    Serial.printf("MEDIA_ART2_ERROR:%u\n", id);
+}
+
+void serviceMediaArt2Timeout(uint32_t now) {
+    if (media_art_v2.active &&
+        (now - media_art_v2_last_chunk_ms >= MEDIA_ART2_STALL_MS ||
+         now - media_art_v2_started_ms >= MEDIA_ART2_MAX_MS)) {
+        failMediaArt2(media_art_v2.id);
+    }
+}
+
+bool handleMediaArt2Command(const String &command, uint32_t now) {
+    if (!command.startsWith("MEDIA_ART2_")) return false;
+    if (command.length() > 225) {
+        if (media_art_v2.active) failMediaArt2(media_art_v2.id);
+        return true;
+    }
+    if (command.startsWith("MEDIA_ART2_BEGIN:")) {
+        String args = command.substring(17);
+        String fields[5];
+        int start = 0;
+        for (int index = 0; index < 4; ++index) {
+            int separator = args.indexOf(':', start);
+            if (separator < 0) return true;
+            fields[index] = args.substring(start, separator);
+            start = separator + 1;
+        }
+        fields[4] = args.substring(start);
+        uint32_t id, width, height, length, crc;
+        if (!parseMediaArt2Number(fields[0], &id) ||
+            !parseMediaArt2Number(fields[1], &width) ||
+            !parseMediaArt2Number(fields[2], &height) ||
+            !parseMediaArt2Number(fields[3], &length) ||
+            fields[4].length() != 8 ||
+            !parseMediaArt2Number(fields[4], &crc, 16) ||
+            id == 0 || id > UINT16_MAX || width != MEDIA_ART_SIZE ||
+            height != MEDIA_ART_SIZE || length != MEDIA_ART_RGB_BYTES) return true;
+        media_art_receiving = false;
+        media_art_v2.begin(static_cast<uint16_t>(id), length, crc);
+        media_art_receiving_buffer = 1 - media_art_active_buffer;
+        media_art_pixels_received = 0;
+        media_art_rgb_triplet_used = 0;
+        media_art_v2_started_ms = now;
+        media_art_v2_last_chunk_ms = now;
+        return true;
+    }
+    if (command.startsWith("MEDIA_ART2_CHUNK:")) {
+        String args = command.substring(17);
+        int first = args.indexOf(':');
+        int second = first < 0 ? -1 : args.indexOf(':', first + 1);
+        uint32_t id, offset;
+        if (second < 0 ||
+            !parseMediaArt2Number(args.substring(0, first), &id) ||
+            !parseMediaArt2Number(args.substring(first + 1, second), &offset) ||
+            id == 0 || id > UINT16_MAX ||
+            !media_art_v2.active || id != media_art_v2.id) return true;
+        const char *encoded = args.c_str() + second + 1;
+        size_t encoded_length = args.length() - second - 1;
+        uint8_t bytes[128];
+        size_t decoded = 0;
+        if (encoded_length != 172 ||
+            mbedtls_base64_decode(bytes, sizeof(bytes), &decoded,
+                                  reinterpret_cast<const unsigned char *>(encoded),
+                                  encoded_length) != 0 ||
+            decoded != sizeof(bytes) ||
+            !media_art_v2.accept(static_cast<uint16_t>(id), offset, bytes, decoded)) {
+            failMediaArt2(static_cast<uint16_t>(id));
+            return true;
+        }
+        media_art_v2_last_chunk_ms = now;
+        for (size_t index = 0; index < decoded; ++index) {
+            media_art_rgb_triplet[media_art_rgb_triplet_used++] = bytes[index];
+            if (media_art_rgb_triplet_used == 3) {
+                if (media_art_pixels_received < MEDIA_ART_SIZE * MEDIA_ART_SIZE) {
+                    media_art_buffers[media_art_receiving_buffer]
+                                     [media_art_pixels_received++] = lv_color_make(
+                        media_art_rgb_triplet[0], media_art_rgb_triplet[1],
+                        media_art_rgb_triplet[2]);
+                }
+                media_art_rgb_triplet_used = 0;
+            }
+        }
+        return true;
+    }
+    if (command.startsWith("MEDIA_ART2_END:")) {
+        uint32_t id;
+        if (!parseMediaArt2Number(command.substring(15), &id) ||
+            id == 0 || id > UINT16_MAX) return true;
+        if (media_art_v2.active && id == media_art_v2.id) {
+            if (media_art_v2.complete(static_cast<uint16_t>(id)) &&
+                media_art_pixels_received == MEDIA_ART_SIZE * MEDIA_ART_SIZE &&
+                media_art_rgb_triplet_used == 0) {
+                media_art_v2.abort();
+                activateMediaArtwork(media_art_receiving_buffer, false);
+                Serial.printf("MEDIA_ART2_OK:%u\n", static_cast<unsigned int>(id));
+            } else {
+                failMediaArt2(static_cast<uint16_t>(id));
+            }
+        }
+        return true;
+    }
+    if (command.startsWith("MEDIA_ART2_ABORT:")) {
+        uint32_t id;
+        if (parseMediaArt2Number(command.substring(17), &id) &&
+            media_art_v2.active && id == media_art_v2.id) {
+            media_art_v2.abort();
+        }
+        return true;
     }
     return true;
 }
@@ -881,7 +1013,8 @@ bool probeForCompanion() {
             millis() - artwork_last_byte_ms < MEDIA_ART_STALL_MS) ||
            (artwork_last_byte_ms &&
             millis() - artwork_last_byte_ms < COMPANION_PROBE_GRACE_MS) ||
-           Serial.available()) {
+           (Serial.available() &&
+            millis() - started < COMPANION_PROBE_MS + COMPANION_PROBE_DRAIN_MS)) {
         while (Serial.available()) {
             int incoming = Serial.read();
             if (artwork_bytes_left) {
@@ -921,6 +1054,7 @@ bool probeForCompanion() {
 
 // Handle serial commands from Python script
 void handleSerialCommands() {
+    serviceMediaArt2Timeout(millis());
     if (serviceMediaArtworkReceive()) return;
     if (Serial.available()) {
         String command = Serial.readStringUntil('\n');
@@ -929,6 +1063,8 @@ void handleSerialCommands() {
         uint32_t current_time = millis();
         last_command_time = current_time;  // Update command timestamp
         python_control_mode = true;        // Ensure Python control is active
+
+        if (handleMediaArt2Command(command, current_time)) return;
         
         if (command.startsWith("MEDIA_SOURCE:")) {
             media_source = command.substring(13);
@@ -941,10 +1077,18 @@ void handleSerialCommands() {
             refreshMediaUi();
         } else if (command.startsWith("MEDIA_STATE:")) {
             String state = command.substring(12);
-            media_is_playing = state == "PLAYING";
+            bool next_playing = state == "PLAYING";
+            // A periodic repeat of PLAYING must not discard the fractional
+            // second already accumulated by the local progress clock.
+            if (media_is_playing != next_playing) {
+                media_position_anchor_ms = current_time;
+            }
+            media_is_playing = next_playing;
             media_has_track = state != "NONE";
-            media_position_anchor_ms = current_time;
-            if (state == "NONE") loadGenericVinyl();
+            if (state == "NONE") {
+                media_art_v2.abort();
+                loadGenericVinyl();
+            }
             refreshMediaUi();
         } else if (command.startsWith("MEDIA_TIME:")) {
             String timing = command.substring(11);
@@ -959,6 +1103,7 @@ void handleSerialCommands() {
             int final_separator = command.lastIndexOf(':');
             size_t incoming_size = command.substring(final_separator + 1).toInt();
             if (incoming_size == MEDIA_ART_RGB_BYTES) {
+                media_art_v2.abort();
                 media_art_receiving_buffer = 1 - media_art_active_buffer;
                 media_art_expected = incoming_size;
                 media_art_received = 0;
@@ -968,6 +1113,7 @@ void handleSerialCommands() {
                 media_art_receiving = true;
             }
         } else if (command == "MEDIA_ART_DEFAULT") {
+            media_art_v2.abort();
             loadGenericVinyl();
         } else if (command.startsWith("SPEED:")) {
             cancelTouchBonk();
@@ -1082,6 +1228,13 @@ void handleSerialCommands() {
             
         } else if (command == "PING") {
             Serial.println("PONG");
+        } else if (command.startsWith("CAPS?:")) {
+            String challenge = command.substring(6);
+            bool valid = challenge.length() == 16;
+            for (size_t index = 0; valid && index < challenge.length(); ++index) {
+                valid = isxdigit(static_cast<unsigned char>(challenge[index]));
+            }
+            if (valid) Serial.println("CAPS:MEDIA_ART2:" + challenge);
             
         } else if (command.startsWith("ANIM:")) {
             // Handle specific animation commands from tester
@@ -1546,7 +1699,10 @@ void setup() {
     // a chunk while LVGL is rendering a frame, otherwise one lost RGB byte
     // shifts the remaining image into a scrambled pattern.
     Serial.setRxBufferSize(8192);
-    Serial.begin(115200);
+#ifndef BONGO_SERIAL_BAUD
+#define BONGO_SERIAL_BAUD 115200
+#endif
+    Serial.begin(BONGO_SERIAL_BAUD);
     Serial.setTimeout(10);
     if (!probeForCompanion()) enterCompanionDeepSleep(false);
     last_companion_stats_ms = millis();
@@ -1797,13 +1953,13 @@ void createMediaScreen() {
     lv_obj_align(media_source_label, LV_ALIGN_TOP_RIGHT, -10, 4);
 
     media_art_box = lv_obj_create(media_screen);
-    lv_obj_set_pos(media_art_box, 46, 26);
-    lv_obj_set_size(media_art_box, 148, 148);
+    lv_obj_set_pos(media_art_box, 34, 26);
+    lv_obj_set_size(media_art_box, 172, 172);
     lv_obj_set_style_bg_color(media_art_box, lv_color_hex(0x080A0C), 0);
     lv_obj_set_style_bg_opa(media_art_box, LV_OPA_COVER, 0);
     lv_obj_set_style_border_width(media_art_box, 1, 0);
     lv_obj_set_style_border_color(media_art_box, lv_color_hex(0x252A30), 0);
-    lv_obj_set_style_radius(media_art_box, 74, 0);
+    lv_obj_set_style_radius(media_art_box, 86, 0);
     lv_obj_set_style_clip_corner(media_art_box, true, 0);
     lv_obj_set_style_pad_all(media_art_box, 0, 0);
     lv_obj_clear_flag(media_art_box, LV_OBJ_FLAG_SCROLLABLE);
@@ -1829,7 +1985,7 @@ void createMediaScreen() {
     renderMediaCat();
 
     lv_obj_t *info_panel = lv_obj_create(media_screen);
-    lv_obj_set_pos(info_panel, 8, 181);
+    lv_obj_set_pos(info_panel, 8, 205);
     lv_obj_set_size(info_panel, 224, 90);
     lv_obj_set_style_bg_color(info_panel, lv_color_hex(0x15191E), 0);
     lv_obj_set_style_bg_opa(info_panel, LV_OPA_COVER, 0);
@@ -1880,17 +2036,10 @@ void createMediaScreen() {
     media_playback_status_label = lv_label_create(media_screen);
     lv_label_set_text(media_playback_status_label, "NO MEDIA");
     lv_obj_set_width(media_playback_status_label, 224);
-    lv_obj_set_style_text_font(media_playback_status_label, &lv_font_montserrat_10, 0);
+    lv_obj_set_style_text_font(media_playback_status_label, &lv_font_montserrat_14, 0);
     lv_obj_set_style_text_color(media_playback_status_label, lv_color_hex(0x1ED760), 0);
     lv_obj_set_style_text_align(media_playback_status_label, LV_TEXT_ALIGN_CENTER, 0);
-    lv_obj_set_pos(media_playback_status_label, 8, 278);
-
-    media_gesture_hint_label = lv_label_create(media_screen);
-    lv_obj_set_size(media_gesture_hint_label, 224, 24);
-    lv_obj_set_style_text_font(media_gesture_hint_label, &lv_font_montserrat_10, 0);
-    lv_obj_set_style_text_color(media_gesture_hint_label, lv_color_hex(0x747B84), 0);
-    lv_obj_set_style_text_align(media_gesture_hint_label, LV_TEXT_ALIGN_CENTER, 0);
-    lv_obj_set_pos(media_gesture_hint_label, 8, 294);
+    lv_obj_set_pos(media_playback_status_label, 8, 300);
 
     loadGenericVinyl();
     refreshMediaUi();
@@ -2792,7 +2941,7 @@ void loop() {
     
     uint32_t current_time = millis();
     if (companionIdleExpired(current_time, last_companion_stats_ms) &&
-        !media_art_receiving && Serial.available() == 0) {
+        !media_art_receiving && !media_art_v2.active && Serial.available() == 0) {
         enterCompanionDeepSleep(true);
     }
     reportDeviceStatus(current_time);

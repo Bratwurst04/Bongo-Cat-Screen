@@ -40,10 +40,13 @@ _ENUMS = {
                      "control", "other"},
     "action": {"PLAY_PAUSE", "NEXT", "PREVIOUS"},
     "origin": {"http_response", "saved_cooldown"},
+    "protocol": {"legacy", "art2"},
 }
 _NUMBER_FIELDS = {"attempt", "bytes", "track_seq", "wait_seconds", "retry_limit",
                   "window_seconds", "interval_ms", "next_interval_ms",
-                  "request_total", "calls_30s",
+                  "request_total", "calls_30s", "total_429", "total_since",
+                  "legacy_events_included",
+                  "duration_ms",
                   "playback_poll", "playback_urgent", "artwork_fallback",
                   "control", "other"}
 _ERROR_TYPES = {

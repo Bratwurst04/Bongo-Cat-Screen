@@ -327,7 +327,7 @@
       "classification": "simulerad förhandsbild",
       "media_state": "BREAK",
       "note": "Liten pauspåminnelse efter tio sekunder.",
-      "sha256": "cc763e02077bf1f89737ae0b8d145895be2e88a8439f791f0f934fc172a4a0e6"
+      "sha256": "6385bfdc42a2bc59d65d8812ee89578cb89360abe844ed316acd38d942f7f3af"
     },
     {
       "id": "player_break_done",
@@ -340,7 +340,7 @@
       "classification": "simulerad förhandsbild",
       "media_state": "BREAK",
       "note": "Kort, stillsam PAUS KLAR-remsa när pausen slutar.",
-      "sha256": "ae00d67adfe4177339d879a64ed25ea7082f5ae69002d928eede6ef970a6abd1"
+      "sha256": "e3539f4d14d3187bbbda26551f670102e31e003892e435ccf2850d71e1d37b12"
     },
     {
       "id": "bongo_break_done",
@@ -365,8 +365,8 @@
       ],
       "classification": "simulerad förhandsbild",
       "media_state": "PLAYING",
-      "note": "Windows Spotify, generisk vinyl och styrinstruktioner.",
-      "sha256": "ff863019f2c7d275952bbfd3a018103f51ec91ed6defbdfbdb8d7557672f9523"
+      "note": "Windows Spotify och större generisk vinyl. Gesterna finns kvar utan text längst ned.",
+      "sha256": "19274f44d9b15dd99ad8aae385ecc4ada22d7f7e13f18e847f789bbd578c52c1"
     },
     {
       "id": "media_artwork",
@@ -378,8 +378,8 @@
       ],
       "classification": "simulerad förhandsbild",
       "media_state": "PLAYING",
-      "note": "Spotify API, syntetiskt DEMO-omslag och källanpassad hjälptext.",
-      "sha256": "94f2a859f06ce7fc32e0f589c0bfa702bb8350c9c5d69bae9cbcf11ab5dbeba4"
+      "note": "Spotify API och större syntetiskt DEMO-omslag; status ligger under informationskortet.",
+      "sha256": "20d152516e14346c936a06a2ef974d824c2a637c78d53e89a3cc33e6e2740aee"
     },
     {
       "id": "media_artwork_paused",
@@ -392,7 +392,7 @@
       "classification": "simulerad förhandsbild",
       "media_state": "PAUSED",
       "note": "Pausat omslag med stillastående status och tidsrad.",
-      "sha256": "2f813416b1a4d22c7d9b94a810dd4a26ce17ec9ce9eaff151d7441e9a7686737"
+      "sha256": "8b8d5f16f09f8897ced21aca8ddb3d66b7d8cef85e9105e2dfd4995d7af49a79"
     },
     {
       "id": "media_long_title",
@@ -405,7 +405,7 @@
       "classification": "simulerad förhandsbild",
       "media_state": "PLAYING",
       "note": "Lång titel och artist visas klippta som en stillbild av LVGL:s rullande enradsetiketter.",
-      "sha256": "22d9ffd74a056e85c97fb37c83837ee73c1faed98d694c0264422f671f88348a"
+      "sha256": "959796b1c8e0b91156e2e9d75b520444eeb1ac09b86e0ca0a42a384f1bb98996"
     },
     {
       "id": "media_cyan",
@@ -418,7 +418,7 @@
       "classification": "simulerad förhandsbild",
       "media_state": "PLAYING",
       "note": "Temaaccent i Spelarens rubrik, progress och status; omslagets färger är oförändrade.",
-      "sha256": "27128002c5a9b3e4c756c908b5be602e5a30cfa54be00f708234389e12981056"
+      "sha256": "f38e2a7b46379b987d256100eff0ce8096a61684ddcd0a6ef71da27a68c1b16e"
     },
     {
       "id": "dj_playing",
@@ -431,7 +431,7 @@
       "classification": "simulerad förhandsbild",
       "media_state": "PLAYING",
       "note": "En vald bildruta med L1/R2 och effekt R1; lokalt slumpförlopp simuleras inte.",
-      "sha256": "827926f085a7a03cee89f4efb39dfdd77051de923fa8caeb4caa56eaa098ecf1"
+      "sha256": "b014589a83185ff214ab25780caff931266d9e694d98e7b8fdfeb2d8d18c176c"
     },
     {
       "id": "dj_paused",
@@ -444,7 +444,7 @@
       "classification": "simulerad förhandsbild",
       "media_state": "PAUSED",
       "note": "Den senast spelade DJ-rutan förblir stilla när media pausas.",
-      "sha256": "1cd076cf3a8163b547dd347d2a0aad5bab9f99caaa9fd4882b38c5936788fcc8"
+      "sha256": "26fded0af65b303a440d695690c1593befadfd202ca9b816af18d82e5128cefb"
     }
   ],
   "contact_sheet": "contact_sheet_composed.png",
@@ -512,7 +512,7 @@
     }
   ],
   "source_sha256": {
-    "src/bongo_cat_featured.inc": "d201f68173653cdc864e345489d7ab140cb4f34d63abe869f888e0a36a1071b1",
+    "src/bongo_cat_featured.inc": "5b582b9297a2bb8ecf881b6343f5add4dfaa86d947bf87af1326fad1c57822a0",
     "src/focus_logic.h": "828071c9d0dc01df93722a1898248a2e0f34b78953106dcb92736c1154e75559",
     "lv_conf.h": "778b0e468d18bbeee04d38732f3ec7ff04853e09fb6ab8c7e836b5de296c2992",
     "animations_sprites.h": "730ae1062028efcdc667cebc7e12d00f274c3d9573b728e8df35829ef5e06267",

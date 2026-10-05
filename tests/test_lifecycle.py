@@ -88,6 +88,8 @@ class ApplicationLifecycleTests(unittest.TestCase):
         engine.media_bridge = Mock()
         engine.serial_conn = None
         engine._serial_lock = Lock()
+        engine._artwork_v2_supported = False
+        engine._artwork_v2_epoch = 0
         engine.tray = app.tray
         engine.stop_system_monitor = Mock()
         engine.start_system_monitor = Mock()

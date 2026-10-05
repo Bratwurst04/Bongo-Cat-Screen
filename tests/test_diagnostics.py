@@ -37,6 +37,11 @@ class DiagnosticsTests(unittest.TestCase):
                        token="secret-token", url="secret-title")
             diag.event("MEDIA_CMD_RX", action="NEXT", title="secret-title")
             diag.event("MEDIA_CONTROL", action="secret-title", result="failure")
+            diag.event("SPOTIFY_API_429_TOTAL", total_429=7,
+                       legacy_events_included=1, token="secret-token")
+            diag.event("ART_CAPABILITY", result="success", protocol="art2",
+                       challenge="secret-token")
+            diag.event("ART_SENT", protocol="invalid", bytes=37632)
             bundle = diag.export(root / "Desktop")
             try:
                 with zipfile.ZipFile(bundle) as archive:
@@ -50,6 +55,10 @@ class DiagnosticsTests(unittest.TestCase):
                     self.assertIn(b"SPOTIFY_API_429 reason=quota_exceeded", contents)
                     self.assertIn(b"request_kind=playback_poll", contents)
                     self.assertIn(b"MEDIA_CMD_RX action=NEXT", contents)
+                    self.assertIn(b"SPOTIFY_API_429_TOTAL total_429=7", contents)
+                    self.assertIn(b"ART_CAPABILITY result=success protocol=art2", contents)
+                    self.assertIn(b"ART_SENT bytes=37632", contents)
+                    self.assertNotIn(b"protocol=invalid", contents)
                     self.assertNotIn(b"action=secret-title", contents)
             finally:
                 diag._logger.removeHandler(diag._handler)

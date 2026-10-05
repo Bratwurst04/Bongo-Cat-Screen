@@ -38,11 +38,41 @@ class PowerResumeTests(unittest.TestCase):
         engine._cached_artwork = None
         engine._cached_artwork_track_key = ""
         engine._media_lock = RLock()
+        engine._media_deferred_since = 0.0
         engine._artwork_queue = queue.Queue(maxsize=1)
         engine._artwork_ack = Event()
+        engine._artwork_v2_supported = False
+        engine._artwork_v2_challenge = ""
+        engine._artwork_v2_epoch = 0
+        engine._artwork_v2_next_id = 0
+        engine._artwork_v2_pending_id = None
+        engine._artwork_v2_ack_result = None
         engine._artwork_transfer_active = Event()
         engine._last_artwork_transfer_at = 0.0
         return engine
+
+    def test_latest_metadata_flushes_after_artwork_lock_releases(self):
+        engine = self.make_engine()
+        first = MediaSnapshot(available=True, source="SPOTIFY", title="Old",
+                              artist="Artist", playing=True, track_key="old")
+        latest = MediaSnapshot(available=True, source="SPOTIFY", title="New",
+                               artist="Artist", playing=True, track_key="new")
+        engine._on_media_update(first, None)
+        engine.serial_conn.write.reset_mock()
+        engine._serial_lock.acquire()
+        try:
+            engine._on_media_update(latest, None)
+            self.assertEqual(engine.serial_conn.write.call_count, 0)
+            self.assertGreater(engine._media_deferred_since, 0)
+        finally:
+            engine._serial_lock.release()
+        with patch("engine.diagnostics.event") as event:
+            engine._flush_latest_media()
+        payload = engine.serial_conn.write.call_args.args[0]
+        self.assertIn(b"MEDIA_TITLE:New", payload)
+        self.assertIn(b"MEDIA_ART_DEFAULT", payload)
+        self.assertEqual(engine._media_deferred_since, 0)
+        self.assertTrue(any(call.args[0] == "MEDIA_SEND_DELAY" for call in event.call_args_list))
 
     def test_write_error_retires_port_and_reconnects_once(self):
         engine = self.make_engine()
@@ -184,7 +214,8 @@ class PowerResumeTests(unittest.TestCase):
         engine.serial_conn.readline.side_effect = read_error
         with patch("engine.diagnostics.event") as record:
             engine._serial_reader_loop()
-        record.assert_any_call("ART_ACK", result="failure", reason="device_error")
+        record.assert_any_call("ART_ACK", result="failure", reason="device_error",
+                               protocol="legacy")
         self.assertFalse(engine._artwork_ack.is_set())
 
     def test_new_track_cannot_reuse_old_cover(self):

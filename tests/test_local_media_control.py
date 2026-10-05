@@ -19,6 +19,7 @@ class LocalMediaControlTests(unittest.TestCase):
             snapshots.append(snapshot), bridge._stop.set()
         ))
         bridge._spotify = Mock(is_ready=True)
+        bridge._pending_spotify_command = "PREVIOUS"
         session = Mock(source_app_user_model_id="Spotify.exe")
         session.try_skip_next_async = AsyncMock(return_value=True)
         manager = Mock()
@@ -36,6 +37,8 @@ class LocalMediaControlTests(unittest.TestCase):
 
         session.try_skip_next_async.assert_awaited_once_with()
         bridge._spotify.get_playback.assert_not_called()
+        self.assertIsNone(bridge._pending_spotify_command)
+        session.try_skip_previous_async.assert_not_called()
         self.assertEqual(snapshots, [local])
         event.assert_any_call("MEDIA_CONTROL", action="NEXT", result="success")
 

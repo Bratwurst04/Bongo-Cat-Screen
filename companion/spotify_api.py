@@ -31,6 +31,8 @@ API_URL = "https://api.spotify.com/v1"
 REDIRECT_URI = "http://127.0.0.1:43821/callback"
 SCOPES = "user-read-playback-state user-read-currently-playing user-modify-playback-state"
 API_USAGE_WINDOW_SECONDS = 15 * 60
+QUOTA_RECOVERY_SECONDS = 24 * 60 * 60
+QUOTA_POLL_FLOOR_SECONDS = 60.0
 API_REQUEST_KINDS = ("playback_poll", "playback_urgent", "artwork_fallback", "control")
 
 
@@ -65,10 +67,22 @@ class SpotifyApiBridge:
         self._last_is_playing = False
         self._lock = threading.Lock()
         self._request_times = deque()
+        self._request_times_15m = deque()
+        self._session_started_at = time.time()
         self._api_usage_started_at = time.time()
         self._api_usage_counts = {kind: 0 for kind in (*API_REQUEST_KINDS, "other")}
         self._pacing_settings = {}
         self._configure_pacing_locked(pacing_settings or {}, reset_if_missing=True)
+        self._initialize_429_total()
+        if self.token_path.exists():
+            self._save_tokens()
+        if self._tokens.get("refresh_token"):
+            diagnostics.event(
+                "SPOTIFY_API_429_TOTAL",
+                total_429=int(self._tokens["adaptive_total_429"]),
+                total_since=int(self._tokens["adaptive_total_429_since"]),
+                legacy_events_included=int(self._tokens["adaptive_total_429_legacy_events"]),
+            )
 
     @property
     def is_ready(self) -> bool:
@@ -115,6 +129,16 @@ class SpotifyApiBridge:
             if idle:
                 delay = max(delay, float(self._pacing_settings["idle_interval_seconds"]))
             return delay
+
+    def poll_interval_seconds(self, idle: bool = False) -> float:
+        """Base automatic interval, including persisted safety and quota recovery."""
+        with self._lock:
+            return max(
+                self._current_interval(),
+                float(self._tokens.get("adaptive_safe_interval_seconds", 0) or 0),
+                float(self._pacing_settings["idle_interval_seconds"]) if idle else 0.0,
+                self._quota_poll_floor(),
+            )
 
     def authorize_interactive(self, timeout_seconds: int = 180) -> bool:
         if not self.client_id:
@@ -247,12 +271,12 @@ class SpotifyApiBridge:
         action = action.upper()
         if action == "PLAY_PAUSE":
             endpoint = "/me/player/pause" if self._last_is_playing else "/me/player/play"
-            self._api_request("PUT", endpoint, empty_ok=True)
+            self._api_request("PUT", endpoint, empty_ok=True, urgent=True)
             self._last_is_playing = not self._last_is_playing
         elif action == "NEXT":
-            self._api_request("POST", "/me/player/next", empty_ok=True)
+            self._api_request("POST", "/me/player/next", empty_ok=True, urgent=True)
         elif action == "PREVIOUS":
-            self._api_request("POST", "/me/player/previous", empty_ok=True)
+            self._api_request("POST", "/me/player/previous", empty_ok=True, urgent=True)
 
     def _access_token(self) -> str:
         if not self._tokens.get("access_token") or time.time() >= self._tokens.get("expires_at", 0) - 60:
@@ -309,13 +333,15 @@ class SpotifyApiBridge:
         next_allowed_at = self._next_allowed_at()
         if not urgent and next_allowed_at > now:
             raise SpotifyPacingError(next_allowed_at - now)
+        token = self._access_token()
+        now = time.time()
         self._request_times.append(now)
+        self._request_times_15m.append(now)
         self._record_api_request(request_kind, now)
         self._tokens["adaptive_next_allowed_at"] = now + self._current_interval()
         self._tokens["adaptive_request_total"] = int(
             self._tokens.get("adaptive_request_total", 0)
         ) + 1
-        token = self._access_token()
         request = urllib.request.Request(
             f"{API_URL}{endpoint}",
             data=b"" if method in ("POST", "PUT") else None,
@@ -358,6 +384,7 @@ class SpotifyApiBridge:
                     interval_ms=int(round(interval_before * 1000)),
                     next_interval_ms=int(round(self._current_interval() * 1000)),
                     request_total=int(self._tokens.get("adaptive_request_total", 0)),
+                    total_429=int(self._tokens["adaptive_total_429"]),
                     **self._api_usage_counts,
                 )
                 raise SpotifyRateLimitError(retry_after, reason, request_kind) from exc
@@ -384,6 +411,7 @@ class SpotifyApiBridge:
                 "SPOTIFY_API_USAGE", window_seconds=int(now - self._api_usage_started_at),
                 interval_ms=int(round(self._current_interval() * 1000)),
                 request_total=int(self._tokens.get("adaptive_request_total", 0)),
+                total_429=int(self._tokens["adaptive_total_429"]),
                 **self._api_usage_counts,
             )
             self._api_usage_started_at = now
@@ -453,6 +481,10 @@ class SpotifyApiBridge:
         self._tokens["adaptive_interval_seconds"] = min(maximum, max(minimum, current))
         safe = float(self._tokens.get("adaptive_safe_interval_seconds", minimum))
         self._tokens["adaptive_safe_interval_seconds"] = min(maximum, max(minimum, safe))
+        self._tokens["adaptive_interval_seconds"] = max(
+            self._tokens["adaptive_interval_seconds"],
+            self._tokens["adaptive_safe_interval_seconds"],
+        )
         requested_reset_at = float(settings.get("api_reset_safety_requested_at", 0) or 0)
         completed_reset_at = float(self._tokens.get("adaptive_last_manual_reset_at", 0) or 0)
         if requested_reset_at > completed_reset_at:
@@ -486,7 +518,8 @@ class SpotifyApiBridge:
         last_adjustment = float(self._tokens.get("adaptive_last_adjustment_at", 0) or 0)
         # After a clean rolling window, cautiously probe a little faster, but
         # never beyond the user's minimum interval or the learned safety margin.
-        if now - last_limit >= 30 and now - last_adjustment >= 30:
+        if (now - last_limit >= 30 and now - last_adjustment >= 30
+                and now >= float(self._tokens.get("adaptive_quota_recovery_until", 0) or 0)):
             safe_interval = float(self._tokens.get(
                 "adaptive_safe_interval_seconds",
                 self._pacing_settings["minimum_interval_seconds"],
@@ -526,6 +559,15 @@ class SpotifyApiBridge:
         self._tokens["adaptive_last_limit_reason"] = reason
         self._tokens["adaptive_last_limit_request_kind"] = request_kind
         self._tokens["rate_limit_until"] = now + max(1.0, retry_after)
+        if reason == "quota_exceeded":
+            # A development-mode quota is distinct from a rolling rate limit.
+            # Keep a conservative automatic poll floor after Retry-After ends.
+            self._tokens["adaptive_quota_recovery_until"] = (
+                self._tokens["rate_limit_until"] + QUOTA_RECOVERY_SECONDS
+            )
+        self._tokens["adaptive_total_429"] = int(
+            self._tokens.get("adaptive_total_429", 0)
+        ) + 1
         events = self._tokens.get("adaptive_rate_limit_events", [])
         if not isinstance(events, list):
             events = []
@@ -542,9 +584,11 @@ class SpotifyApiBridge:
         }
 
     def _trim_request_times(self) -> None:
-        cutoff = time.time() - 30.0
-        while self._request_times and self._request_times[0] < cutoff:
+        now = time.time()
+        while self._request_times and self._request_times[0] < now - 30.0:
             self._request_times.popleft()
+        while self._request_times_15m and self._request_times_15m[0] < now - 900.0:
+            self._request_times_15m.popleft()
 
     def _pacing_status(self) -> dict:
         self._trim_request_times()
@@ -559,6 +603,8 @@ class SpotifyApiBridge:
             latest_change = None
         return {
             "calls_last_30_seconds": len(self._request_times),
+            "calls_last_15_minutes": len(self._request_times_15m),
+            "observed_seconds": min(900, max(0, int(now - self._session_started_at))),
             "calls_per_second": last_five_seconds / 5.0,
             "interval_seconds": self._current_interval(),
             "safe_interval_seconds": float(self._tokens.get(
@@ -568,15 +614,49 @@ class SpotifyApiBridge:
             "next_allowed_at": self._next_allowed_at(),
             "total": int(self._tokens.get("adaptive_request_total", 0)),
             "rate_limits": {
+                "total": int(self._tokens.get("adaptive_total_429", 0)),
+                "total_since": float(self._tokens.get("adaptive_total_429_since", 0) or 0),
+                "legacy_events_included": int(self._tokens.get("adaptive_total_429_legacy_events", 0)),
                 "last_15_minutes": sum(value >= now - 15 * 60 for value in events),
                 "last_hour": sum(value >= now - 60 * 60 for value in events),
                 "last_24_hours": sum(value >= now - 24 * 60 * 60 for value in events),
             },
             "last_change": latest_change,
+            "quota_recovery_until": float(self._tokens.get("adaptive_quota_recovery_until", 0) or 0),
+            "quota_poll_floor_seconds": self._quota_poll_floor(),
             "adjusting_now": bool(
                 latest_change and now - float(latest_change.get("at", 0) or 0) < 5.0
             ),
         }
+
+    def _quota_poll_floor(self) -> float:
+        return (QUOTA_POLL_FLOOR_SECONDS
+                if time.time() < float(self._tokens.get("adaptive_quota_recovery_until", 0) or 0)
+                else 0.0)
+
+    def _initialize_429_total(self) -> None:
+        if "adaptive_total_429" in self._tokens:
+            try:
+                self._tokens["adaptive_total_429"] = max(0, int(self._tokens["adaptive_total_429"]))
+            except (TypeError, ValueError):
+                self._tokens["adaptive_total_429"] = 0
+            self._tokens.setdefault("adaptive_total_429_legacy_events", 0)
+            self._tokens.setdefault("adaptive_total_429_since", time.time())
+            return
+        # The legacy list held at most 200 events. It was trimmed to a 24-hour
+        # range only when a NEW 429 arrived, so old retained entries still
+        # prove real responses and belong in the migrated lower bound.
+        now = time.time()
+        events = self._tokens.get("adaptive_rate_limit_events", [])
+        known = [value for value in events if isinstance(value, (int, float))
+                 and 0 < value <= now] if isinstance(events, list) else []
+        legacy_total = len(known)
+        if not legacy_total and isinstance(self._tokens.get("adaptive_last_limit_at"), (int, float)):
+            if 0 < self._tokens["adaptive_last_limit_at"] <= now:
+                legacy_total = 1
+        self._tokens["adaptive_total_429"] = legacy_total
+        self._tokens["adaptive_total_429_legacy_events"] = legacy_total
+        self._tokens["adaptive_total_429_since"] = now
 
     def _rate_limit_until(self) -> float:
         try:
@@ -586,4 +666,6 @@ class SpotifyApiBridge:
 
     def _save_tokens(self) -> None:
         self.token_path.parent.mkdir(parents=True, exist_ok=True)
-        self.token_path.write_text(json.dumps(self._tokens, indent=2), encoding="utf-8")
+        temporary = self.token_path.with_name(self.token_path.name + ".tmp")
+        temporary.write_text(json.dumps(self._tokens, indent=2), encoding="utf-8")
+        temporary.replace(self.token_path)

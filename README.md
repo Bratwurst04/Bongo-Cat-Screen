@@ -40,6 +40,33 @@ filer. En fullständig flashning från `0x0` raderar enhetens tidigare NVS-värd
 bland annat sparade fokus- och pausval. Ta backup av NVS före fullbildsflash;
 i provet 2026-10-03 återställdes backupen före normal start.
 
+### Lokalt utvecklingsprov 2026-10-05
+
+En senare artwork-v2-app med SHA-256
+`636AC267AEDCC4DF1B83693F5B4DCE41DE04C7EB37B8F3D2F3DDDF2740B85AB5`
+har efter särskilt godkännande flashats på COM6 vid `0x10000`; esptool
+verifierade skrivningen. Den tillhör **inte** den publicerade `app-v1.2`-bilden.
+Installerad companion fungerar fortsatt med normalt UI, tid/statistik,
+Spotify-låtbyte och omslag. En oinstallerad v2-companion kördes tillfälligt;
+användaren såg rätt sista titel och omslag efter snabba byten från skärmen.
+Den tidigare installerade companionen återställdes efter det första provet.
+En senare diagnostik-EXE bekräftade art2-handskakningen mot samma ESP32 och
+installerades sedan efter särskilt godkännande med verifierad backup av den
+föregående EXE:n. Det var ett tidigare prov; den senare tidslinjeversionen
+nedan är nu installerad. Exakt latens och mörk timerväckning med denna app är
+ännu inte fysiskt verifierade.
+Se [aktuell status](01_CURRENT_STATE.md) för detaljer och begränsningar.
+
+En senare korrigering av Spelarens tidslinje och en större 172×172 px omslagsvy
+är nu lokalt flashad och installerad efter fysiskt prov. Firmwareappen vid
+`0x10000` har SHA-256 `ACA0E8ED6575D30B8F0010F5C79F1614CB02C6CCACDC691F225B3E38CF662297`;
+installerad companion har SHA-256
+`57E288E1D8120AA04E00D7EC235D9C28E7DC1021E2FC3AD7F48849683AF6A877`.
+Användaren bekräftade stabil låttid, rätt omslag, layout och gester. Två
+snabba låtbytessekvenser gav sammanlagt fyra art2-felkvittens; senare omslag
+lyckades och rätt sista omslag syntes. Den publicerade `app-v1.2`-releasen är
+fortfarande äldre än dessa lokala installationer.
+
 ## Föregående app-v1.1: firmware
 
 Den tidigare fullbilden [BongoDesk-deep-sleep-2026-09-30-full-0x0.bin](release/BongoDesk-deep-sleep-2026-09-30-full-0x0.bin)

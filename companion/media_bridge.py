@@ -40,6 +40,8 @@ WINDOWS_API_ART_FALLBACK_SECONDS = 60.0
 # display advances progress locally, so a slower poll avoids thousands of
 # unnecessary /me/player requests per day.
 SPOTIFY_API_ONLY_POLL_FLOOR_SECONDS = 15.0
+MIN_API_ONLY_POLL_SECONDS = 10.0
+MAX_API_ONLY_POLL_SECONDS = 120.0
 
 
 @dataclass(frozen=True)
@@ -66,6 +68,7 @@ class WindowsMediaBridge:
         self._on_update = on_update
         self._on_error = on_error or (lambda message: None)
         self._commands: queue.Queue[str] = queue.Queue()
+        self._pending_spotify_command: Optional[str] = None
         self._stop = threading.Event()
         self._thread: Optional[threading.Thread] = None
         self._last_snapshot: Optional[MediaSnapshot] = None
@@ -83,6 +86,8 @@ class WindowsMediaBridge:
         self._windows_spotify_available = False
         self._other_windows_media_available = False
         self._current_source = "generic"
+        self._api_only_idle = False
+        self._end_probe_track_key = ""
         self._spotify_settings = dict(spotify_settings or {})
         self._artwork_retry_attempts = self._artwork_attempt_limit()
         self._windows_artwork_key = ""
@@ -134,12 +139,21 @@ class WindowsMediaBridge:
             spotify = {"state": "not_configured"}
         else:
             spotify = self._spotify.status()
+        poll_floor = self._api_only_poll_floor()
+        effective = None
+        if self._spotify and self._current_source == "spotify_api":
+            effective = max(
+                poll_floor,
+                self._spotify.poll_interval_seconds(idle=self._api_only_idle),
+            )
         return {
             "spotify": spotify,
             "windows_spotify_available": self._windows_spotify_available,
             "other_windows_media_available": self._other_windows_media_available,
             "current_source": self._current_source,
-            "api_only_poll_floor_seconds": SPOTIFY_API_ONLY_POLL_FLOOR_SECONDS,
+            "api_only_poll_floor_seconds": poll_floor,
+            "effective_poll_interval_seconds": effective,
+            "api_only_idle": self._api_only_idle,
             "artwork_retry_attempts": self._artwork_retry_attempts,
             "checked_at": time.time(),
         }
@@ -165,6 +179,9 @@ class WindowsMediaBridge:
                 self._other_windows_media_available = other_media_playing
                 if spotify_session is not None:
                     self._current_source = "windows_spotify"
+                    # A deferred Connect action belongs to the old remote
+                    # source. Never replay it on Windows or hours later.
+                    self._pending_spotify_command = None
                     # The local Windows session owns both controls and display
                     # state. An API snapshot has a different track key and can
                     # overwrite a newer local song while its cover is in flight.
@@ -184,14 +201,18 @@ class WindowsMediaBridge:
                         command_sent = self._handle_spotify_commands()
                         if command_sent:
                             # Give Spotify Connect a brief moment to expose the new
-                            # state before the confirming read.
-                            await asyncio.sleep(0.12)
-                        spotify_data, artwork_url = self._spotify.get_playback()
+                            # state before the confirming read. Urgent requests
+                            # have a 0.75 s guard and still obey Retry-After.
+                            await asyncio.sleep(0.8)
+                        spotify_data, artwork_url = self._spotify.get_playback(
+                            urgent=command_sent
+                        ) if command_sent else self._spotify.get_playback()
                         self._spotify_retry_is_rate_limit = False
                         if spotify_data:
                             snapshot = MediaSnapshot(
                                 available=True, **{**spotify_data, "source": "SPOTIFY API"}
                             )
+                            self._api_only_idle = not snapshot.playing
                             # Publish metadata before downloading the cover.  The
                             # firmware switches to its built-in vinyl immediately.
                             self._publish(snapshot, None)
@@ -201,10 +222,12 @@ class WindowsMediaBridge:
                             if artwork:
                                 self._publish(snapshot, artwork)
                             await self._wait_for_spotify_work(
-                                self._api_only_poll_delay(idle=not snapshot.playing)
+                                self._api_only_poll_delay(idle=not snapshot.playing,
+                                                          snapshot=snapshot)
                             )
                             continue
                         self._publish(MediaSnapshot(source="SPOTIFY API"), None)
+                        self._api_only_idle = True
                         # Empty playback must never fall through to the 0.45s
                         # UI loop. Keep a low-cost API watch for Spotify while
                         # another player (for example YouTube) owns Windows.
@@ -213,7 +236,12 @@ class WindowsMediaBridge:
                         )
                         continue
                     except SpotifyPacingError as exc:
-                        await self._wait_for_spotify_work(exc.wait_seconds)
+                        if self._commands.empty() and not self._pending_spotify_command:
+                            await self._wait_for_spotify_work(exc.wait_seconds)
+                        else:
+                            # A queued explicit touch must not spin while the
+                            # short urgent-command guard is still active.
+                            await asyncio.sleep(exc.wait_seconds)
                         continue
                     except SpotifyRateLimitError as exc:
                         diagnostics.event("SPOTIFY_FALLBACK", reason=exc.reason,
@@ -259,9 +287,49 @@ class WindowsMediaBridge:
             return self._spotify.status().get("state") != "rate_limited"
         return asyncio.get_running_loop().time() >= self._spotify_retry_at
 
-    def _api_only_poll_delay(self, idle: bool) -> float:
-        return max(SPOTIFY_API_ONLY_POLL_FLOOR_SECONDS,
+    def _api_only_poll_delay(self, idle: bool,
+                             snapshot: Optional[MediaSnapshot] = None) -> float:
+        base = max(self._api_only_poll_floor(),
+                   self._spotify.poll_interval_seconds(idle=idle),
                    self._spotify.poll_delay_seconds(idle=idle))
+        if not snapshot or not snapshot.playing or not snapshot.track_key:
+            return base
+        if self._end_probe_track_key == snapshot.track_key:
+            if snapshot.position_seconds <= 5 and snapshot.duration_seconds >= 30:
+                # The same track has restarted or repeated.
+                self._end_probe_track_key = ""
+            else:
+                return base
+        remaining = snapshot.duration_seconds - snapshot.position_seconds
+        if remaining <= 0 or remaining + 0.75 >= base:
+            return base
+        pacing = self._spotify.status().get("pacing", {})
+        if pacing.get("quota_poll_floor_seconds", 0) > 0:
+            return base
+        # Replace the next regular poll with one just after the predicted
+        # natural end. At most one early probe per track; keep the adaptive
+        # safety interval and the HTTP Retry-After guard intact.
+        end_delay = max(
+            remaining + 0.75,
+            self._spotify.poll_interval_seconds(idle=False),
+            self._spotify.poll_delay_seconds(idle=False),
+        )
+        if end_delay < base:
+            self._end_probe_track_key = snapshot.track_key
+            diagnostics.event("SPOTIFY_END_PROBE", interval_ms=int(end_delay * 1000))
+            return end_delay
+        return base
+
+    def _api_only_poll_floor(self) -> float:
+        try:
+            requested = float(self._spotify_settings.get(
+                "api_only_poll_interval_seconds", SPOTIFY_API_ONLY_POLL_FLOOR_SECONDS
+            ))
+        except (TypeError, ValueError):
+            requested = SPOTIFY_API_ONLY_POLL_FLOOR_SECONDS
+        if not MIN_API_ONLY_POLL_SECONDS <= requested <= MAX_API_ONLY_POLL_SECONDS:
+            return SPOTIFY_API_ONLY_POLL_FLOOR_SECONDS
+        return requested
 
     def _spotify_waiting_snapshot(self) -> Optional[MediaSnapshot]:
         if not self._spotify:
@@ -280,6 +348,7 @@ class WindowsMediaBridge:
     def _publish_no_windows_status(self) -> None:
         # Touch commands made during a long cooldown must not play back hours
         # later when the API becomes available again.
+        self._pending_spotify_command = None
         while True:
             try:
                 self._commands.get_nowait()
@@ -294,7 +363,7 @@ class WindowsMediaBridge:
         loop = asyncio.get_running_loop()
         deadline = loop.time() + max(SPOTIFY_COMMAND_CHECK_SECONDS, delay_seconds)
         while not self._stop.is_set() and loop.time() < deadline:
-            if not self._commands.empty():
+            if self._pending_spotify_command or not self._commands.empty():
                 return
             await asyncio.sleep(
                 min(SPOTIFY_COMMAND_CHECK_SECONDS, max(0.0, deadline - loop.time()))
@@ -303,21 +372,28 @@ class WindowsMediaBridge:
     def _handle_spotify_commands(self) -> bool:
         handled = False
         while True:
-            try:
-                action = self._commands.get_nowait()
-            except queue.Empty:
-                return handled
+            if self._pending_spotify_command:
+                action = self._pending_spotify_command
+            else:
+                try:
+                    action = self._commands.get_nowait()
+                except queue.Empty:
+                    return handled
 
-            # Make the play icon react immediately. The next Web API read is
-            # still authoritative and corrects it if another device changed
-            # state at the same time.
+            try:
+                self._spotify.control(action)
+            except SpotifyPacingError:
+                self._pending_spotify_command = action
+                raise
+            self._pending_spotify_command = None
+            # Make the play icon react immediately after Spotify accepts the
+            # command. The confirming read remains authoritative.
             if action == "PLAY_PAUSE" and self._last_snapshot:
                 optimistic = replace(
                     self._last_snapshot,
                     playing=not self._last_snapshot.playing,
                 )
                 self._publish(optimistic, None)
-            self._spotify.control(action)
             handled = True
 
     @staticmethod

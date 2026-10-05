@@ -243,7 +243,7 @@ class BongoCatSettingsGUI:
         
         self.widgets['baudrate'] = tk.IntVar(value=115200)
         baud_combo = ttk.Combobox(port_group, textvariable=self.widgets['baudrate'], width=15)
-        baud_combo['values'] = (9600, 19200, 38400, 57600, 115200)
+        baud_combo['values'] = (9600, 19200, 38400, 57600, 115200, 230400)
         baud_combo.pack(anchor='w')
         baud_combo.bind('<<ComboboxSelected>>', lambda e: self.on_setting_changed())
         
@@ -327,7 +327,7 @@ class BongoCatSettingsGUI:
         pacing_group.pack(fill='x', pady=(0, 15))
         ttk.Label(
             pacing_group,
-            text="The app waits on 429 and learns a safe interval with margin.",
+            text="Fastest is an adaptive lower bound, not an observed rate. Connect may poll slower; 429 waits are preserved.",
             wraplength=490, foreground='gray',
         ).grid(row=0, column=0, columnspan=6, sticky='w', pady=(0, 8))
         ttk.Label(pacing_group, text="Start (s)").grid(row=1, column=0, sticky='w')
@@ -350,6 +350,12 @@ class BongoCatSettingsGUI:
         ttk.Spinbox(pacing_group, from_=1, to=5, width=7,
                     textvariable=self.widgets['artwork_retry_attempts'],
                     command=self.on_setting_changed).grid(row=4, column=0, sticky='w')
+        ttk.Label(pacing_group, text="Connect poll (s): 10-120, default 15; one earlier check near track end is possible").grid(
+            row=3, column=2, columnspan=4, sticky='w', padx=(14, 0), pady=(10, 0))
+        self.widgets['api_only_poll_interval'] = tk.DoubleVar(value=15.0)
+        ttk.Spinbox(pacing_group, from_=10.0, to=120.0, increment=1.0, width=7,
+                    textvariable=self.widgets['api_only_poll_interval'],
+                    command=self.on_setting_changed).grid(row=4, column=2, sticky='w', padx=(14, 0))
 
         windows_group = ttk.LabelFrame(main_frame, text="Windows and BongoDesk", padding=12)
         windows_group.pack(fill='x')
@@ -382,18 +388,28 @@ class BongoCatSettingsGUI:
         pacing = spotify.get('pacing', {})
         state = spotify.get('state')
         if state == 'ready':
+            effective = status.get('effective_poll_interval_seconds')
+            poll_text = (f"Normal Connect polls {effective:.1f} s apart; an end check can be earlier. "
+                         if effective is not None else "Local Windows source; no repeated Connect poll. ")
             spotify_text = (
-                f"Ready. {pacing.get('calls_last_30_seconds', 0)} calls in 30 s "
-                f"({pacing.get('calls_per_second', 0):.1f}/s); current interval "
-                f"{pacing.get('interval_seconds', 0):.1f} s, safety floor "
-                f"{pacing.get('safe_interval_seconds', 0):.1f} s."
+                f"Ready. {poll_text}"
+                f"{pacing.get('calls_last_15_minutes', 0)} real calls in the last 15 min "
+                f"({pacing.get('calls_last_30_seconds', 0)} in 30 s). "
+                f"Adaptive {pacing.get('interval_seconds', 0):.1f} s; learned safety "
+                f"{pacing.get('safe_interval_seconds', 0):.1f} s. "
+                f"Registered HTTP 429 total: {pacing.get('rate_limits', {}).get('total', 0)} "
+                f"(older history may be missing)."
             )
         elif state == 'rate_limited':
             retry_at = datetime.fromtimestamp(spotify['retry_until']).strftime('%H:%M, %d %b')
             remaining = int(spotify.get('retry_remaining_seconds', 0))
             hours, minutes = divmod(remaining // 60, 60)
             remaining_text = f"{hours}h {minutes}m" if hours else f"{minutes}m"
-            spotify_text = f"Paused until {retry_at} (about {remaining_text} left). No calls before then."
+            spotify_text = (
+                f"Paused until {retry_at} (about {remaining_text} left). No calls before then. "
+                f"Registered HTTP 429 total: {pacing.get('rate_limits', {}).get('total', 0)} "
+                f"(older history may be missing)."
+            )
         elif state == 'not_linked':
             spotify_text = "Spotify is not linked to BongoDesk."
         elif state == 'not_configured':
@@ -531,6 +547,9 @@ class BongoCatSettingsGUI:
             self.widgets['api_idle_interval'].set(
                 spotify.get('api_idle_interval_seconds', 10.0)
             )
+            self.widgets['api_only_poll_interval'].set(
+                spotify.get('api_only_poll_interval_seconds', 15.0)
+            )
             self.widgets['artwork_retry_attempts'].set(
                 spotify.get('artwork_retry_attempts', 5)
             )
@@ -649,16 +668,20 @@ class BongoCatSettingsGUI:
             api_initial = float(self.widgets['api_initial_interval'].get())
             api_minimum = float(self.widgets['api_min_interval'].get())
             api_idle = float(self.widgets['api_idle_interval'].get())
+            api_only = float(self.widgets['api_only_poll_interval'].get())
             artwork_retries = int(self.widgets['artwork_retry_attempts'].get())
             if not (0.5 <= api_minimum <= api_initial <= 120.0):
                 raise ValueError('Fastest API interval must be at least 0.5 s and no higher than Start')
             if not (api_initial <= api_idle <= 300.0):
                 raise ValueError('Idle API interval must be at least the Start interval')
+            if not (10.0 <= api_only <= 120.0):
+                raise ValueError('Connect poll interval must be 10-120 s')
             if not (1 <= artwork_retries <= 5):
                 raise ValueError('Artwork retries must be between 1 and 5')
             self.config.set_setting('spotify', 'api_initial_interval_seconds', api_initial)
             self.config.set_setting('spotify', 'api_min_interval_seconds', api_minimum)
             self.config.set_setting('spotify', 'api_idle_interval_seconds', api_idle)
+            self.config.set_setting('spotify', 'api_only_poll_interval_seconds', api_only)
             self.config.set_setting('spotify', 'artwork_retry_attempts', artwork_retries)
 
             valid_animations = {

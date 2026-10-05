@@ -292,6 +292,17 @@ class BongoCatSystemTray:
     def export_diagnostics(self, item=None):
         """Save a bounded support package and reveal it in Explorer."""
         try:
+            engine = getattr(self, "engine", None)
+            if engine:
+                pacing = engine.get_media_status().get("spotify", {}).get("pacing", {})
+                limits = pacing.get("rate_limits", {})
+                if "total" in limits:
+                    diagnostics.event(
+                        "SPOTIFY_API_429_TOTAL",
+                        total_429=int(limits["total"]),
+                        total_since=int(limits.get("total_since", 0)),
+                        legacy_events_included=int(limits.get("legacy_events_included", 0)),
+                    )
             path = diagnostics.export()
         except Exception:
             diagnostics.event("DIAGNOSTICS_EXPORTED", result="failure")
