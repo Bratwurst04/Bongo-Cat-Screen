@@ -41,6 +41,7 @@ class DiagnosticsTests(unittest.TestCase):
                        legacy_events_included=1, token="secret-token")
             diag.event("ART_CAPABILITY", result="success", protocol="art2",
                        challenge="secret-token")
+            diag.event("ART_SENT", protocol="art2", frames_per_write=2)
             diag.event("ART_SENT", protocol="invalid", bytes=37632)
             bundle = diag.export(root / "Desktop")
             try:
@@ -56,6 +57,7 @@ class DiagnosticsTests(unittest.TestCase):
                     self.assertIn(b"request_kind=playback_poll", contents)
                     self.assertIn(b"MEDIA_CMD_RX action=NEXT", contents)
                     self.assertIn(b"SPOTIFY_API_429_TOTAL total_429=7", contents)
+                    self.assertIn(b"frames_per_write=2", contents)
                     self.assertIn(b"ART_CAPABILITY result=success protocol=art2", contents)
                     self.assertIn(b"ART_SENT bytes=37632", contents)
                     self.assertNotIn(b"protocol=invalid", contents)

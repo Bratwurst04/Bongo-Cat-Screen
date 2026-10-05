@@ -22,6 +22,7 @@ class ArtworkV2Tests(unittest.TestCase):
         engine = BongoCatEngine.__new__(BongoCatEngine)
         engine.serial_conn = Mock(is_open=True)
         engine.serial_conn.write.side_effect = lambda payload: len(payload)
+        engine.baudrate = 115200
         engine._serial_lock = Lock()
         engine._media_lock = RLock()
         engine._artwork_queue = queue.Queue(maxsize=1)
@@ -95,6 +96,52 @@ class ArtworkV2Tests(unittest.TestCase):
         corrupted[100] ^= 1
         self.assertNotEqual(zlib.crc32(corrupted), zlib.crc32(artwork))
         self.assertNotEqual(len(decoded[:-ARTWORK_CHUNK_BYTES]), len(artwork))
+
+    def test_fast_link_batches_complete_frames_and_retries_slowly(self):
+        engine = self.make_engine()
+        engine.baudrate = 230400
+        artwork = bytes(range(256)) * (ARTWORK_V2_FRAME_BYTES // 256)
+        engine._on_media_update(self.snapshot("song"), None)
+        writes = []
+
+        def accept(payload):
+            writes.append(payload)
+            if payload.startswith(b"MEDIA_ART2_END:"):
+                engine._artwork_v2_ack_result = True
+                engine._artwork_ack.set()
+            return len(payload)
+
+        engine.serial_conn.write.side_effect = accept
+        with patch("engine.time.sleep"), patch("engine.diagnostics.event") as event:
+            engine._send_artwork_v2(engine.serial_conn, "song", artwork, 0)
+        batches = [payload for payload in writes
+                   if payload.startswith(b"MEDIA_ART2_CHUNK:")]
+        self.assertEqual(len(batches), ARTWORK_V2_FRAME_BYTES //
+                         (2 * ARTWORK_CHUNK_BYTES))
+        self.assertTrue(all(payload.count(b"MEDIA_ART2_CHUNK:") == 2
+                            for payload in batches))
+        chunks = [line for payload in batches for line in payload.splitlines(keepends=True)]
+        self.assertTrue(all(len(line) <= 225 for line in chunks))
+        decoded = bytearray()
+        for line in chunks:
+            _, transfer_id, offset, encoded = line.rstrip(b"\n").split(b":", 3)
+            self.assertEqual(transfer_id, b"1")
+            self.assertEqual(int(offset), len(decoded))
+            decoded.extend(base64.b64decode(encoded, validate=True))
+        self.assertEqual(decoded, artwork)
+        self.assertTrue(any(call.args == ("ART_SENT",) and
+                            call.kwargs.get("frames_per_write") == 2
+                            for call in event.call_args_list))
+
+        writes.clear()
+        engine.serial_conn.write.side_effect = accept
+        with patch("engine.time.sleep"), patch("engine.diagnostics.event"):
+            engine._send_artwork_v2(engine.serial_conn, "song", artwork, 1)
+        retry_chunks = [payload for payload in writes
+                        if payload.startswith(b"MEDIA_ART2_CHUNK:")]
+        self.assertEqual(len(retry_chunks), ARTWORK_V2_FRAME_BYTES // ARTWORK_CHUNK_BYTES)
+        self.assertTrue(all(payload.count(b"MEDIA_ART2_CHUNK:") == 1
+                            for payload in retry_chunks))
 
     def test_long_artwork_flush_does_not_rewind_playback_time(self):
         engine = self.make_engine()
@@ -170,6 +217,7 @@ class ArtworkV2Tests(unittest.TestCase):
 
     def test_new_title_passes_between_chunks_and_old_cover_aborts(self):
         engine = self.make_engine()
+        engine.baudrate = 230400
         engine._artwork_v2_supported = True
         artwork = bytes([10, 20, 30]) * (112 * 112)
         engine._on_media_update(self.snapshot("Old"), artwork)
@@ -193,6 +241,7 @@ class ArtworkV2Tests(unittest.TestCase):
         wire = b"".join(writes)
         self.assertIn(b"MEDIA_ART2_BEGIN:1:", wire)
         self.assertIn(b"MEDIA_ART2_CHUNK:1:0:", wire)
+        self.assertEqual(wire.count(b"MEDIA_ART2_CHUNK:"), 2)
         self.assertIn(b"MEDIA_TITLE:New\n", wire)
         self.assertIn(b"MEDIA_ART_DEFAULT\n", wire)
         self.assertIn(b"MEDIA_ART2_ABORT:1\n", wire)
@@ -275,6 +324,7 @@ class ArtworkV2Tests(unittest.TestCase):
 
     def test_device_rejection_stops_frame_and_retries_once(self):
         engine = self.make_engine()
+        engine.baudrate = 230400
         artwork = bytes([5, 6, 7]) * (112 * 112)
         engine._on_media_update(self.snapshot("song"), None)
         writes = []
@@ -290,6 +340,7 @@ class ArtworkV2Tests(unittest.TestCase):
         with patch("engine.time.sleep"), patch("engine.diagnostics.event"):
             engine._send_artwork_v2(engine.serial_conn, "song", artwork, 0)
         self.assertEqual(sum(p.startswith(b"MEDIA_ART2_CHUNK:") for p in writes), 1)
+        self.assertEqual(b"".join(writes).count(b"MEDIA_ART2_CHUNK:"), 2)
         self.assertFalse(any(p.startswith(b"MEDIA_ART2_END:") for p in writes))
         self.assertEqual(engine._artwork_queue.get_nowait(), ("song", artwork, 1))
         self.assertFalse(engine._artwork_transfer_active.is_set())

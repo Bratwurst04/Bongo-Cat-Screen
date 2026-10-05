@@ -67,6 +67,17 @@ snabba låtbytessekvenser gav sammanlagt fyra art2-felkvittens; senare omslag
 lyckades och rätt sista omslag syntes. Den publicerade `app-v1.2`-releasen är
 fortfarande äldre än dessa lokala installationer.
 
+Den lokala driftlänken kör nu 230400 baud med den valfria firmwareprofilen och
+en ny installerad companion som skickar två art2-rader per skrivning. Flashningen
+gjordes fortsatt vid 115200 baud. Ett direkt test på samma ESP32 gav
+9,14–9,16 sekunder för gammal rytm och 4,94–5,02 sekunder för fyra överföringar
+med ny rytm; samtliga testbilder kvitterades. Tidigare firmware, konfiguration
+och companion finns som verifierade backuper. Den installerade EXE:n har
+SHA-256 `D9187CC406912B142CA1E5F042A6CCD875B051F1D7F62AA2B8918E5190D1CB43`
+och återanslöt till COM6 med art2. Ett nytt omslag från Spotify på datorn har
+ännu inte provats med denna EXE eftersom Spotify inte kunde startas under
+slutprovet. Se [aktuell status](01_CURRENT_STATE.md).
+
 ## Föregående app-v1.1: firmware
 
 Den tidigare fullbilden [BongoDesk-deep-sleep-2026-09-30-full-0x0.bin](release/BongoDesk-deep-sleep-2026-09-30-full-0x0.bin)

@@ -30,6 +30,7 @@ from diagnostics import diagnostics
 ARTWORK_SIZE = 112
 ARTWORK_CHUNK_BYTES = 128
 ARTWORK_CHUNK_PAUSE_SECONDS = 0.015
+ARTWORK_V2_FAST_BATCH_FRAMES = 2
 ARTWORK_V2_FRAME_BYTES = ARTWORK_SIZE * ARTWORK_SIZE * 3
 DEVICE_REPLY_TIMEOUT_SECONDS = 15
 
@@ -713,7 +714,7 @@ class BongoCatEngine:
                 self._send_media_update_locked(self._last_media_snapshot, None)
 
     def _write_art2_line(self, conn, payload):
-        """Write one complete ASCII frame, releasing the port before the next."""
+        """Write complete ASCII frames, releasing the port after one flush."""
         with self._serial_lock:
             if self.serial_conn is not conn or not conn.is_open:
                 raise serial.SerialException("Artwork connection changed")
@@ -752,7 +753,16 @@ class BongoCatEngine:
                           f"{ARTWORK_SIZE}:{len(artwork)}:{checksum:08X}\n")
                 self._write_art2_line(conn, header.encode("ascii"))
 
-            for offset in range(0, len(artwork), ARTWORK_CHUNK_BYTES):
+            # At 230400, two unchanged newline-framed chunks share one host
+            # write/flush. Metadata and aborts still get a slot between pairs;
+            # a rejected fast attempt retries with the original single-frame
+            # pacing instead of repeating at the aggressive rate.
+            frames_per_write = (
+                ARTWORK_V2_FAST_BATCH_FRAMES
+                if self.baudrate >= 230400 and attempt == 0 else 1
+            )
+            batch_bytes = ARTWORK_CHUNK_BYTES * frames_per_write
+            for offset in range(0, len(artwork), batch_bytes):
                 if self._artwork_ack.is_set() and self._artwork_v2_ack_result is False:
                     # A bad chunk was rejected while the next one was being
                     # prepared. Stop immediately; the receiver has discarded
@@ -772,11 +782,16 @@ class BongoCatEngine:
                     diagnostics.event("ART_SEND", result="skipped", reason="track_mismatch")
                     self._flush_latest_media()
                     return
-                chunk = artwork[offset:offset + ARTWORK_CHUNK_BYTES]
-                encoded = base64.b64encode(chunk)
-                frame = (f"MEDIA_ART2_CHUNK:{transfer_id}:{offset}:".encode("ascii") +
-                         encoded + b"\n")
-                self._write_art2_line(conn, frame)
+                frames = []
+                for chunk_offset in range(offset, min(offset + batch_bytes, len(artwork)),
+                                          ARTWORK_CHUNK_BYTES):
+                    chunk = artwork[chunk_offset:chunk_offset + ARTWORK_CHUNK_BYTES]
+                    encoded = base64.b64encode(chunk)
+                    frames.append(
+                        f"MEDIA_ART2_CHUNK:{transfer_id}:{chunk_offset}:".encode("ascii") +
+                        encoded + b"\n"
+                    )
+                self._write_art2_line(conn, b"".join(frames))
                 time.sleep(ARTWORK_CHUNK_PAUSE_SECONDS)
 
             with self._media_lock:
@@ -793,7 +808,7 @@ class BongoCatEngine:
             self._last_artwork_transfer_at = time.time()
             diagnostics.event("ART_SENT", bytes=len(artwork), attempt=attempt + 1,
                               duration_ms=int((time.monotonic() - started) * 1000),
-                              protocol="art2")
+                              protocol="art2", frames_per_write=frames_per_write)
             self._flush_latest_media()
             acknowledged = self._artwork_ack.wait(timeout=4.0)
             if not acknowledged:

@@ -47,6 +47,7 @@ _NUMBER_FIELDS = {"attempt", "bytes", "track_seq", "wait_seconds", "retry_limit"
                   "request_total", "calls_30s", "total_429", "total_since",
                   "legacy_events_included",
                   "duration_ms",
+                  "frames_per_write",
                   "playback_poll", "playback_urgent", "artwork_fallback",
                   "control", "other"}
 _ERROR_TYPES = {

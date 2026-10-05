@@ -1,5 +1,12 @@
 # Bongo Cat – Architecture Decisions
 
+## 2026-10-05 – Batch art2 frames on the local 230400 baud runtime pair
+
+- Keep the default firmware profile at 115200 baud and keep esptool flashing at 115200. The optional 230400 firmware app was written only at `0x10000` after reading back the previous app; NVS was preserved. The companion config backup was verified before changing only `connection.baudrate` to 230400. The baud increase alone left a real cover at 9156 ms, close to the 115200 observations around 9200 ms.
+- At 230400 on the first art2 attempt, send two unchanged, newline-delimited 128-byte chunks in one serial write/flush, with the existing 15 ms pause between pairs. Keep metadata and old-track checks between pairs; a rejected or timed-out attempt retries with one chunk per write. The 115200 and legacy paths retain their old pacing. Diagnostics record `frames_per_write` without media content.
+- A direct ESP32 COM6 probe with the same 37,632-byte test image measured 9140–9156 ms for one frame per write and 4938–5016 ms for four two-frame runs; all six transfers received matching `MEDIA_ART2_OK` replies. The first probe opened the port with different DTR/RTS states and got no reply; using the companion's normal serial-open state restored the art2 capability response and successful transfers. These measurements isolate the serial transfer, not Spotify image acquisition or display time.
+- Install the candidate EXE with SHA-256 `D9187CC406912B142CA1E5F042A6CCD875B051F1D7F62AA2B8918E5190D1CB43` at the existing path after backing up the previous installed EXE as `BongoDeskSpotify.backup-20261005-runtime-speed-57E288E1.exe` and verifying SHA-256 `57E288E1D8120AA04E00D7EC235D9C28E7DC1021E2FC3AD7F48849683AF6A877`. Two normal processes, COM6 connection and a fresh art2 capability handshake returned. Spotify was not running on the PC during the installation check, so an end-to-end cover, rapid track changes, touch and dark wake remain live checks. No release or push was made.
+
 ## 2026-10-05 – Physically test and install the Player timeline pair
 
 - After explicit approval, read back the previous 923184-byte app at `0x10000` and verify SHA-256 `636AC267AEDCC4DF1B83693F5B4DCE41DE04C7EB37B8F3D2F3DDDF2740B85AB5` before writing. Flash only the new app with SHA-256 `ACA0E8ED6575D30B8F0010F5C79F1614CB02C6CCACDC691F225B3E38CF662297`; esptool verified the write. Keep NVS and the published full-image release untouched.
