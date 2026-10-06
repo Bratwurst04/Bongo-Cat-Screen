@@ -78,6 +78,41 @@ och återanslöt till COM6 med art2. Ett nytt omslag från Spotify på datorn ha
 ännu inte provats med denna EXE eftersom Spotify inte kunde startas under
 slutprovet. Se [aktuell status](01_CURRENT_STATE.md).
 
+Den 2026-10-06 lyckades fyra verkliga Spotify API-omslag på omkring 5,6 s,
+men en senare låt blev utan omslag efter två art2-felkvittens. Samma installerade
+EXE fick ett lyckat omslag efter manuell omstart. En senare kandidat med
+begränsade omförsök och fasta mottagarfelkoder installerades som ett par:
+firmware `CF5F4DCDD6D40091CC04C06E70DF134A3F079BF31D733BA71CDF732D5FB6CACA`
+och companion `41BE575EDAD6F58346D034555D8B5430941E01E78490608A497C66FC142558B4`.
+Under ett nytt fysiskt prov avvisades fyra försök på samma låt med rad- och
+avkodningsfel, medan text och skiva hackade under överföringen. En ny
+firmwareversion läser kompletta serialrader i begränsade grupper för att minska
+köbildning utan att blockera Player och touch. Efter verifierad backup av den
+föregående appen har denna version med SHA-256
+`4376ED12820E4906ADA44F429B624B6F9A1C38EBB6AB084B0DA7ED7B2CCA5B67`
+flashats endast vid `0x10000`. Vid det fysiska provet avvisades tre snabba
+omslagsöverföringar; långsamma omförsök gav rätt omslag efter cirka 17–19
+sekunder, men ett senare spår misslyckades även på långsamma omförsök.
+Skiva och text frös kort under överföring.
+
+Den nya **lokalt flashade och Player-provade versionen** läser serieporten på ESP32:s andra
+kärna och skickar kompletta textrader och äldre råa omslagsblock via en ordnad
+kö till skärmuppgiften. Skärm, touch, omslagskontroll och seriella svar ägs
+fortfarande av samma uppgift. Binären i
+`.pio/build/esp32-024r-spotify-fastserial/firmware.bin` är 926432 byte med
+SHA-256 `6A5366C1E56E1137AEBC08E6675CBB12E1A49AE106D2DBD03B30132C6A7D2302`.
+Projektledaren flashade den frysta kopian endast vid `0x10000` efter verifierad
+backup av den tidigare appen; esptool verifierade skrivningen och NVS bevarades.
+Efter normal reset och återanslutning lyckades minst fem art2-överföringar
+på första försöket efter cirka 5,0–5,6 sekunder, med ACK efter 8–35 ms.
+Användaren bekräftade rätt omslag efter ungefär fem sekunder vid tre låtbyten
+och jämn Player-rörelse under laddningen, jämfört med tidigare 17–19 sekunder
+och korta frysningar. Snabba avbrott gav rätt sista låt/omslag utan äldre
+återkomst, och touch, paus, DJ, panelmeny och Fokus fungerade under laddning.
+Mörk sömn/deep wake med tvåkärneversionen är ännu inte testad och återstår
+före release; se [aktuell status](01_CURRENT_STATE.md).
+Den publicerade releasen är oförändrad.
+
 ## Föregående app-v1.1: firmware
 
 Den tidigare fullbilden [BongoDesk-deep-sleep-2026-09-30-full-0x0.bin](release/BongoDesk-deep-sleep-2026-09-30-full-0x0.bin)

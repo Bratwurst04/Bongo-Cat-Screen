@@ -30,6 +30,8 @@ _ENUMS = {
         "api_error", "pacing", "startup_error",
         "no_artwork_url", "no_thumbnail",
         "device_error", "track_mismatch", "no_playback",
+        "art2_line", "art2_decode", "art2_offset", "art2_crc",
+        "art2_length", "art2_pixels", "art2_stall", "art2_duration",
     },
     "result": {"success", "failure", "skipped", "retry", "ready"},
     "state": {"playing", "paused", "none"},

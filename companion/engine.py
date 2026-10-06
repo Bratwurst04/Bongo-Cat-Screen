@@ -32,6 +32,11 @@ ARTWORK_CHUNK_BYTES = 128
 ARTWORK_CHUNK_PAUSE_SECONDS = 0.015
 ARTWORK_V2_FAST_BATCH_FRAMES = 2
 ARTWORK_V2_FRAME_BYTES = ARTWORK_SIZE * ARTWORK_SIZE * 3
+ARTWORK_V2_RETRY_DELAYS_SECONDS = (2.0, 12.0, 30.0)
+ARTWORK_V2_ERROR_REASONS = frozenset({
+    "art2_line", "art2_decode", "art2_offset", "art2_crc",
+    "art2_length", "art2_pixels", "art2_stall", "art2_duration",
+})
 DEVICE_REPLY_TIMEOUT_SECONDS = 15
 
 class BongoCatEngine:
@@ -101,6 +106,8 @@ class BongoCatEngine:
         self._artwork_v2_next_id = 0
         self._artwork_v2_pending_id = None
         self._artwork_v2_ack_result = None
+        self._artwork_v2_error_reason = None
+        self._artwork_retry = None
         self._artwork_transfer_active = threading.Event()
         self._last_artwork_transfer_at = 0.0
         self._app_animation = None
@@ -355,6 +362,7 @@ class BongoCatEngine:
                 self._artwork_v2_supported = False
                 self._artwork_v2_challenge = ""
                 self._artwork_v2_epoch += 1
+                self._artwork_retry = None
                 time.sleep(2)  # Wait for ESP32 to restart
                 self._last_device_reply_at = time.time()
                 
@@ -444,6 +452,7 @@ class BongoCatEngine:
                 self._artwork_v2_supported = False
                 self._artwork_v2_challenge = ""
                 self._artwork_v2_epoch += 1
+                self._artwork_retry = None
                 if conn and conn.is_open:
                     conn.close()
         if conn:
@@ -475,6 +484,7 @@ class BongoCatEngine:
             self._artwork_v2_supported = False
             self._artwork_v2_challenge = ""
             self._artwork_v2_epoch += 1
+            self._artwork_retry = None
             try:
                 conn.close()
             except Exception:
@@ -525,6 +535,7 @@ class BongoCatEngine:
                     self._artwork_v2_supported = False
                     self._artwork_v2_challenge = ""
                     self._artwork_v2_epoch += 1
+                    self._artwork_retry = None
                     self.port = port
                     self._last_device_reply_at = time.time()
                 self._last_media_meta = None
@@ -617,8 +628,10 @@ class BongoCatEngine:
         if snapshot.track_key != self._cached_artwork_track_key:
             self._cached_artwork_track_key = snapshot.track_key
             self._cached_artwork = None
+            self._artwork_retry = None
         if artwork:
             self._cached_artwork = artwork
+            self._artwork_retry = None
         if not self.serial_conn or not self.serial_conn.is_open:
             return
 
@@ -730,6 +743,35 @@ class BongoCatEngine:
                     snapshot.track_key == track_key and
                     self._last_media_track_key == track_key)
 
+    def _schedule_artwork_v2_retry(self, conn, track_key, artwork, attempt, epoch):
+        """Retry the cached cover a few times without polling Spotify again."""
+        with self._media_lock:
+            if not self._art2_track_current(conn, track_key, epoch):
+                return
+            if attempt >= len(ARTWORK_V2_RETRY_DELAYS_SECONDS):
+                diagnostics.event("ART_RETRY", result="failure", reason="retry_exhausted",
+                                  attempt=attempt + 1, protocol="art2")
+                return
+            delay = ARTWORK_V2_RETRY_DELAYS_SECONDS[attempt]
+            self._artwork_retry = (conn, track_key, artwork, attempt + 1,
+                                   epoch, time.monotonic() + delay)
+            diagnostics.event("ART_RETRY", result="retry", attempt=attempt + 2,
+                              wait_seconds=delay, protocol="art2")
+
+    def _take_due_artwork_v2_retry(self):
+        with self._media_lock:
+            retry = self._artwork_retry
+            if retry is None:
+                return None
+            conn, track_key, artwork, attempt, epoch, due = retry
+            if not self._art2_track_current(conn, track_key, epoch):
+                self._artwork_retry = None
+                return None
+            if time.monotonic() < due:
+                return None
+            self._artwork_retry = None
+            return track_key, artwork, attempt
+
     def _send_artwork_v2(self, conn, track_key, artwork, attempt):
         """Interleave metadata between bounded cover frames on capable devices."""
         if len(artwork) != ARTWORK_V2_FRAME_BYTES:
@@ -740,6 +782,7 @@ class BongoCatEngine:
         epoch = self._artwork_v2_epoch
         self._artwork_v2_pending_id = transfer_id
         self._artwork_v2_ack_result = None
+        self._artwork_v2_error_reason = None
         self._artwork_ack.clear()
         self._artwork_transfer_active.set()
         started = time.monotonic()
@@ -767,11 +810,8 @@ class BongoCatEngine:
                     # A bad chunk was rejected while the next one was being
                     # prepared. Stop immediately; the receiver has discarded
                     # its staging buffer.
-                    if attempt == 0 and self._art2_track_current(conn, track_key, epoch):
-                        try:
-                            self._artwork_queue.put_nowait((track_key, artwork, 1))
-                        except queue.Full:
-                            diagnostics.event("ART_QUEUE", result="failure", reason="queue_full")
+                    self._schedule_artwork_v2_retry(conn, track_key, artwork,
+                                                    attempt, epoch)
                     return
                 self._flush_latest_media()
                 if not self._art2_track_current(conn, track_key, epoch):
@@ -814,12 +854,12 @@ class BongoCatEngine:
             if not acknowledged:
                 diagnostics.event("ART_ACK", result="failure", reason="ack_timeout",
                                   attempt=attempt + 1, protocol="art2")
-            if (not acknowledged or not self._artwork_v2_ack_result) and attempt == 0:
-                if self._art2_track_current(conn, track_key, epoch):
-                    try:
-                        self._artwork_queue.put_nowait((track_key, artwork, 1))
-                    except queue.Full:
-                        diagnostics.event("ART_QUEUE", result="failure", reason="queue_full")
+            if acknowledged and self._artwork_v2_ack_result:
+                with self._media_lock:
+                    self._artwork_retry = None
+            else:
+                self._schedule_artwork_v2_retry(conn, track_key, artwork,
+                                                attempt, epoch)
             self._flush_latest_media()
         finally:
             self._artwork_v2_pending_id = None
@@ -830,8 +870,16 @@ class BongoCatEngine:
         while self.running:
             try:
                 track_key, artwork, attempt = self._artwork_queue.get(timeout=0.2)
+                if attempt == 0:
+                    # A newly supplied cover supersedes any older delayed
+                    # retry for the same track.
+                    with self._media_lock:
+                        self._artwork_retry = None
             except queue.Empty:
-                continue
+                retry = self._take_due_artwork_v2_retry()
+                if retry is None:
+                    continue
+                track_key, artwork, attempt = retry
             if not self.serial_conn or not self.serial_conn.is_open:
                 diagnostics.event("ART_SEND", result="skipped", reason="connection_lost")
                 continue
@@ -919,6 +967,7 @@ class BongoCatEngine:
         self._artwork_v2_supported = False
         self._artwork_v2_challenge = ""
         self._artwork_v2_epoch += 1
+        self._artwork_retry = None
         self._last_media_meta = None
         self._last_media_state = None
         self._last_media_time = None
@@ -953,6 +1002,14 @@ class BongoCatEngine:
                         line == f"CAPS:MEDIA_ART2:{self._artwork_v2_challenge}"):
                     self._artwork_v2_supported = True
                     diagnostics.event("ART_CAPABILITY", result="success", protocol="art2")
+                elif line.startswith("MEDIA_ART2_REASON:"):
+                    _, _, value = line.partition(":")
+                    transfer_id, separator, reason = value.partition(":")
+                    if (separator and 1 <= len(transfer_id) <= 5 and
+                            transfer_id.isascii() and transfer_id.isdecimal() and
+                            int(transfer_id) == self._artwork_v2_pending_id and
+                            reason in ARTWORK_V2_ERROR_REASONS):
+                        self._artwork_v2_error_reason = reason
                 elif line.startswith("MEDIA_ART2_OK:") or line.startswith("MEDIA_ART2_ERROR:"):
                     prefix, _, value = line.partition(":")
                     try:
@@ -966,7 +1023,8 @@ class BongoCatEngine:
                             diagnostics.event("ART_ACK", result="success", protocol="art2")
                         else:
                             diagnostics.event("ART_ACK", result="failure",
-                                              reason="device_error", protocol="art2")
+                                              reason=self._artwork_v2_error_reason or
+                                              "device_error", protocol="art2")
                 elif line == "MEDIA_ART_OK":
                     if self._artwork_v2_pending_id is None:
                         self._artwork_ack.set()
@@ -1662,6 +1720,7 @@ class BongoCatEngine:
         self._stop_requested.set()
         with self._lifecycle_lock:
             self.running = False
+            self._artwork_retry = None
             if self.keyboard_listener:
                 self.keyboard_listener.stop()
             self._foreground_stop.set()

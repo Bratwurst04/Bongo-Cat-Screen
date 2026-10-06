@@ -10,10 +10,14 @@
 #include <ctype.h>
 #include <math.h>
 #include <stdlib.h>
+#include <atomic>
+#include <freertos/queue.h>
+#include <freertos/task.h>
 #include "Free_Fonts.h"
 #include "animations_sprites.h"
 #include "focus_logic.h"
 #include "media_art_v2.h"
+#include "serial_line_receiver.h"
 
 // Display settings
 #define SCREEN_WIDTH 240
@@ -40,6 +44,13 @@
 #define MEDIA_ART_STALL_MS 15000UL
 #define MEDIA_ART2_STALL_MS 3000UL
 #define MEDIA_ART2_MAX_MS 20000UL
+#define SERIAL_LINE_BYTES 256
+#define SERIAL_LINE_STALL_MS 250UL
+#define SERIAL_DRAIN_MAX_MS 5UL
+#define SERIAL_DRAIN_MAX_BYTES 2048
+#define SERIAL_DRAIN_MAX_LINES 10
+#define SERIAL_RX_QUEUE_DEPTH 96
+#define SERIAL_RX_RAW_BLOCK_BYTES 192
 constexpr bool companionIdleExpired(uint32_t now, uint32_t last) {
     return uint32_t(now - last) >= COMPANION_IDLE_MS;
 }
@@ -84,6 +95,7 @@ bool animation_paused = false;
 bool python_control_mode = true;  // Python controls idle progression
 uint32_t last_command_time = 0;   // Track when last command received
 uint32_t last_companion_stats_ms = 0;  // Independent of the cat's idle stages
+bool companion_backlight_waiting_for_stats = false;
 #define TYPING_TIMEOUT_MS 2000    // Stop typing animation after 2 seconds of no commands
 #define PYTHON_TIMEOUT_MS 5000    // Fall back to auto mode after 5 seconds
 
@@ -160,6 +172,116 @@ uint8_t media_art_rgb_triplet[3] = {0, 0, 0};
 uint8_t media_art_rgb_triplet_used = 0;
 bool media_art_valid = false;
 MediaArtV2Transfer media_art_v2(MEDIA_ART_RGB_BYTES);
+SerialLineReceiver<SERIAL_LINE_BYTES> serial_line_receiver;
+BufferedSerialSource<HardwareSerial, SERIAL_LINE_BYTES> &serialInput() {
+    static BufferedSerialSource<HardwareSerial, SERIAL_LINE_BYTES> input(Serial);
+    return input;
+}
+
+enum class SerialRxKind : uint8_t { Line, Raw, Overflow, LineTimeout, RawTimeout };
+struct SerialRxEvent {
+    SerialRxKind kind;
+    uint16_t length;
+    uint8_t data[SERIAL_LINE_BYTES];
+};
+
+// Core 0 only owns Serial RX and framing. The Arduino loop on core 1 owns
+// command interpretation, artwork staging, all LVGL/TFT/touch and Serial TX.
+static QueueHandle_t serial_rx_queue = nullptr;
+static TaskHandle_t serial_rx_task = nullptr;
+static std::atomic<bool> serial_rx_pause_requested{false};
+static std::atomic<bool> serial_rx_paused{false};
+static std::atomic<bool> serial_rx_pending{false};
+static std::atomic<uint32_t> serial_rx_pause_ack{0};
+
+void enqueueSerialRxEvent(SerialRxKind kind, const uint8_t *data = nullptr,
+                          size_t length = 0) {
+    SerialRxEvent event = {};
+    event.kind = kind;
+    event.length = static_cast<uint16_t>(length);
+    if (length) memcpy(event.data, data, length);
+    // Backpressure preserves this event and its order. Never silently drop a
+    // partial artwork frame and allow the next command to masquerade as it.
+    xQueueSend(serial_rx_queue, &event, portMAX_DELAY);
+}
+
+void serialRxTask(void *) {
+    SerialInputFramer<SERIAL_LINE_BYTES, SERIAL_RX_RAW_BLOCK_BYTES> framer;
+    uint8_t incoming[SERIAL_LINE_BYTES];
+    for (;;) {
+        if (serial_rx_pause_requested.load()) {
+            serial_rx_paused.store(true);
+            serial_rx_pause_ack.fetch_add(1);
+            while (serial_rx_pause_requested.load()) vTaskDelay(1);
+            serial_rx_paused.store(false);
+        }
+        int ready = Serial.available();
+        if (ready > 0) {
+            serial_rx_pending.store(true);
+            size_t amount = min(static_cast<size_t>(ready), sizeof(incoming));
+            size_t received = Serial.read(incoming, amount);
+            for (size_t i = 0; i < received; ++i) {
+                framer.push(incoming[i], millis(),
+                    [](const char *line) {
+                        enqueueSerialRxEvent(SerialRxKind::Line,
+                                             reinterpret_cast<const uint8_t *>(line),
+                                             strlen(line));
+                    },
+                    [](const uint8_t *raw, size_t length) {
+                        enqueueSerialRxEvent(SerialRxKind::Raw, raw, length);
+                    },
+                    []() { enqueueSerialRxEvent(SerialRxKind::Overflow); });
+            }
+        } else {
+            uint32_t now = millis();
+            if (framer.expireLine(now, SERIAL_LINE_STALL_MS)) {
+                enqueueSerialRxEvent(SerialRxKind::LineTimeout);
+            }
+            if (framer.expireRaw(now, MEDIA_ART_STALL_MS)) {
+                enqueueSerialRxEvent(SerialRxKind::RawTimeout);
+            }
+            vTaskDelay(1);
+        }
+        serial_rx_pending.store(framer.hasPartial());
+    }
+}
+
+void startSerialRxTask() {
+    serial_rx_queue = xQueueCreate(SERIAL_RX_QUEUE_DEPTH,
+                                   sizeof(SerialRxEvent));
+    if (!serial_rx_queue ||
+        xTaskCreatePinnedToCore(serialRxTask, "serial_rx", 4096, nullptr,
+                                1, &serial_rx_task, 0) != pdPASS) {
+        serial_rx_task = nullptr;
+        if (serial_rx_queue) vQueueDelete(serial_rx_queue);
+        serial_rx_queue = nullptr;
+    }
+}
+
+bool serialRxIdle() {
+    if (!serial_rx_task) {
+        return !serial_line_receiver.hasPartial() && serialInput().available() == 0;
+    }
+    return uxQueueMessagesWaiting(serial_rx_queue) == 0 &&
+           !serial_rx_pending.load() && Serial.available() == 0;
+}
+
+bool pauseSerialRxTask() {
+    if (!serial_rx_task) return true;
+    uint32_t previous_ack = serial_rx_pause_ack.load();
+    serial_rx_pause_requested.store(true);
+    uint32_t started = millis();
+    while (serial_rx_pause_ack.load() == previous_ack &&
+           millis() - started < 25) delay(1);
+    if (serial_rx_pause_ack.load() != previous_ack &&
+        serial_rx_paused.load()) return true;
+    serial_rx_pause_requested.store(false);
+    return false;
+}
+
+void resumeSerialRxTask() {
+    if (serial_rx_task) serial_rx_pause_requested.store(false);
+}
 uint32_t media_art_v2_started_ms = 0;
 uint32_t media_art_v2_last_chunk_ms = 0;
 PanelId active_panel = PanelId::Bongo;
@@ -678,12 +800,12 @@ void finishMediaArtwork() {
 bool serviceMediaArtworkReceive() {
     if (!media_art_receiving) return false;
 
-    size_t available = Serial.available();
+    size_t available = serialInput().totalAvailable();
     if (available > 0 && media_art_received < media_art_expected) {
         size_t remaining = media_art_expected - media_art_received;
         uint8_t incoming[192];
         size_t amount = min(min(available, remaining), sizeof(incoming));
-        int bytes_read = Serial.read(incoming, amount);
+        int bytes_read = serialInput().read(incoming, amount);
         if (bytes_read > 0) {
             media_art_last_byte_ms = millis();
             media_art_received += (size_t)bytes_read;
@@ -720,6 +842,40 @@ bool serviceMediaArtworkReceive() {
     return true;
 }
 
+void consumeQueuedMediaArtwork(const uint8_t *incoming, size_t length) {
+    if (!media_art_receiving || length > media_art_expected - media_art_received) {
+        if (media_art_receiving) {
+            media_art_receiving = false;
+            Serial.println("MEDIA_ART_ERROR");
+        }
+        return;
+    }
+    media_art_last_byte_ms = millis();
+    media_art_received += length;
+    for (size_t index = 0; index < length; ++index) {
+        media_art_rgb_triplet[media_art_rgb_triplet_used++] = incoming[index];
+        if (media_art_rgb_triplet_used == 3) {
+            if (media_art_pixels_received < MEDIA_ART_SIZE * MEDIA_ART_SIZE) {
+                media_art_buffers[media_art_receiving_buffer]
+                                 [media_art_pixels_received++] = lv_color_make(
+                    media_art_rgb_triplet[0], media_art_rgb_triplet[1],
+                    media_art_rgb_triplet[2]);
+            }
+            media_art_rgb_triplet_used = 0;
+        }
+    }
+    if (media_art_received == media_art_expected) {
+        media_art_receiving = false;
+        if (media_art_pixels_received == MEDIA_ART_SIZE * MEDIA_ART_SIZE &&
+            media_art_rgb_triplet_used == 0) {
+            finishMediaArtwork();
+        } else {
+            media_art_valid = false;
+            Serial.println("MEDIA_ART_ERROR");
+        }
+    }
+}
+
 bool parseMediaArt2Number(const String &text, uint32_t *value, int base = 10) {
     if (text.length() == 0 || text.length() > 10) return false;
     for (size_t index = 0; index < text.length(); ++index) {
@@ -734,23 +890,28 @@ bool parseMediaArt2Number(const String &text, uint32_t *value, int base = 10) {
     return true;
 }
 
-void failMediaArt2(uint16_t id) {
+void failMediaArt2(uint16_t id, const char *reason) {
     media_art_v2.abort();
+    // The original ERROR:id line remains unchanged for older companions.
+    // A newer companion can log this fixed, content-free reason first.
+    Serial.printf("MEDIA_ART2_REASON:%u:%s\n", id, reason);
     Serial.printf("MEDIA_ART2_ERROR:%u\n", id);
 }
 
-void serviceMediaArt2Timeout(uint32_t now) {
+void serviceMediaArt2Timeout(uint32_t now, bool bytes_waiting) {
     if (media_art_v2.active &&
-        (now - media_art_v2_last_chunk_ms >= MEDIA_ART2_STALL_MS ||
+        ((!bytes_waiting && now - media_art_v2_last_chunk_ms >= MEDIA_ART2_STALL_MS) ||
          now - media_art_v2_started_ms >= MEDIA_ART2_MAX_MS)) {
-        failMediaArt2(media_art_v2.id);
+        failMediaArt2(media_art_v2.id,
+                      now - media_art_v2_started_ms >= MEDIA_ART2_MAX_MS ?
+                      "art2_duration" : "art2_stall");
     }
 }
 
 bool handleMediaArt2Command(const String &command, uint32_t now) {
     if (!command.startsWith("MEDIA_ART2_")) return false;
     if (command.length() > 225) {
-        if (media_art_v2.active) failMediaArt2(media_art_v2.id);
+        if (media_art_v2.active) failMediaArt2(media_art_v2.id, "art2_line");
         return true;
     }
     if (command.startsWith("MEDIA_ART2_BEGIN:")) {
@@ -789,9 +950,12 @@ bool handleMediaArt2Command(const String &command, uint32_t now) {
         uint32_t id, offset;
         if (second < 0 ||
             !parseMediaArt2Number(args.substring(0, first), &id) ||
-            !parseMediaArt2Number(args.substring(first + 1, second), &offset) ||
-            id == 0 || id > UINT16_MAX ||
-            !media_art_v2.active || id != media_art_v2.id) return true;
+            id == 0 || id > UINT16_MAX) return true;
+        if (!media_art_v2.active || id != media_art_v2.id) return true;
+        if (!parseMediaArt2Number(args.substring(first + 1, second), &offset)) {
+            failMediaArt2(static_cast<uint16_t>(id), "art2_line");
+            return true;
+        }
         const char *encoded = args.c_str() + second + 1;
         size_t encoded_length = args.length() - second - 1;
         uint8_t bytes[128];
@@ -800,9 +964,12 @@ bool handleMediaArt2Command(const String &command, uint32_t now) {
             mbedtls_base64_decode(bytes, sizeof(bytes), &decoded,
                                   reinterpret_cast<const unsigned char *>(encoded),
                                   encoded_length) != 0 ||
-            decoded != sizeof(bytes) ||
-            !media_art_v2.accept(static_cast<uint16_t>(id), offset, bytes, decoded)) {
-            failMediaArt2(static_cast<uint16_t>(id));
+            decoded != sizeof(bytes)) {
+            failMediaArt2(static_cast<uint16_t>(id), "art2_decode");
+            return true;
+        }
+        if (!media_art_v2.accept(static_cast<uint16_t>(id), offset, bytes, decoded)) {
+            failMediaArt2(static_cast<uint16_t>(id), "art2_offset");
             return true;
         }
         media_art_v2_last_chunk_ms = now;
@@ -832,7 +999,11 @@ bool handleMediaArt2Command(const String &command, uint32_t now) {
                 activateMediaArtwork(media_art_receiving_buffer, false);
                 Serial.printf("MEDIA_ART2_OK:%u\n", static_cast<unsigned int>(id));
             } else {
-                failMediaArt2(static_cast<uint16_t>(id));
+                const char *reason = media_art_v2.received != MEDIA_ART_RGB_BYTES ?
+                                     "art2_length" :
+                                     (~media_art_v2.crc) != media_art_v2.expected_crc ?
+                                     "art2_crc" : "art2_pixels";
+                failMediaArt2(static_cast<uint16_t>(id), reason);
             }
         }
         return true;
@@ -969,6 +1140,15 @@ void releaseBacklightHold() {
 }
 
 void enterCompanionDeepSleep(bool display_initialized) {
+    // The initial dark probe has already rejected the companion. Only a
+    // running display may defer sleep for newly queued bytes.
+    if (display_initialized) {
+        if (!pauseSerialRxTask()) return;
+        if (!serialRxIdle()) {
+            resumeSerialRxTask();
+            return;
+        }
+    }
     focus_cue = focusCueInitial();
     focusLedOff();
     if (focus_completion_banner) {
@@ -983,13 +1163,15 @@ void enterCompanionDeepSleep(bool display_initialized) {
         delay(20);
         tft.writecommand(0x10);
         delay(120);
-        if (Serial.available()) {
+        if (!serialRxIdle()) {
             // A new packet arrived while the controller entered sleep. Keep
-            // the UART session and restore the LCD instead of discarding it.
+            // the UART session. Restore the controller while the backlight
+            // stays off until a complete, valid companion STATS line arrives.
             tft.writecommand(0x11);
             delay(120);
             tft.writecommand(0x29);
-            digitalWrite(TFT_BL, HIGH);
+            companion_backlight_waiting_for_stats = true;
+            resumeSerialRxTask();
             return;
         }
     }
@@ -1052,15 +1234,9 @@ bool probeForCompanion() {
     return false;
 }
 
-// Handle serial commands from Python script
-void handleSerialCommands() {
-    serviceMediaArt2Timeout(millis());
-    if (serviceMediaArtworkReceive()) return;
-    if (Serial.available()) {
-        String command = Serial.readStringUntil('\n');
+// Handle one complete command from the companion.
+void processSerialCommand(String command, uint32_t current_time) {
         command.trim();
-        
-        uint32_t current_time = millis();
         last_command_time = current_time;  // Update command timestamp
         python_control_mode = true;        // Ensure Python control is active
 
@@ -1102,7 +1278,8 @@ void handleSerialCommands() {
         } else if (command.startsWith("MEDIA_ART_RGB:")) {
             int final_separator = command.lastIndexOf(':');
             size_t incoming_size = command.substring(final_separator + 1).toInt();
-            if (incoming_size == MEDIA_ART_RGB_BYTES) {
+            if (command == "MEDIA_ART_RGB:112:112:37632" &&
+                incoming_size == MEDIA_ART_RGB_BYTES) {
                 media_art_v2.abort();
                 media_art_receiving_buffer = 1 - media_art_active_buffer;
                 media_art_expected = incoming_size;
@@ -1200,6 +1377,10 @@ void handleSerialCommands() {
             if (parseCompanionStats(command, &cpu, &ram, &wpm)) {
                 last_companion_stats_ms = current_time;
                 updateSystemStats(cpu, ram, wpm);
+                if (companion_backlight_waiting_for_stats) {
+                    companion_backlight_waiting_for_stats = false;
+                    digitalWrite(TFT_BL, HIGH);
+                }
             }
             
         } else if (command.startsWith("TIME:")) {
@@ -1324,7 +1505,57 @@ void handleSerialCommands() {
             saveSettings();  // Save defaults to EEPROM
             Serial.println("🔄 Settings reset and saved");
         }
+}
+
+void handleSerialCommands() {
+    if (serial_rx_task) {
+        SerialDrainBudget budget(millis(), SERIAL_DRAIN_MAX_MS,
+                                 SERIAL_DRAIN_MAX_BYTES, SERIAL_DRAIN_MAX_LINES);
+        SerialRxEvent event;
+        while (uxQueueMessagesWaiting(serial_rx_queue) && budget.canRead(millis()) &&
+               xQueueReceive(serial_rx_queue, &event, 0) == pdTRUE) {
+            budget.byteRead(event.length + 1);
+            budget.lineRead();
+            if (event.kind == SerialRxKind::Line) {
+                processSerialCommand(String(reinterpret_cast<const char *>(event.data)),
+                                     millis());
+            } else if (event.kind == SerialRxKind::Raw) {
+                consumeQueuedMediaArtwork(event.data, event.length);
+            } else if (event.kind == SerialRxKind::RawTimeout) {
+                if (media_art_receiving) {
+                    media_art_receiving = false;
+                    Serial.println("MEDIA_ART_ERROR");
+                }
+            } else if (media_art_v2.active) {
+                failMediaArt2(media_art_v2.id,
+                              event.kind == SerialRxKind::Overflow ?
+                              "art2_line" : "art2_stall");
+            }
+        }
+        serviceMediaArt2Timeout(millis(), !serialRxIdle());
+        return;
     }
+    if (serviceMediaArtworkReceive()) return;
+    auto &input = serialInput();
+
+    // Drain a short burst before Player rendering, but return to LVGL and
+    // touch within a fixed budget. A partial line is kept for the next loop.
+    drainSerialLines(
+        input, serial_line_receiver, []() { return millis(); },
+        [](const char *line) {
+            processSerialCommand(String(line), millis());
+            return !media_art_receiving;  // The following bytes are legacy raw RGB.
+        },
+        []() {
+            if (media_art_v2.active) failMediaArt2(media_art_v2.id, "art2_line");
+        },
+        SERIAL_DRAIN_MAX_MS, SERIAL_DRAIN_MAX_BYTES, SERIAL_DRAIN_MAX_LINES);
+    bool bytes_waiting = input.available() > 0;
+    if (!bytes_waiting && serial_line_receiver.expire(millis(), SERIAL_LINE_STALL_MS) &&
+        media_art_v2.active) {
+        failMediaArt2(media_art_v2.id, "art2_stall");
+    }
+    serviceMediaArt2Timeout(millis(), bytes_waiting || serial_line_receiver.hasPartial());
 }
 
 // Sprite management functions
@@ -1706,6 +1937,7 @@ void setup() {
     Serial.setTimeout(10);
     if (!probeForCompanion()) enterCompanionDeepSleep(false);
     last_companion_stats_ms = millis();
+    startSerialRxTask();
     Serial.println("🐱 Bongo Cat with Sprites Starting...");
 
     // Register once; the measurement itself stays disabled until BongoDesk
@@ -2941,7 +3173,8 @@ void loop() {
     
     uint32_t current_time = millis();
     if (companionIdleExpired(current_time, last_companion_stats_ms) &&
-        !media_art_receiving && !media_art_v2.active && Serial.available() == 0) {
+        !media_art_receiving && !media_art_v2.active &&
+        serialRxIdle()) {
         enterCompanionDeepSleep(true);
     }
     reportDeviceStatus(current_time);

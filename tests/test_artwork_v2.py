@@ -13,7 +13,8 @@ from unittest.mock import Mock, patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "companion"))
 
-from engine import ARTWORK_CHUNK_BYTES, ARTWORK_V2_FRAME_BYTES, BongoCatEngine  # noqa: E402
+from engine import (ARTWORK_CHUNK_BYTES, ARTWORK_V2_FRAME_BYTES,
+                    ARTWORK_V2_RETRY_DELAYS_SECONDS, BongoCatEngine)  # noqa: E402
 from media_bridge import MediaSnapshot  # noqa: E402
 
 
@@ -34,6 +35,8 @@ class ArtworkV2Tests(unittest.TestCase):
         engine._artwork_v2_next_id = 0
         engine._artwork_v2_pending_id = None
         engine._artwork_v2_ack_result = None
+        engine._artwork_v2_error_reason = None
+        engine._artwork_retry = None
         engine._last_artwork_transfer_at = 0.0
         engine._last_media_meta = None
         engine._last_media_state = None
@@ -322,7 +325,7 @@ class ArtworkV2Tests(unittest.TestCase):
         self.assertFalse(reader.is_alive())
         engine.media_bridge.control.assert_called_once_with("NEXT")
 
-    def test_device_rejection_stops_frame_and_retries_once(self):
+    def test_device_rejection_stops_frame_and_schedules_delayed_retry(self):
         engine = self.make_engine()
         engine.baudrate = 230400
         artwork = bytes([5, 6, 7]) * (112 * 112)
@@ -342,8 +345,128 @@ class ArtworkV2Tests(unittest.TestCase):
         self.assertEqual(sum(p.startswith(b"MEDIA_ART2_CHUNK:") for p in writes), 1)
         self.assertEqual(b"".join(writes).count(b"MEDIA_ART2_CHUNK:"), 2)
         self.assertFalse(any(p.startswith(b"MEDIA_ART2_END:") for p in writes))
-        self.assertEqual(engine._artwork_queue.get_nowait(), ("song", artwork, 1))
+        self.assertEqual(engine._artwork_retry[1:4], ("song", artwork, 1))
+        self.assertIsNone(engine._take_due_artwork_v2_retry())
         self.assertFalse(engine._artwork_transfer_active.is_set())
+
+    def test_fast_and_slow_failures_recover_from_cached_cover(self):
+        engine = self.make_engine()
+        engine.baudrate = 230400
+        engine._artwork_v2_supported = True
+        artwork = bytes([5, 6, 7]) * (112 * 112)
+        engine._on_media_update(self.snapshot("song"), None)
+        clock = [100.0]
+        attempts = []
+
+        def write(payload):
+            if payload.startswith(b"MEDIA_ART2_BEGIN:"):
+                attempts.append(int(payload.split(b":", 2)[1]))
+            if payload.startswith(b"MEDIA_ART2_CHUNK:") and len(attempts) == 1:
+                engine._artwork_v2_ack_result = False
+                engine._artwork_ack.set()
+            if payload.startswith(b"MEDIA_ART2_END:"):
+                engine._artwork_v2_ack_result = len(attempts) >= 3
+                engine._artwork_ack.set()
+            return len(payload)
+
+        engine.serial_conn.write.side_effect = write
+        with patch("engine.time.monotonic", side_effect=lambda: clock[0]), \
+             patch("engine.time.sleep"), patch("engine.diagnostics.event") as event:
+            engine._send_artwork_v2(engine.serial_conn, "song", artwork, 0)
+            self.assertIsNone(engine._take_due_artwork_v2_retry())
+            clock[0] += ARTWORK_V2_RETRY_DELAYS_SECONDS[0]
+            self.assertEqual(engine._take_due_artwork_v2_retry(),
+                             ("song", artwork, 1))
+            engine._send_artwork_v2(engine.serial_conn, "song", artwork, 1)
+            self.assertIsNone(engine._take_due_artwork_v2_retry())
+            clock[0] += ARTWORK_V2_RETRY_DELAYS_SECONDS[1]
+            self.assertEqual(engine._take_due_artwork_v2_retry(),
+                             ("song", artwork, 2))
+            engine._send_artwork_v2(engine.serial_conn, "song", artwork, 2)
+
+        self.assertEqual(attempts, [1, 2, 3])
+        self.assertIsNone(engine._artwork_retry)
+        self.assertTrue(any(call.args == ("ART_RETRY",) and
+                            call.kwargs.get("attempt") == 3
+                            for call in event.call_args_list))
+
+    def test_retries_are_bounded_and_new_track_cancels_pending_cover(self):
+        engine = self.make_engine()
+        artwork = bytes([5, 6, 7]) * (112 * 112)
+        engine._on_media_update(self.snapshot("song"), None)
+        clock = [100.0]
+        engine.serial_conn.write.side_effect = lambda payload: len(payload)
+        engine._artwork_ack.wait = Mock(return_value=False)
+        with patch("engine.time.monotonic", side_effect=lambda: clock[0]), \
+             patch("engine.time.sleep"), patch("engine.diagnostics.event") as event:
+            engine._send_artwork_v2(engine.serial_conn, "song", artwork, 0)
+            self.assertIsNone(engine._take_due_artwork_v2_retry())
+            for attempt, delay in enumerate(ARTWORK_V2_RETRY_DELAYS_SECONDS, 1):
+                clock[0] += delay
+                self.assertEqual(engine._take_due_artwork_v2_retry(),
+                                 ("song", artwork, attempt))
+                engine._send_artwork_v2(engine.serial_conn, "song", artwork,
+                                        attempt)
+            self.assertIsNone(engine._artwork_retry)
+            self.assertTrue(any(call.args == ("ART_RETRY",) and
+                                call.kwargs.get("reason") == "retry_exhausted"
+                                for call in event.call_args_list))
+
+            engine._schedule_artwork_v2_retry(engine.serial_conn, "song", artwork,
+                                               0, engine._artwork_v2_epoch)
+            engine._on_media_update(self.snapshot("new song"), None)
+            clock[0] += 100
+            self.assertIsNone(engine._take_due_artwork_v2_retry())
+
+    def test_resync_and_old_ack_cancel_delayed_retry(self):
+        engine = self.make_engine()
+        artwork = bytes([5, 6, 7]) * (112 * 112)
+        engine._on_media_update(self.snapshot("song"), None)
+        engine._schedule_artwork_v2_retry(engine.serial_conn, "song", artwork,
+                                           0, engine._artwork_v2_epoch)
+        engine._artwork_v2_pending_id = 9
+        engine._artwork_ack.clear()
+        replies = iter([b"MEDIA_ART2_REASON:8:art2_crc\n",
+                        b"MEDIA_ART2_OK:8\n", b"MEDIA_ART2_REASON:9:art2_offset\n",
+                        b"MEDIA_ART2_ERROR:9\n"])
+
+        def read_reply():
+            reply = next(replies)
+            if reply.startswith(b"MEDIA_ART2_ERROR:"):
+                engine.running = False
+            return reply
+
+        engine.serial_conn.readline.side_effect = read_reply
+        with patch("engine.diagnostics.event") as event:
+            engine._serial_reader_loop()
+        self.assertFalse(engine._artwork_v2_ack_result)
+        self.assertEqual(engine._artwork_v2_error_reason, "art2_offset")
+        event.assert_any_call("ART_ACK", result="failure", reason="art2_offset",
+                              protocol="art2")
+        engine.running = True
+        engine.send_initial_sync = Mock()
+        engine._resync_device()
+        self.assertIsNone(engine._artwork_retry)
+
+    def test_sender_runs_due_retry_without_another_media_callback(self):
+        engine = self.make_engine()
+        engine._artwork_v2_supported = True
+        artwork = bytes([5, 6, 7]) * (112 * 112)
+        engine._on_media_update(self.snapshot("song"), None)
+        engine._artwork_retry = (engine.serial_conn, "song", artwork, 2,
+                                 engine._artwork_v2_epoch, 100.0)
+        sent = []
+
+        def send(conn, track_key, cover, attempt):
+            sent.append((conn, track_key, cover, attempt))
+            engine.running = False
+
+        engine._send_artwork_v2 = Mock(side_effect=send)
+        with patch("engine.time.monotonic", return_value=100.0), \
+             patch("engine.diagnostics.event"):
+            engine._artwork_sender_loop()
+        self.assertEqual(sent, [(engine.serial_conn, "song", artwork, 2)])
+        self.assertIsNone(engine._artwork_retry)
 
     def test_resync_disables_capability_and_late_ack_cannot_complete_new_id(self):
         engine = self.make_engine()
