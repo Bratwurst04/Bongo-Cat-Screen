@@ -1,5 +1,6 @@
 # -*- mode: python ; coding: utf-8 -*-
-datas = [('default_config.json', '.'), ('settings.ps1', '.')]
+datas = [('default_config.json', '.'), ('settings.ps1', '.'),
+         ('settings-view.ps1', '.'), ('ui/bongo.png', 'ui')]
 binaries = []
 hiddenimports = []
 

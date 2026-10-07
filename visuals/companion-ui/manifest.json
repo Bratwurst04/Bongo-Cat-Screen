@@ -1,0 +1,217 @@
+{
+  "date": "2026-10-07",
+  "classification": "native WinForms renders with isolated fixture data; not the installed app",
+  "concept": "concept.png is a drawn design proposal, not a native render",
+  "before": "before/ and comparison images preserve the first UI pass (candidate EC064E26…); these are not current renders",
+  "contact_sheet": "contact_sheet.png",
+  "source_sha256": {
+    "companion/settings.ps1": "22d6c1b41d10f504e4d105160d20d5f3da3457685793da4e51dd779ef11dbc06",
+    "companion/settings-view.ps1": "7458962ef27921e0bd1d593f0dbaad8e6229f4c43b9185b4985408521f828088",
+    "companion/BongoDeskSpotify.spec": "e412b3126e3ae04620ca14e03e9a3337abfa71989e9771e8e6925c6463d8b115",
+    "tests/test_settings_ui.ps1": "fa45909faab2b3289e3eb034101df33fd98916fa24ca850fc0855e561c989aeb",
+    "assets/cat-sprites/body/standardbody1.png": "004875a5016576b2e5fbe7eff0f173a53bffea69006a83ab7e763cfdcc5be60a",
+    "assets/cat-sprites/face/stock_face.png": "7338be958b1bad87d09e52de0d2a421847578671048fc159472100a734a117f8",
+    "assets/cat-sprites/table/table1.png": "e8dd649ea1ae6cfd8045463ba044f673b6e97d59f1db605944cf70570ec0796c",
+    "assets/cat-sprites/paws/twopawsup.png": "2b0d635a56ea9ae3605cb598fc653ded73dfde1feb5cf7f26d6fdf27691cb661"
+  },
+  "views": [
+    {
+      "file": "comparison-overview.png",
+      "dimensions": [
+        1280,
+        555
+      ],
+      "sha256": "0e6080e52e2ae4dc790ef861f08dd9485d852a2322bd56c33356b2d07d15883e"
+    },
+    {
+      "file": "comparison-settings.png",
+      "dimensions": [
+        1280,
+        555
+      ],
+      "sha256": "8ba3e10ddd50cd6fb20a525c38d351a1da947756ddf971a024884722a518bcd7"
+    },
+    {
+      "file": "concept.png",
+      "dimensions": [
+        960,
+        700
+      ],
+      "sha256": "a55e22889e51250e0e5c74f6a3ad8cc3a027c68519490b0fb2af247405988855"
+    },
+    {
+      "file": "connect-waiting.png",
+      "dimensions": [
+        976,
+        779
+      ],
+      "sha256": "5ba3eed151797272152e00edbf3fa6708ed2b756a13af9cad2c11c1212abcc57"
+    },
+    {
+      "file": "contact_sheet.png",
+      "dimensions": [
+        1280,
+        1600
+      ],
+      "sha256": "98f875d15ec1f98255f3defebec2495ba1bb456ee383b3f539a15c4f20d7a006"
+    },
+    {
+      "file": "diagnostics-action.png",
+      "dimensions": [
+        976,
+        779
+      ],
+      "sha256": "498119e6d27c0dcf13839bf16c79fc44a4ad60b3fbe339096c56b45aec90570a"
+    },
+    {
+      "file": "diagnostics-long-screen.png",
+      "dimensions": [
+        840,
+        650
+      ],
+      "sha256": "b34476a02ec32507bdec283a4c8cdd6723e576bcf1b9e8336f3ea16075dec2d2"
+    },
+    {
+      "file": "diagnostics-long.png",
+      "dimensions": [
+        840,
+        650
+      ],
+      "sha256": "c8ce6e56cea208790922876768c00ab959c4450b00e25b39cfa11e67360379ca"
+    },
+    {
+      "file": "diagnostics-screen.png",
+      "dimensions": [
+        976,
+        779
+      ],
+      "sha256": "4f407a35df60c98dd5bb85f2bd37c3373c9a4fc2696b0f02d207ddc9418a3897"
+    },
+    {
+      "file": "diagnostics.png",
+      "dimensions": [
+        976,
+        779
+      ],
+      "sha256": "5e1ddb424c3c56ddca2afcd2fbb43c569bae39a3106ae1da451b911e3660b866"
+    },
+    {
+      "file": "disconnected.png",
+      "dimensions": [
+        976,
+        779
+      ],
+      "sha256": "861a4c911c20ccd441532e996ad2b67159d44e81dd2e0fa7c63cdb6a5bc8e81b"
+    },
+    {
+      "file": "local-with-cooldown.png",
+      "dimensions": [
+        840,
+        650
+      ],
+      "sha256": "abe85420e7f10feb386e2f9d10a40d8de9b69f491ffef1b4c12c104d01fb075c"
+    },
+    {
+      "file": "overview-scale150.png",
+      "dimensions": [
+        1456,
+        1039
+      ],
+      "sha256": "bedd02167d2e84e781306b4edd3429962ae0fd95e168c1e7e530ab9210517eb3"
+    },
+    {
+      "file": "overview-unsaved.png",
+      "dimensions": [
+        976,
+        779
+      ],
+      "sha256": "0bc0016db3610e53333c96e8d126601ea1fe87ae3f01d746a7a5567d631ebd48"
+    },
+    {
+      "file": "overview.png",
+      "dimensions": [
+        976,
+        779
+      ],
+      "sha256": "866bbe0a8ac590f263a54514bfcf34a1bf0640dd3b80fa260060431fe0d0d041"
+    },
+    {
+      "file": "settings-advanced-scale150.png",
+      "dimensions": [
+        1456,
+        1039
+      ],
+      "sha256": "87cbb8a576729f38beed3940919803c1f7565cd006e0a6cc6f7adf4ccd5d8ccf"
+    },
+    {
+      "file": "settings-advanced.png",
+      "dimensions": [
+        976,
+        779
+      ],
+      "sha256": "6c3e8183899c784d6a00dbb813ca4f81591ac17bc42e6acc934e9e774eee53af"
+    },
+    {
+      "file": "settings-artwork.png",
+      "dimensions": [
+        976,
+        779
+      ],
+      "sha256": "1ea7c0d9dd120e81db6985f278f023b9149794bfa9d7e336d9520185279fd75c"
+    },
+    {
+      "file": "settings-minimum.png",
+      "dimensions": [
+        840,
+        650
+      ],
+      "sha256": "f8e99d08f209c808f6c9749c3eb235b286ce6c5f5e497eed8f77ab5bfc4d42c4"
+    },
+    {
+      "file": "settings-scale150.png",
+      "dimensions": [
+        1456,
+        1039
+      ],
+      "sha256": "543da58a543ed53fd6f89ba0c61e0f560abae560f0445f374f43edd0fbd414ef"
+    },
+    {
+      "file": "settings.png",
+      "dimensions": [
+        976,
+        779
+      ],
+      "sha256": "e8e25defe378f52fac2b5fe84ef213e8adafa7556a2b02e35f5b1f3155549f39"
+    },
+    {
+      "file": "stale-status.png",
+      "dimensions": [
+        976,
+        779
+      ],
+      "sha256": "3b708587a3abe039cbc499e1cc735c5351944ed0e35eb0136fb091fc4dafb22b"
+    },
+    {
+      "file": "validation-error.png",
+      "dimensions": [
+        976,
+        779
+      ],
+      "sha256": "75dfddd28d19806991e01e1a6f7d716b82af6878f4291eafc1f9fc9268939cb5"
+    },
+    {
+      "file": "validation-hidden-field.png",
+      "dimensions": [
+        976,
+        779
+      ],
+      "sha256": "7f99cfbed8cc8ed9cd746079e0152a076233d5392b24d2da80bd919f4592b7f3"
+    }
+  ],
+  "limits": [
+    "No real serial, Spotify, installed EXE, or user config was accessed by the UI fixture test.",
+    "Scale150 renders enlarge both fonts and geometry; they are not a monitor/DPI transition test.",
+    "DrawToBitmap does not verify compositor, real monitor appearance, screen readers or human keyboard use.",
+    "Sleep and wake are not exposed as explicit states by desktop_status.json."
+  ]
+}

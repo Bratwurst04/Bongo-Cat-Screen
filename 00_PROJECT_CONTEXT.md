@@ -108,6 +108,17 @@ Inställningsfönstret på Windows ska inte byggas om utan ett konkret behov.
 
 ## Aktuellt fokus
 
+Sedan 2026-10-07 är en UI-ombyggnad av Windows-companionen uttryckligen
+beställd: matcha skärmens stil och förbättra informationsstrukturen. Det
+uppdraget ersätter de äldre begränsningarna för inställningsfönstret ovan.
+Den aktiva WinForms-vägen `companion/settings.ps1` är nu ombyggd, granskad
+med Lead och installerad efter användarens godkännande. Användaren har öppnat
+vyn via tray-ikonen, provat sidbyte och avancerade inställningar samt godkänt
+utseendet. Sparning har verifierats med omedelbar återläsning i motorn och
+Connect är återställt till 15 s. Motor och tvåkärnig firmware är oförändrade;
+detaljer och provens begränsningar finns i `01_CURRENT_STATE.md`. Nedan följer
+den tidigare Fokus- och firmwarekontexten.
+
 Källkoden har en gemensam panelmeny för Bongo, Spelare och den lokala
 Fokus-timern. Menyn öppnas med långtryck från alla tre paneler och behåller
 de befintliga mediagesterna när den är stängd. Tidigare lokalt flashad Fokus v1
