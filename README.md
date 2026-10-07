@@ -8,39 +8,48 @@ omslag, vinyl och DJ-katt.
 > [!Important]
 > Vibe-coded project made by me
 
-## Aktuell release: app-v1.2 (2026-10-03)
+## Aktuell release: app-v1.3 (2026-10-07)
 
-Ladda ned den [kompletta firmwarebilden](release/BongoDesk-app-v1.2-2026-10-03-full-0x0.bin)
-och dess [SHA-256-fil](release/BongoDesk-app-v1.2-2026-10-03-full-0x0.sha256)
-för flashning vid `0x0`. Bildens SHA-256 är
-`B25028C1995AEFA81C99123133FA0A24898D2DA264DBBF2CDA9A2DBA3345B095`.
-Den innehåller bootloader vid `0x1000`, partitionstabell vid `0x8000`,
-`boot_app0` vid `0xe000` och appen vid `0x10000`. Appens SHA-256 är
-`F0F7EC82E28AB30607EC59A8409B4B4876578D869403753C09DD33F3747FCFEF`:
-exakt den appbinär som flashades på COM6 och provades den 2026-10-02.
-Hela den sammanslagna bilden verifierades mot byggfilerna och flashades sedan
-på COM6 från `0x0` den 2026-10-03. Esptool verifierade bilden i flash. Den
-tidigare NVS-partitionen säkerhetskopierades, återställdes och lästes tillbaka
-med identisk SHA-256. Användaren bekräftade normalt UI utan ljusblixt.
-Detaljer finns i [verifieringsrapporten](release/app-v1.2-verification.md).
+App-v1.3 parar **230400 baud i drift** med **115200 baud vid flashning**.
+Den innehåller snabbare omslagsöverföring, större Spelare med stabil tidslinje,
+UART-mottagning på ESP32:s andra kärna och companionens nya Översikt,
+Inställningar och Diagnostik. Bongo, Fokus, gester och deep sleep finns kvar.
 
-Ladda ned [Windows companion](release/BongoDeskSpotify-app-v1.2-2026-10-03.exe)
-och dess [SHA-256-fil](release/BongoDeskSpotify-app-v1.2-2026-10-03.sha256).
-EXE:ns SHA-256 är `71756E01987D8A84C76DDCF83B76E9C512A7B5B2E09439DB94D10E36109ABF9F`.
-Den är byteidentisk med den installerade versionen som visade aktuell låt,
-rätt omslag och fungerande play/paus och NEXT med lokal Spotify på datorn,
-även efter flera snabba låtbyten. EXE:n är osignerad och innehåller inga
-personliga inställningar eller Spotify-token. Båda delarna behövs för
-skärmens mediedata. Se [release notes](release/app-v1.2-notes.md) för
-status vid publiceringen och [verifieringsrapporten](release/app-v1.2-verification.md)
-för det senare fullbildsprovet och återstående mätningar.
+| Nedladdning | Användning | SHA-256 |
+| --- | --- | --- |
+| [Appfil](release/BongoDesk-app-v1.3-2026-10-07-app-0x10000.bin) · [kontrollsumma](release/BongoDesk-app-v1.3-2026-10-07-app-0x10000.sha256) | Uppgradering vid `0x10000`, bevarar NVS med kompatibel layout | `6A5366C1E56E1137AEBC08E6675CBB12E1A49AE106D2DBD03B30132C6A7D2302` |
+| [Fullbild](release/BongoDesk-app-v1.3-2026-10-07-full-0x0.bin) · [kontrollsumma](release/BongoDesk-app-v1.3-2026-10-07-full-0x0.sha256) | Komplett installation vid `0x0`, skriver över NVS | `FE44F339D85084B9F9028AAE3146A12E78D3C0F87161425BB01B3989A7CAF491` |
+| [Windows companion](release/BongoDeskSpotify-app-v1.3-2026-10-07.exe) · [kontrollsumma](release/BongoDeskSpotify-app-v1.3-2026-10-07.sha256) | Windows, osignerad | `5609B99DAA1321ECB78B6384F1D5271DB23DBBF1BD6A2E2BBB49D6FD7AFEFD1D` |
 
-`app-v1.1` och panelmenyreleasen från 2026-09-24 finns kvar som historiska
-filer. En fullständig flashning från `0x0` raderar enhetens tidigare NVS-värden,
-bland annat sparade fokus- och pausval. Ta backup av NVS före fullbildsflash;
-i provet 2026-10-03 återställdes backupen före normal start.
+Appfilen är byteidentisk med den fysiskt provade appen. Minst fem omslag
+lyckades på första försöket på cirka 5,0–5,6 sekunder; användaren bekräftade
+rätt sista omslag efter snabba byten och jämn Spelare/touch under laddning.
+Companionens installerade releasebygge återanslöt på första försöket och
+fick en lyckad omslagskvittens efter 4859 ms sändning. UI-resurserna är samma
+som i det redan visuellt provade bygget. Fullbildens fyra segment och mellanrum är verifierade i fil; **den nya
+fullbilden har inte flashats från `0x0`**. Sömn/väckning på samma firmware
+har kvalitativ användarbekräftelse. Exakta tider, ström och en fullständig
+ljusblixtkontroll är inte uppmätta på v1.3-paret.
 
-### Lokalt utvecklingsprov 2026-10-05
+**Befintlig companionprofil:** avsluta appen och ändra endast
+`connection.baudrate` till `230400` i `%APPDATA%\BongoCat\config.json`
+för v1.3-firmwaren. Ett uttryckligt gammalt 115200-värde bevaras automatiskt;
+det måste ändras vid denna uppgradering. Nya profiler får 230400 direkt.
+Övriga inställningar och Spotify-token återanvänds och ingår inte i paketet.
+Se [flashinstruktioner](#flasha-från-windows), [companioninstruktioner](companion/README.md),
+[release notes](release/app-v1.3-notes.md) och [verifieringsrapport](release/app-v1.3-verification.md).
+
+### Föregående app-v1.2 (2026-10-03)
+
+[Fullbilden](release/BongoDesk-app-v1.2-2026-10-03-full-0x0.bin) och
+[companionen](release/BongoDeskSpotify-app-v1.2-2026-10-03.exe) finns kvar
+med sina kontrollsummor. Den äldre fullbilden flashades från `0x0` och
+verifierades den 2026-10-03; NVS återställdes från en byteverifierad backup.
+Se [v1.2-noteringarna](release/app-v1.2-notes.md) och
+[v1.2-verifieringen](release/app-v1.2-verification.md).
+Även `app-v1.1` och panelmenyreleasen från 2026-09-24 är bevarade.
+
+### Utvecklingshistorik 2026-10-05–06, före app-v1.3
 
 En senare artwork-v2-app med SHA-256
 `636AC267AEDCC4DF1B83693F5B4DCE41DE04C7EB37B8F3D2F3DDDF2740B85AB5`
@@ -109,9 +118,9 @@ Användaren bekräftade rätt omslag efter ungefär fem sekunder vid tre låtbyt
 och jämn Player-rörelse under laddningen, jämfört med tidigare 17–19 sekunder
 och korta frysningar. Snabba avbrott gav rätt sista låt/omslag utan äldre
 återkomst, och touch, paus, DJ, panelmeny och Fokus fungerade under laddning.
-Mörk sömn/deep wake med tvåkärneversionen är ännu inte testad och återstår
-före release; se [aktuell status](01_CURRENT_STATE.md).
-Den publicerade releasen är oförändrad.
+Sömn/väckning på tvåkärneversionen rapporterades kvalitativt fungera den
+2026-10-07; exakta tider och ström är omätta. Denna app ingår nu i app-v1.3;
+se [aktuell status](01_CURRENT_STATE.md).
 
 ## Föregående app-v1.1: firmware
 
@@ -497,45 +506,54 @@ inte den nya strömstyrningen eller `SYNC_REQUEST`.
 
 ## Flasha från Windows
 
-1. Ladda ned den aktuella `.bin`-filen och `.sha256`-filen till samma mapp.
-   Installera Python och esptool om de saknas: `py -m pip install esptool`.
-2. Stäng Bongo Cat companion via **Exit** i systemfältet och stäng eventuell
-   serialmonitor, så att porten är ledig. Hitta enhetens COM-port i
-   Enhetshanteraren; ersätt `COM6` nedan med dess faktiska port.
-3. Öppna PowerShell i nedladdningsmappen och kontrollera filen:
+1. Ladda ned rätt `.bin` och dess `.sha256`. Installera Python och esptool
+   om de saknas: `py -m pip install esptool`.
+2. Avsluta companionen med **Exit** i systemfältet och stäng serialmonitorer.
+   Hitta COM-porten i Enhetshanteraren; ersätt `COM6` nedan vid behov.
+3. Kontrollera filens SHA-256 mot tabellen ovan och `.sha256`-filen:
 
    ```powershell
-   Get-FileHash .\BongoDesk-app-v1.2-2026-10-03-full-0x0.bin -Algorithm SHA256
+   Get-FileHash .\BongoDesk-app-v1.3-2026-10-07-app-0x10000.bin -Algorithm SHA256
    ```
 
-   Hashen ska vara `B25028C1995AEFA81C99123133FA0A24898D2DA264DBBF2CDA9A2DBA3345B095`.
-4. Flasha **hela bilden från `0x0`**:
+4. **Uppgradering med samma partitionstabell:** flasha endast appen vid
+   `0x10000`. Det bevarar NVS, inklusive sparade Fokus- och temaval.
 
    ```powershell
-   py -m esptool --chip esp32 --port COM6 --baud 460800 write-flash 0x0 .\BongoDesk-app-v1.2-2026-10-03-full-0x0.bin
+   py -m esptool --chip esp32 --port COM6 --baud 115200 write-flash 0x10000 .\BongoDesk-app-v1.3-2026-10-07-app-0x10000.bin
    ```
 
-   Om anslutningen fastnar vid `Connecting`, håll **BOOT** nedtryckt och tryck
-   kort på **RESET/EN** vid behov. Släpp BOOT när chippet har identifierats och
-   skrivningen börjat. Vänta på verktygets skrivverifiering och omstart.
-5. Starta Windows companion igen. Den behövs för mediainformation,
-   Spotify-data, albumomslag och systemvärden; firmwaren hämtar inte dessa
-   uppgifter själv. Se [companion/README.md](companion/README.md) för
-   nedladdning, Spotify-koppling och körning från aktuell källkod.
+   **Komplett installation:** kontrollera fullbildens hash och flasha den vid
+   `0x0`. Den skriver över NVS i sitt adressintervall. Säkerhetskopiera NVS
+   före körning om inställningarna ska återställas. Detta v1.3-paket är
+   segmentverifierat i fil; fullbilden har inte provats genom en ny `0x0`-flash.
 
-En fullständig flashning skriver även över området för enhetens NVS-data i
-bildens adressintervall. Kontrollera COM-porten och filens hash före körning.
+   ```powershell
+   Get-FileHash .\BongoDesk-app-v1.3-2026-10-07-full-0x0.bin -Algorithm SHA256
+   py -m esptool --chip esp32 --port COM6 --baud 115200 write-flash 0x0 .\BongoDesk-app-v1.3-2026-10-07-full-0x0.bin
+   ```
+
+   Om anslutningen fastnar vid `Connecting`, håll **BOOT** och tryck kort på
+   **RESET/EN** vid behov. Släpp BOOT när skrivningen börjat. Vänta på
+   skrivverifieringen; släpp sedan BOOT och tryck RESET/EN om normal start behövs.
+5. Kontrollera att companionprofilen använder **230400** i drift och starta
+   v1.3-companionen. Den behövs för tid/statistik, media, omslag och väckning.
+   Flashhastigheten 115200 och driftshastigheten 230400 har olika uppgifter.
 
 ## Bygg från källkod
 
 ```powershell
-pio run -e esp32-024r-spotify
+pio run
+# Samma standardprofil, uttryckligen:
+pio run -e esp32-024r-spotify-fastserial
 ```
 
-Detta bygger appfilen `.pio/build/esp32-024r-spotify/firmware.bin`, som hör
-hemma vid `0x10000`. Den är inte samma fil som den sammanslagna
-`release/*-full-0x0.bin`, som flashas vid `0x0`. Bygginställningarna finns i
-`platformio.ini`. Visuella, simulerade förhandsbilder finns i `visuals/`.
+Appfilen `.pio/build/esp32-024r-spotify-fastserial/firmware.bin` använder
+230400 i drift och hör hemma vid `0x10000`. Den är inte en komplett
+`release/*-full-0x0.bin`. `platformio.ini` använder 115200 för uppladdning.
+Den äldre driftprofilen kan fortfarande byggas med
+`pio run -e esp32-024r-spotify`; använd då uttryckligt 115200 i companionprofilen.
+Simulerade förhandsbilder finns i `visuals/`.
 
 Personliga inställningar och Spotify-token ligger i `%APPDATA%\BongoCat`,
 utanför projektet, och ska inte läggas till i Git.

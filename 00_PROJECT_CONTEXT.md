@@ -130,7 +130,12 @@ observerat companion-bortfall med släckning/väckning samt fungerande panelbyte
 mediegester, DJ och albumomslag. Exakta signal- och väcktider samt faktisk
 strömförbrukning i deep sleep återstår före en eventuell release.
 
-Den senaste versionsmärkta flashbilden och kontrollsumman i `release/` hör
-till deep sleep-versionen `app-v1.1` och innehåller ännu inte Fokus.
+App-v1.3 är paketerad efter användarens releasebeställning med provad
+tvåkärnig firmware, snabbare Spelare och det nya companion-UI:t. Drift är
+230400 baud och flashning 115200; befintliga profiler migreras inte automatiskt.
+Companionens installations-/anslutningsprov är godkänt; Lead sköter
+publiceringen. App-v1.2 och äldre deep sleep-/panelmenyreleaser är bevarade;
+se `01_CURRENT_STATE.md`
+och `release/app-v1.3-verification.md` för aktuell verifieringsnivå.
 `README.md` beskriver flashning från adress `0x0` och skiljer den från
 appbinären som byggs och laddas vid `0x10000`.

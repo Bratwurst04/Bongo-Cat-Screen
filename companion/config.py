@@ -43,7 +43,7 @@ class ConfigManager:
             },
             "connection": {
                 "com_port": "AUTO",
-                "baudrate": 115200,
+                "baudrate": 230400,
                 "auto_reconnect": True,
                 "timeout_seconds": 5
             },

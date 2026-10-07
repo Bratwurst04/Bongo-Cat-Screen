@@ -1,8 +1,12 @@
 # Windows companion
 
-`BongoDeskSpotify` runs on Windows and sends system, typing, and media state to the ESP32 over serial. The engine runs on the main thread; the tray and settings UI run alongside it. The current `app-v1.2` [full flash image](../release/BongoDesk-app-v1.2-2026-10-03-full-0x0.bin) matches the [companion EXE](../release/BongoDeskSpotify-app-v1.2-2026-10-03.exe) below. Both are needed for media state and artwork. The complete image was also flashed from `0x0` on 2026-10-03 and verified; the saved NVS partition was restored and read back byte-for-byte before normal startup. The 2026-09-30 deep sleep release and 2026-09-24 panel menu release remain available separately.
+`BongoDeskSpotify` runs on Windows and sends system, typing, and media state to the ESP32 over serial. The engine runs on the main thread; the tray and settings UI run alongside it. App-v1.3 pairs **230400 runtime baud** with the [app-only firmware](../release/BongoDesk-app-v1.3-2026-10-07-app-0x10000.bin) or [full image](../release/BongoDesk-app-v1.3-2026-10-07-full-0x0.bin). Flashing stays at **115200 baud**. App-only preserves NVS with the same partition layout; the full image overwrites NVS and is segment-verified but has not been flashed from `0x0`. Earlier releases, including app-v1.2, remain separate. See [v1.3 notes](../release/app-v1.3-notes.md) and [verification](../release/app-v1.3-verification.md).
 
-## Installed native companion UI (2026-10-07)
+New profiles default to 230400. Existing explicit baud settings are preserved. To upgrade an existing 115200 profile to the v1.3 firmware, exit the companion and change only `connection.baudrate` to `230400` in `%APPDATA%\BongoCat\config.json`. Keep the other settings and Spotify authorization. The named firmware environment `esp32-024r-spotify` remains available for an explicit 115200 runtime pairing.
+
+The following dated installation/development sections describe earlier candidates. The v1.3 candidate changes only baud defaults and reuses the frozen UI and physically tested firmware; its installation result is recorded in the v1.3 verification report.
+
+## Earlier native companion UI installation (2026-10-07)
 
 The native settings window now has **Översikt**, **Inställningar** and **Diagnostik**, with dark Player/Focus surfaces, the existing pixel cat and Swedish text. It preserves the existing five numeric settings, Windows startup option and diagnostic actions. The active tray opening path still launches `settings.ps1`; presentation is dot-sourced from `settings-view.ps1`. Both scripts and `ui/bongo.png` are included in the ordinary PyInstaller spec. See [native fixture previews and UI notes](../visuals/companion-ui/README.md).
 
@@ -34,16 +38,16 @@ The source now keeps a local Windows Spotify session as the only metadata and to
 
 In a temporary source run, the user confirmed that play/pause, double-tap NEXT and triple-tap PREVIOUS changed Spotify on the PC while the display showed the correct title and cover. The log recorded incoming actions and successful Windows controls. After explicit approval, the rebuilt candidate `../dist/companion-2026-10-02-local-media-dev/BongoDeskSpotify.exe`, SHA-256 `71756E01987D8A84C76DDCF83B76E9C512A7B5B2E09439DB94D10E36109ABF9F`, was installed at the normal path. The previous EXE was saved and verified as `BongoDeskSpotify.backup-20261002-170933-2F5CA652.exe`. Two processes, COM6, cover ACKs and no later `SERIAL_LOST` were observed. On the installed build the user confirmed current title and cover, play/pause, and double-tap NEXT in Spotify and on the display. After several rapid track changes the user still saw the current song and correct cover; the log showed a successful cover ACK and no `SERIAL_LOST`. PREVIOUS was not separately retested after installation. All 34 companion tests, syntax compilation, whitespace check, and archive inspection passed. The same EXE is now packaged in `app-v1.2`.
 
-## Download the published app-v1.2 companion
+## Download app-v1.3 companion
 
-Download [BongoDeskSpotify-app-v1.2-2026-10-03.exe](../release/BongoDeskSpotify-app-v1.2-2026-10-03.exe) and its [SHA-256 file](../release/BongoDeskSpotify-app-v1.2-2026-10-03.sha256). The EXE hash is `71756E01987D8A84C76DDCF83B76E9C512A7B5B2E09439DB94D10E36109ABF9F`. It matched the locally installed and physically tested companion when `app-v1.2` was published. A newer development candidate is now installed locally; the published release files have not changed. This build is unsigned; check the hash before running it.
+Download [BongoDeskSpotify-app-v1.3-2026-10-07.exe](../release/BongoDeskSpotify-app-v1.3-2026-10-07.exe) and its [SHA-256 file](../release/BongoDeskSpotify-app-v1.3-2026-10-07.sha256). The EXE is 19,299,418 bytes with SHA-256 `5609B99DAA1321ECB78B6384F1D5271DB23DBBF1BD6A2E2BBB49D6FD7AFEFD1D`. It is byte-identical to the release candidate installed and hash-verified by Lead. Connection succeeded on attempt 1; a natural art2 cover upload took 4859 ms with a successful ACK 34 ms later. Config and the Windows Run entry stayed unchanged. No new visual UI walkthrough was performed; UI resources match the already visually tested build. This build is unsigned; check the hash before running it. Personal config, backups and OAuth tokens are excluded from the package.
 
 Exit any running Bongo Desk companion through its tray icon before double-clicking the new EXE. Only one instance can run at a time. The serial port defaults to `AUTO`; choose the ESP32's COM port in settings if needed. The older `release/BongoDeskSpotify.exe` is a legacy build and is not the current download.
 
 The app keeps settings and OAuth tokens in the current user's `%APPDATA%\BongoCat` folder. To connect your own Spotify account, create a Spotify developer app with redirect URI `http://127.0.0.1:43821/callback`, then run the downloaded EXE from PowerShell in its folder:
 
 ```powershell
-.\BongoDeskSpotify-app-v1.2-2026-10-03.exe --spotify-client-id YOUR_CLIENT_ID --link-spotify
+.\BongoDeskSpotify-app-v1.3-2026-10-07.exe --spotify-client-id YOUR_CLIENT_ID --link-spotify
 ```
 
 Complete authorization in the browser, then start the EXE normally. This uses Spotify's browser authorization flow and stores the token in your Windows profile; no token is included in the release. If Windows exposes a Spotify media session, the companion uses it; otherwise it can use the linked Spotify API account. A normal launch follows the user's autostart setting and may update the per-user Run entry to this EXE's location.
@@ -80,7 +84,7 @@ The local Windows Spotify session remains authoritative when it exists. An actua
 
 The stored `adaptive_total_429` counts actual Spotify Web API HTTP 429 responses and persists across restarts, including after they leave the rolling 24-hour display. On first upgrade it seeds from all surviving entries in the bounded legacy event list, including older entries that were not trimmed by a newer 429, or one known last response if that list is missing. Earlier history beyond those saved records may still be missing. Cached cooldown checks and manual resets do not increment it. Settings, local status, and the privacy-limited ZIP export show the registered total without credentials or song data.
 
-The default firmware profile stays at 115200 baud. The optional `esp32-024r-spotify-fastserial` profile and local companion config now run at 230400 for the paired runtime experiment described below; esptool flashing remains at 115200. Every 112×112 RGB888 cover is 37,632 bytes. The companion logs `ART_SENT duration_ms` and delayed metadata delivery, and flushes the latest text as soon as a raw frame finishes, before waiting for its acknowledgement.
+The pacing experiment initially kept the default profile at 115200 and used `esp32-024r-spotify-fastserial` for 230400. App-v1.3 makes fastserial the default and keeps flashing at 115200. Every 112×112 RGB888 cover is 37,632 bytes. The companion logs `ART_SENT duration_ms` and delayed metadata delivery, and flushes the latest text as soon as a raw frame finishes, before waiting for its acknowledgement.
 
 ### Previous installed development candidate (2026-10-04)
 

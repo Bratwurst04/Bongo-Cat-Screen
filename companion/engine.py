@@ -51,7 +51,7 @@ class BongoCatEngine:
         if self.config:
             conn_settings = self.config.get_connection_settings()
             self.port = conn_settings.get('com_port', 'AUTO')
-            self.baudrate = conn_settings.get('baudrate', 115200)
+            self.baudrate = conn_settings.get('baudrate', 230400)
             behavior_settings = self.config.get_behavior_settings()
             # CRITICAL FIX: Proper timeout configuration
             # idle_timeout = time to stop typing animation (quick response)
@@ -62,7 +62,7 @@ class BongoCatEngine:
             
         else:
             self.port = 'AUTO'
-            self.baudrate = 115200
+            self.baudrate = 230400
             self.idle_timeout = 1.0  # Original script value
             self.sleep_timeout = 60  # Default 1 minute sleep timeout when no config
             

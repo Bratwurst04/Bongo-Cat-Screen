@@ -1,5 +1,12 @@
 # Bongo Cat – Architecture Decisions
 
+## 2026-10-07 – Package app-v1.3 with matching runtime defaults
+
+- The user requested a Git commit and a new release after approving the installed native UI. Prepare app-v1.3 from the exact physically tested `6A5366C1…` firmware app and frozen UI, without rebuilding firmware or changing the art2 protocol/pacing. Lead handles the companion installation check and external release publication.
+- New companion profiles and engine fallback paths default to 230400, matching the fastserial release firmware. Existing explicit 115200 profiles are preserved without silent migration; upgrade instructions require changing only `connection.baudrate` when installing the new pair. Keep the named 115200 firmware environment available, select fastserial by default and use 115200 for flashing.
+- Supply both an app-only image at `0x10000` and a full raw image at `0x0`, with separate SHA-256 sidecars. App-only preserves NVS with a compatible partition layout; the full image overwrites NVS. Verify startup segments, FF gaps, partition MD5/app size and image checksums. File/segment verification of the new full image is distinct from physical testing of the reused app.
+- Rebuild companion separately for the changed defaults; verify embedded code/resources and isolated fresh/legacy profiles before Lead's installation test. Lead subsequently approved installation of `5609B99D…`, with unchanged config/Run entry, first-attempt serial connection and a natural 4859 ms art2 upload followed by a successful ACK 34 ms later. The release EXE is byte-identical to that candidate; no firmware flash or new visual walkthrough was required. Freeze the final EXE release copy only after that result. Preserve older release files and exclude personal config, credentials and backups. Keep qualitative sleep/wake and synthetic UI evidence distinct from exact timing/current, forced error recovery and real DPI/accessibility measurements.
+
 ## 2026-10-07 – Companion UI follows the display's visual identity
 
 - The user explicitly requested a UI overhaul, superseding earlier restrictions on Windows settings. Keep the active native WinForms entry point launched by `tray.py`; the old Tkinter path is not the installed settings view. Split everyday status, editable settings and advanced diagnostics into Overview, Settings and Diagnostics using dark Player/Focus surfaces, green accent, the existing pixel cat and Swedish copy.
