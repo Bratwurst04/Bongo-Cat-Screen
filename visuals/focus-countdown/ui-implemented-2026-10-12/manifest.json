@@ -1,0 +1,1614 @@
+{
+  "classification": "source-derived simulation, not a physical display test",
+  "display_pixels": [
+    240,
+    320
+  ],
+  "layout": {
+    "labels_xywh": {
+      "bongo_phase": [
+        171,
+        28,
+        64,
+        9
+      ],
+      "bongo_time": [
+        139,
+        44,
+        96,
+        17
+      ],
+      "player_phase": [
+        68,
+        15,
+        36,
+        11
+      ],
+      "player_time": [
+        109,
+        15,
+        48,
+        11
+      ],
+      "player_cue_time": [
+        96,
+        15,
+        48,
+        11
+      ],
+      "player_pause": [
+        163,
+        17,
+        7,
+        7
+      ],
+      "player_cue_pause": [
+        147,
+        17,
+        7,
+        7
+      ]
+    },
+    "colors": {
+      "bongo_phase": [
+        80,
+        88,
+        96
+      ],
+      "bongo_time": [
+        48,
+        56,
+        64
+      ],
+      "player_phase": [
+        30,
+        215,
+        96
+      ],
+      "player_time": [
+        230,
+        235,
+        239
+      ]
+    },
+    "max_text_widths": {
+      "bongo_phase": 64,
+      "bongo_time": 96,
+      "player_time": 46
+    },
+    "reserved_xywh": {
+      "bongo": [
+        [
+          5,
+          5,
+          144,
+          17
+        ],
+        [
+          5,
+          25,
+          144,
+          17
+        ],
+        [
+          5,
+          45,
+          128,
+          17
+        ]
+      ],
+      "player": [
+        [
+          0,
+          4,
+          240,
+          11
+        ],
+        [
+          34,
+          26,
+          172,
+          172
+        ],
+        [
+          85,
+          0,
+          70,
+          14
+        ]
+      ]
+    },
+    "numeric_line_height": 11,
+    "numeric_baseline": 1,
+    "overlap_checks_passed": true
+  },
+  "views": [
+    {
+      "id": "bongo_focus",
+      "name": "bongo_focus",
+      "file": "composed/bongo_focus.png",
+      "dimensions": [
+        240,
+        320
+      ],
+      "phase": "focus",
+      "time": "04:59",
+      "paused": false,
+      "compact_cue": false,
+      "theme": "green",
+      "glyph_boxes": [
+        [
+          196,
+          29,
+          6,
+          7
+        ],
+        [
+          204,
+          29,
+          6,
+          7
+        ],
+        [
+          211,
+          29,
+          7,
+          7
+        ],
+        [
+          220,
+          29,
+          6,
+          7
+        ],
+        [
+          228,
+          29,
+          6,
+          7
+        ],
+        [
+          157,
+          45,
+          12,
+          14
+        ],
+        [
+          171,
+          45,
+          14,
+          14
+        ],
+        [
+          193,
+          47,
+          4,
+          12
+        ],
+        [
+          205,
+          45,
+          12,
+          14
+        ],
+        [
+          221,
+          45,
+          12,
+          14
+        ]
+      ],
+      "sha256": "046070351311a8c135208dcc23604e2c1884cae9ae1262fc982824363af2fb5a"
+    },
+    {
+      "id": "player_focus",
+      "name": "player_focus",
+      "file": "composed/player_focus.png",
+      "dimensions": [
+        240,
+        320
+      ],
+      "phase": "focus",
+      "time": "04:59",
+      "paused": false,
+      "compact_cue": false,
+      "theme": "green",
+      "glyph_boxes": [
+        [
+          69,
+          17,
+          5,
+          7
+        ],
+        [
+          74,
+          17,
+          8,
+          7
+        ],
+        [
+          83,
+          17,
+          7,
+          7
+        ],
+        [
+          89,
+          17,
+          7,
+          7
+        ],
+        [
+          97,
+          17,
+          6,
+          7
+        ],
+        [
+          113,
+          15,
+          9,
+          10
+        ],
+        [
+          122,
+          15,
+          10,
+          10
+        ],
+        [
+          132,
+          17,
+          3,
+          8
+        ],
+        [
+          135,
+          15,
+          8,
+          10
+        ],
+        [
+          143,
+          15,
+          8,
+          10
+        ]
+      ],
+      "sha256": "1fa2a7e9875e8df0e02fe40db142219aeec3436479f3f9fb75d34567166d0ebe"
+    },
+    {
+      "id": "bongo_break",
+      "name": "bongo_break",
+      "file": "composed/bongo_break.png",
+      "dimensions": [
+        240,
+        320
+      ],
+      "phase": "break",
+      "time": "00:59",
+      "paused": false,
+      "compact_cue": false,
+      "theme": "green",
+      "glyph_boxes": [
+        [
+          204,
+          29,
+          6,
+          7
+        ],
+        [
+          212,
+          29,
+          6,
+          7
+        ],
+        [
+          220,
+          29,
+          6,
+          7
+        ],
+        [
+          228,
+          29,
+          6,
+          7
+        ],
+        [
+          157,
+          45,
+          12,
+          14
+        ],
+        [
+          173,
+          45,
+          12,
+          14
+        ],
+        [
+          193,
+          47,
+          4,
+          12
+        ],
+        [
+          205,
+          45,
+          12,
+          14
+        ],
+        [
+          221,
+          45,
+          12,
+          14
+        ]
+      ],
+      "sha256": "d44cb0aac767aebde0907e7198441b2156fc8bf6c225e520e7a5aa4b76bbdadc"
+    },
+    {
+      "id": "player_break",
+      "name": "player_break",
+      "file": "composed/player_break.png",
+      "dimensions": [
+        240,
+        320
+      ],
+      "phase": "break",
+      "time": "00:59",
+      "paused": false,
+      "compact_cue": false,
+      "theme": "green",
+      "glyph_boxes": [
+        [
+          73,
+          17,
+          6,
+          7
+        ],
+        [
+          78,
+          17,
+          9,
+          7
+        ],
+        [
+          86,
+          17,
+          7,
+          7
+        ],
+        [
+          94,
+          17,
+          6,
+          7
+        ],
+        [
+          114,
+          15,
+          9,
+          10
+        ],
+        [
+          123,
+          15,
+          9,
+          10
+        ],
+        [
+          132,
+          17,
+          3,
+          8
+        ],
+        [
+          135,
+          15,
+          8,
+          10
+        ],
+        [
+          143,
+          15,
+          8,
+          10
+        ]
+      ],
+      "sha256": "590f17704b25c2955f5d3fcf0b32e8707b19e8bbad148d0449c70d2ab02f46dd"
+    },
+    {
+      "id": "bongo_focus_paused",
+      "name": "bongo_focus_paused",
+      "file": "composed/bongo_focus_paused.png",
+      "dimensions": [
+        240,
+        320
+      ],
+      "phase": "focus",
+      "time": "04:31",
+      "paused": true,
+      "compact_cue": false,
+      "theme": "green",
+      "glyph_boxes": [
+        [
+          172,
+          29,
+          6,
+          7
+        ],
+        [
+          180,
+          29,
+          6,
+          7
+        ],
+        [
+          187,
+          29,
+          7,
+          7
+        ],
+        [
+          196,
+          29,
+          6,
+          7
+        ],
+        [
+          204,
+          29,
+          6,
+          7
+        ],
+        [
+          211,
+          28,
+          1,
+          1
+        ],
+        [
+          222,
+          29,
+          2,
+          7
+        ],
+        [
+          230,
+          29,
+          2,
+          7
+        ],
+        [
+          157,
+          45,
+          12,
+          14
+        ],
+        [
+          171,
+          45,
+          14,
+          14
+        ],
+        [
+          193,
+          47,
+          4,
+          12
+        ],
+        [
+          205,
+          45,
+          12,
+          14
+        ],
+        [
+          221,
+          45,
+          12,
+          14
+        ]
+      ],
+      "sha256": "6858f401a0ddfe4423cfbd34f4cfb94f4f6b1ba564809f52b814419816f6da76"
+    },
+    {
+      "id": "player_focus_paused",
+      "name": "player_focus_paused",
+      "file": "composed/player_focus_paused.png",
+      "dimensions": [
+        240,
+        320
+      ],
+      "phase": "focus",
+      "time": "04:31",
+      "paused": true,
+      "compact_cue": false,
+      "theme": "green",
+      "glyph_boxes": [
+        [
+          69,
+          17,
+          5,
+          7
+        ],
+        [
+          74,
+          17,
+          8,
+          7
+        ],
+        [
+          83,
+          17,
+          7,
+          7
+        ],
+        [
+          89,
+          17,
+          7,
+          7
+        ],
+        [
+          97,
+          17,
+          6,
+          7
+        ],
+        [
+          115,
+          15,
+          9,
+          10
+        ],
+        [
+          124,
+          15,
+          10,
+          10
+        ],
+        [
+          134,
+          17,
+          3,
+          8
+        ],
+        [
+          137,
+          15,
+          8,
+          10
+        ],
+        [
+          145,
+          15,
+          4,
+          10
+        ],
+        [
+          163,
+          17,
+          2,
+          7
+        ],
+        [
+          168,
+          17,
+          2,
+          7
+        ]
+      ],
+      "sha256": "702a8433719c1080881205660a83491ba6ee22f13a38059dd000f6c528432202"
+    },
+    {
+      "id": "bongo_break_paused",
+      "name": "bongo_break_paused",
+      "file": "composed/bongo_break_paused.png",
+      "dimensions": [
+        240,
+        320
+      ],
+      "phase": "break",
+      "time": "00:42",
+      "paused": true,
+      "compact_cue": false,
+      "theme": "green",
+      "glyph_boxes": [
+        [
+          180,
+          29,
+          6,
+          7
+        ],
+        [
+          188,
+          29,
+          6,
+          7
+        ],
+        [
+          196,
+          29,
+          6,
+          7
+        ],
+        [
+          204,
+          29,
+          6,
+          7
+        ],
+        [
+          211,
+          28,
+          1,
+          1
+        ],
+        [
+          222,
+          29,
+          2,
+          7
+        ],
+        [
+          230,
+          29,
+          2,
+          7
+        ],
+        [
+          157,
+          45,
+          12,
+          14
+        ],
+        [
+          173,
+          45,
+          12,
+          14
+        ],
+        [
+          193,
+          47,
+          4,
+          12
+        ],
+        [
+          203,
+          45,
+          14,
+          14
+        ],
+        [
+          221,
+          45,
+          12,
+          14
+        ]
+      ],
+      "sha256": "047b4927feee9e0d556be929068cf6902597bc022a03426973e065b6afaa3fe0"
+    },
+    {
+      "id": "player_break_paused",
+      "name": "player_break_paused",
+      "file": "composed/player_break_paused.png",
+      "dimensions": [
+        240,
+        320
+      ],
+      "phase": "break",
+      "time": "00:42",
+      "paused": true,
+      "compact_cue": false,
+      "theme": "green",
+      "glyph_boxes": [
+        [
+          73,
+          17,
+          6,
+          7
+        ],
+        [
+          78,
+          17,
+          9,
+          7
+        ],
+        [
+          86,
+          17,
+          7,
+          7
+        ],
+        [
+          94,
+          17,
+          6,
+          7
+        ],
+        [
+          114,
+          15,
+          9,
+          10
+        ],
+        [
+          123,
+          15,
+          9,
+          10
+        ],
+        [
+          132,
+          17,
+          3,
+          8
+        ],
+        [
+          135,
+          15,
+          10,
+          10
+        ],
+        [
+          144,
+          15,
+          8,
+          10
+        ],
+        [
+          163,
+          17,
+          2,
+          7
+        ],
+        [
+          168,
+          17,
+          2,
+          7
+        ]
+      ],
+      "sha256": "6b827e554afa4503b3f35ddb5014bc68c9a93370a50d70f720c9c5e62ba632c6"
+    },
+    {
+      "id": "bongo_long_paused",
+      "name": "bongo_long_paused",
+      "file": "composed/bongo_long_paused.png",
+      "dimensions": [
+        240,
+        320
+      ],
+      "phase": "focus",
+      "time": "120:00",
+      "paused": true,
+      "compact_cue": false,
+      "theme": "green",
+      "glyph_boxes": [
+        [
+          172,
+          29,
+          6,
+          7
+        ],
+        [
+          180,
+          29,
+          6,
+          7
+        ],
+        [
+          187,
+          29,
+          7,
+          7
+        ],
+        [
+          196,
+          29,
+          6,
+          7
+        ],
+        [
+          204,
+          29,
+          6,
+          7
+        ],
+        [
+          211,
+          28,
+          1,
+          1
+        ],
+        [
+          222,
+          29,
+          2,
+          7
+        ],
+        [
+          230,
+          29,
+          2,
+          7
+        ],
+        [
+          141,
+          45,
+          12,
+          14
+        ],
+        [
+          157,
+          45,
+          12,
+          14
+        ],
+        [
+          173,
+          45,
+          12,
+          14
+        ],
+        [
+          193,
+          47,
+          4,
+          12
+        ],
+        [
+          205,
+          45,
+          12,
+          14
+        ],
+        [
+          221,
+          45,
+          12,
+          14
+        ]
+      ],
+      "sha256": "072840a64116afd88f9016c8823a7276af55bcbba168239c899b9952de172ee4"
+    },
+    {
+      "id": "player_long_paused",
+      "name": "player_long_paused",
+      "file": "composed/player_long_paused.png",
+      "dimensions": [
+        240,
+        320
+      ],
+      "phase": "focus",
+      "time": "120:00",
+      "paused": true,
+      "compact_cue": false,
+      "theme": "green",
+      "glyph_boxes": [
+        [
+          69,
+          17,
+          5,
+          7
+        ],
+        [
+          74,
+          17,
+          8,
+          7
+        ],
+        [
+          83,
+          17,
+          7,
+          7
+        ],
+        [
+          89,
+          17,
+          7,
+          7
+        ],
+        [
+          97,
+          17,
+          6,
+          7
+        ],
+        [
+          111,
+          15,
+          4,
+          10
+        ],
+        [
+          116,
+          15,
+          8,
+          10
+        ],
+        [
+          124,
+          15,
+          9,
+          10
+        ],
+        [
+          133,
+          17,
+          3,
+          8
+        ],
+        [
+          136,
+          15,
+          9,
+          10
+        ],
+        [
+          145,
+          15,
+          9,
+          10
+        ],
+        [
+          163,
+          17,
+          2,
+          7
+        ],
+        [
+          168,
+          17,
+          2,
+          7
+        ]
+      ],
+      "sha256": "d2581454a173cb669d8e62b12ce155080bdad59b107c9ff7bfd5b281a4a029fb"
+    },
+    {
+      "id": "bongo_idle",
+      "name": "bongo_idle",
+      "file": "composed/bongo_idle.png",
+      "dimensions": [
+        240,
+        320
+      ],
+      "phase": null,
+      "time": "",
+      "paused": false,
+      "compact_cue": false,
+      "theme": "green",
+      "glyph_boxes": [],
+      "sha256": "efbeca3fc5fc16696e30c34749cd8ffab6607384e6af4207b8cb50aa0b395b3c"
+    },
+    {
+      "id": "player_idle",
+      "name": "player_idle",
+      "file": "composed/player_idle.png",
+      "dimensions": [
+        240,
+        320
+      ],
+      "phase": null,
+      "time": "",
+      "paused": false,
+      "compact_cue": false,
+      "theme": "green",
+      "glyph_boxes": [],
+      "sha256": "df81313b378d09674bd6bb7b84dd54b253d25b7c1111d34756950a2295df57d2"
+    },
+    {
+      "id": "bongo_compact_cue",
+      "name": "bongo_compact_cue",
+      "file": "composed/bongo_compact_cue.png",
+      "dimensions": [
+        240,
+        320
+      ],
+      "phase": "break",
+      "time": "00:59",
+      "paused": false,
+      "compact_cue": true,
+      "theme": "green",
+      "glyph_boxes": [
+        [
+          204,
+          29,
+          6,
+          7
+        ],
+        [
+          212,
+          29,
+          6,
+          7
+        ],
+        [
+          220,
+          29,
+          6,
+          7
+        ],
+        [
+          228,
+          29,
+          6,
+          7
+        ],
+        [
+          157,
+          45,
+          12,
+          14
+        ],
+        [
+          173,
+          45,
+          12,
+          14
+        ],
+        [
+          193,
+          47,
+          4,
+          12
+        ],
+        [
+          205,
+          45,
+          12,
+          14
+        ],
+        [
+          221,
+          45,
+          12,
+          14
+        ]
+      ],
+      "sha256": "870e8f57f3bf1278a60d28c5047f669ad7b4789105dbf99a6e4e9399a0172de8"
+    },
+    {
+      "id": "player_compact_cue",
+      "name": "player_compact_cue",
+      "file": "composed/player_compact_cue.png",
+      "dimensions": [
+        240,
+        320
+      ],
+      "phase": "break",
+      "time": "00:59",
+      "paused": false,
+      "compact_cue": true,
+      "theme": "green",
+      "glyph_boxes": [
+        [
+          101,
+          15,
+          9,
+          10
+        ],
+        [
+          110,
+          15,
+          9,
+          10
+        ],
+        [
+          119,
+          17,
+          3,
+          8
+        ],
+        [
+          122,
+          15,
+          8,
+          10
+        ],
+        [
+          130,
+          15,
+          8,
+          10
+        ]
+      ],
+      "sha256": "0909fc23c047850b8dbd3b5a6acbfb7357872cbab39e09d5aa0a40adf2d3e302"
+    },
+    {
+      "id": "bongo_compact_cue_paused",
+      "name": "bongo_compact_cue_paused",
+      "file": "composed/bongo_compact_cue_paused.png",
+      "dimensions": [
+        240,
+        320
+      ],
+      "phase": "break",
+      "time": "00:42",
+      "paused": true,
+      "compact_cue": true,
+      "theme": "green",
+      "glyph_boxes": [
+        [
+          180,
+          29,
+          6,
+          7
+        ],
+        [
+          188,
+          29,
+          6,
+          7
+        ],
+        [
+          196,
+          29,
+          6,
+          7
+        ],
+        [
+          204,
+          29,
+          6,
+          7
+        ],
+        [
+          211,
+          28,
+          1,
+          1
+        ],
+        [
+          222,
+          29,
+          2,
+          7
+        ],
+        [
+          230,
+          29,
+          2,
+          7
+        ],
+        [
+          157,
+          45,
+          12,
+          14
+        ],
+        [
+          173,
+          45,
+          12,
+          14
+        ],
+        [
+          193,
+          47,
+          4,
+          12
+        ],
+        [
+          203,
+          45,
+          14,
+          14
+        ],
+        [
+          221,
+          45,
+          12,
+          14
+        ]
+      ],
+      "sha256": "e9d2bb1f3e4782d26f5d41bff4c58b8b985a87625951bf61ba92e4bee521de1a"
+    },
+    {
+      "id": "player_compact_cue_paused",
+      "name": "player_compact_cue_paused",
+      "file": "composed/player_compact_cue_paused.png",
+      "dimensions": [
+        240,
+        320
+      ],
+      "phase": "break",
+      "time": "00:42",
+      "paused": true,
+      "compact_cue": true,
+      "theme": "green",
+      "glyph_boxes": [
+        [
+          101,
+          15,
+          9,
+          10
+        ],
+        [
+          110,
+          15,
+          9,
+          10
+        ],
+        [
+          119,
+          17,
+          3,
+          8
+        ],
+        [
+          122,
+          15,
+          10,
+          10
+        ],
+        [
+          131,
+          15,
+          8,
+          10
+        ],
+        [
+          147,
+          17,
+          2,
+          7
+        ],
+        [
+          152,
+          17,
+          2,
+          7
+        ]
+      ],
+      "sha256": "c4b0670e6ff44f5aef403378c4ac7f7d2d23b927179779aa93b15a18d4e5d5d7"
+    },
+    {
+      "id": "bongo_dj",
+      "name": "bongo_dj",
+      "file": "composed/bongo_dj.png",
+      "dimensions": [
+        240,
+        320
+      ],
+      "phase": "focus",
+      "time": "04:59",
+      "paused": false,
+      "compact_cue": false,
+      "theme": "green",
+      "glyph_boxes": [
+        [
+          196,
+          29,
+          6,
+          7
+        ],
+        [
+          204,
+          29,
+          6,
+          7
+        ],
+        [
+          211,
+          29,
+          7,
+          7
+        ],
+        [
+          220,
+          29,
+          6,
+          7
+        ],
+        [
+          228,
+          29,
+          6,
+          7
+        ],
+        [
+          157,
+          45,
+          12,
+          14
+        ],
+        [
+          171,
+          45,
+          14,
+          14
+        ],
+        [
+          193,
+          47,
+          4,
+          12
+        ],
+        [
+          205,
+          45,
+          12,
+          14
+        ],
+        [
+          221,
+          45,
+          12,
+          14
+        ]
+      ],
+      "sha256": "046070351311a8c135208dcc23604e2c1884cae9ae1262fc982824363af2fb5a"
+    },
+    {
+      "id": "player_dj",
+      "name": "player_dj",
+      "file": "composed/player_dj.png",
+      "dimensions": [
+        240,
+        320
+      ],
+      "phase": "focus",
+      "time": "04:59",
+      "paused": false,
+      "compact_cue": false,
+      "theme": "green",
+      "glyph_boxes": [
+        [
+          69,
+          17,
+          5,
+          7
+        ],
+        [
+          74,
+          17,
+          8,
+          7
+        ],
+        [
+          83,
+          17,
+          7,
+          7
+        ],
+        [
+          89,
+          17,
+          7,
+          7
+        ],
+        [
+          97,
+          17,
+          6,
+          7
+        ],
+        [
+          113,
+          15,
+          9,
+          10
+        ],
+        [
+          122,
+          15,
+          10,
+          10
+        ],
+        [
+          132,
+          17,
+          3,
+          8
+        ],
+        [
+          135,
+          15,
+          8,
+          10
+        ],
+        [
+          143,
+          15,
+          8,
+          10
+        ]
+      ],
+      "sha256": "08dbf51537725ffa8794dd69639ff7d92f12001a5da88593c3130a602763398d"
+    },
+    {
+      "id": "bongo_cyan",
+      "name": "bongo_cyan",
+      "file": "composed/bongo_cyan.png",
+      "dimensions": [
+        240,
+        320
+      ],
+      "phase": "focus",
+      "time": "04:59",
+      "paused": false,
+      "compact_cue": false,
+      "theme": "cyan",
+      "glyph_boxes": [
+        [
+          196,
+          29,
+          6,
+          7
+        ],
+        [
+          204,
+          29,
+          6,
+          7
+        ],
+        [
+          211,
+          29,
+          7,
+          7
+        ],
+        [
+          220,
+          29,
+          6,
+          7
+        ],
+        [
+          228,
+          29,
+          6,
+          7
+        ],
+        [
+          157,
+          45,
+          12,
+          14
+        ],
+        [
+          171,
+          45,
+          14,
+          14
+        ],
+        [
+          193,
+          47,
+          4,
+          12
+        ],
+        [
+          205,
+          45,
+          12,
+          14
+        ],
+        [
+          221,
+          45,
+          12,
+          14
+        ]
+      ],
+      "sha256": "046070351311a8c135208dcc23604e2c1884cae9ae1262fc982824363af2fb5a"
+    },
+    {
+      "id": "player_cyan",
+      "name": "player_cyan",
+      "file": "composed/player_cyan.png",
+      "dimensions": [
+        240,
+        320
+      ],
+      "phase": "focus",
+      "time": "04:59",
+      "paused": false,
+      "compact_cue": false,
+      "theme": "cyan",
+      "glyph_boxes": [
+        [
+          69,
+          17,
+          5,
+          7
+        ],
+        [
+          74,
+          17,
+          8,
+          7
+        ],
+        [
+          83,
+          17,
+          7,
+          7
+        ],
+        [
+          89,
+          17,
+          7,
+          7
+        ],
+        [
+          97,
+          17,
+          6,
+          7
+        ],
+        [
+          113,
+          15,
+          9,
+          10
+        ],
+        [
+          122,
+          15,
+          10,
+          10
+        ],
+        [
+          132,
+          17,
+          3,
+          8
+        ],
+        [
+          135,
+          15,
+          8,
+          10
+        ],
+        [
+          143,
+          15,
+          8,
+          10
+        ]
+      ],
+      "sha256": "acb8d89b6b0a2c7cf10f60e0958dc4905eb95401511819e97bc408abf275b656"
+    }
+  ],
+  "contact_sheet": "contact_sheet_composed.png",
+  "source_sha256": {
+    "src/bongo_cat_featured.inc": "d8ebc0129620180869ea6590d8759f86d26353092a353bada1433020216f4e5f",
+    "src/focus_logic.h": "828071c9d0dc01df93722a1898248a2e0f34b78953106dcb92736c1154e75559",
+    "src/focus_countdown.h": "3574a69b21d411a43ea2f6bfcfa7496cdc3424be71bb8afea0cd921092b858cb",
+    "src/focus_countdown_font.h": "a3f11b84735d6b5b49e7264db041d1e18a450b08879cfb4f88e083c972c8fa3a",
+    "tools/export_ui_visuals.py": "0e9ce78939fd0738281f30efe19e0c4c2fc6b986e2d607c11748d0b06930ddae",
+    "tools/focus_countdown_visuals.py": "b978bcff09f1afe5a0df5fe2b381174c02f69d03d6ee9144a2abdd91e3306dad",
+    "lv_conf.h": "28972ff1d70c16e651e1d1076eabc4c745ab1b01104c77ff3c26d092c1009583",
+    ".pio/libdeps/esp32-024r-spotify-fastserial/lvgl/src/font/lv_font_unscii_8.c": "0f5a9b6131ffed26f42099ced657cc3f619ea66e2f958ca54673f97e0e71cf0e",
+    ".pio/libdeps/esp32-024r-spotify-fastserial/lvgl/src/font/lv_font_unscii_16.c": "09b133b9a1404bd7b3a3ce7d7d512dac116acc60bd701a52207e6bd03ae90282",
+    ".pio/libdeps/esp32-024r-spotify-fastserial/lvgl/src/font/lv_font_montserrat_10.c": "25be76110812574b73f90139453aad191e60694218b984371b4035a58068f237",
+    ".pio/libdeps/esp32-024r-spotify-fastserial/lvgl/src/font/lv_font_montserrat_14.c": "cb0e6923dd76cceecdb655135f0d2f85e5a978571226149640bf30135bce8d28",
+    "animations_sprites.h": "730ae1062028efcdc667cebc7e12d00f274c3d9573b728e8df35829ef5e06267",
+    "animations/dj/dj_sprites.h": "63e76f062c9dd02b3f8cad54cb3e0db1fc372b591fa6cf00b51d23f5f2fc8260",
+    "assets/cat-sprites/body/standardbody1.png": "004875a5016576b2e5fbe7eff0f173a53bffea69006a83ab7e763cfdcc5be60a",
+    "assets/cat-sprites/face/stock_face.png": "7338be958b1bad87d09e52de0d2a421847578671048fc159472100a734a117f8",
+    "assets/cat-sprites/table/table1.png": "e8dd649ea1ae6cfd8045463ba044f673b6e97d59f1db605944cf70570ec0796c",
+    "assets/cat-sprites/paws/twopawsup.png": "2b0d635a56ea9ae3605cb598fc653ded73dfde1feb5cf7f26d6fdf27691cb661",
+    "assets/User-made/Glasses.png": "d09662b2d4463ec33541f45d7523e975289ab6544a4e81bc14867b2f0b888ea6",
+    "assets/User-made/Mixer bord 1.png": "7915b9dd6b4aac6d5a1129cc480ae1c2f1c34192d0748f6f40eb6f4cd071137d",
+    "assets/User-made/Effects R1.png": "02ab2858a1d768b87a11db95d731509cbf22f7cb58bded35f387a065737bb22e",
+    "assets/User-made/Effects R2.png": "d461699c4f59e3be83ccdac17a9e6516a431a14a5e90c195df19d3592f0fe788",
+    "assets/User-made/Music Notes L1.png": "ce3b9699c6b9abae277bb58b76b5229f2404545ce8fb44638db82bbbb7a00be1",
+    "assets/User-made/Music Notes L2.png": "9525e85ede42331d1b930cc3ba6f617ec27bd79b56622f22de1ad244655beb0f",
+    "assets/User-made/Music Notes R1.png": "adc1936b9f64cdc4e31433c2fc6295a00fbb82db8d3dd0b55eece5223b5ec36d",
+    "assets/User-made/Music Notes R2.png": "f661a8f962f9ee095b38a4c4791a50d5e7776e3917c61ebe2e2f1f41083d65e3"
+  },
+  "rendering_limits": [
+    "Actual LVGL countdown glyphs/metrics and integer label alignment; other text/borders use Pillow.",
+    "Synthetic artwork and static sample data; physical heap, touch and art2 smoothness pending on this UI candidate.",
+    "Existing large completion cues intentionally overlay header content."
+  ]
+}

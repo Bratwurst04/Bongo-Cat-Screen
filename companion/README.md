@@ -1,5 +1,26 @@
 # Windows companion
 
+## Current development state (2026-10-15)
+
+The installed development companion is **17466EBF**, paired with firmware
+**F406C485** on the display. Known active API playback during the day uses a
+**5 s base cadence**, before budget pressure, higher learned pacing and
+Retry-After. Night/idle can be slower; the separate 0.5 s request minimum
+does not describe current automatic day polling. The user qualitatively
+accepted automatic mobile track text, correct covers and smoothness; phone
+action timestamps and end-to-end latency were not measured separately.
+Long runtime and sleep/resume with this pair remain pending.
+
+**Seek firmware 57894EE0 is built, not flashed and not yet screen-tested or
+physically accepted.** Current source includes seek support; installed F406
+does not have the timeline gesture. The isolated 3/5 s comparison leaves
+the real setting at **5 s**. See [runtime evidence](../docs/api-budget-runtime-2026-10-15.md),
+[cadence analysis](../docs/api-cadence-3s-analysis-2026-10-15.md) and the
+[handoff with exact hashes](../docs/lead-handoff-2026-10-15.md).
+
+The sections below retain dated release/installation history. App-v1.3
+remains the latest published release; this source update creates no release.
+
 `BongoDeskSpotify` runs on Windows and sends system, typing, and media state to the ESP32 over serial. The engine runs on the main thread; the tray and settings UI run alongside it. App-v1.3 pairs **230400 runtime baud** with the [app-only firmware](../release/BongoDesk-app-v1.3-2026-10-07-app-0x10000.bin) or [full image](../release/BongoDesk-app-v1.3-2026-10-07-full-0x0.bin). Flashing stays at **115200 baud**. App-only preserves NVS with the same partition layout; the full image overwrites NVS and is segment-verified but has not been flashed from `0x0`. Earlier releases, including app-v1.2, remain separate. See [v1.3 notes](../release/app-v1.3-notes.md) and [verification](../release/app-v1.3-verification.md).
 
 New profiles default to 230400. Existing explicit baud settings are preserved. To upgrade an existing 115200 profile to the v1.3 firmware, exit the companion and change only `connection.baudrate` to `230400` in `%APPDATA%\BongoCat\config.json`. Keep the other settings and Spotify authorization. The named firmware environment `esp32-024r-spotify` remains available for an explicit 115200 runtime pairing.
@@ -74,9 +95,67 @@ Supported command-line options:
 
 For example, after creating a Spotify app and adding its redirect URI, run `python companion/main.py --spotify-client-id YOUR_ID --link-spotify`. You can also configure Spotify through the app's settings.
 
-### Spotify Connect pacing and diagnostics
+### Preventive API budget development candidate, 2026-10-14
 
-When Spotify plays on another device, **Connect-uppdatering** controls the normal `/me/player` poll interval. It defaults to 15 seconds and accepts 10–120 seconds. Continuous polling at 15 seconds is about 5,760 base reads per day; 10 seconds is about 8,640. Touch actions and at most one earlier check near a predicted natural track end add requests. The Player extrapolates progress locally between reads. The "fastest" API setting is only a lower bound for adaptive spacing, not the observed request rate. The settings window shows the selected bound, current effective normal Connect interval, and actual calls over rolling 30-second and 15-minute windows. A zero count in a five-second interval would be normal at the default pace.
+The current source adds a shared, persistent local API budget. Automatic
+playback and artwork fallback reads may use at most 18 attempts per rolling
+30 seconds and 7200 per rolling 24 hours; all attempts together are bounded
+by 24 and 8000. Explicit controls/seek can use the remaining total capacity
+through short operation grants. A free urgent flag cannot bypass the budget.
+Failed HTTP attempts and genuine 401 retries also count. OAuth and CDN image
+downloads are outside the `/v1` ledger.
+
+The selected playing defaults are 5 seconds by day and 30 seconds at night
+(00–08, `Europe/Stockholm`). Idle floors are 15/60 seconds. Higher saved idle,
+adaptive backoff, server deadlines and budget pressure win. At 50/80 percent
+usage the profile slows, with further spreading of remaining capacity from
+80 percent. These are base intervals: HTTP duration and durable writes add
+time, and sustained heavy use can produce substantially longer discovery.
+Only real key activity or an explicit control can arm a bounded five-second
+fast period. Automatic track changes cannot keep fast polling active.
+
+New `spotify.api_budget_*` JSON fields configure limits/profiles; existing
+values are preserved. No settings layout was changed. Numeric status under
+`local_budget` distinguishes local waits from a real Spotify 429, and media
+status includes the age of the last API snapshot. Local budget waits retain
+last metadata while Windows sessions continue to be checked.
+
+History is stored in `spotify_api_budget.json` beside the token file, with
+bounded numeric entries and no media, credentials or raw input. Pending cost
+is durable before HTTP; final costs use conservative completion timestamps.
+File errors/corruption fail closed. Known `Retry-After` remains authoritative,
+including if the final write fails. QUOTA recovery uses a 60-second floor and
+half 24-hour budget for 24 hours after retry, followed by a 30-second floor
+and 75 percent of the 24-hour budget for 48 hours. Short-window limits remain
+24/18. Unknown initial history also gets a guarded day.
+
+An abrupt process stop during HTTP can leave an unresolved pending claim.
+On recovery this causes a **24-hour local quarantine**, distinct from
+Spotify's `Retry-After` and the ordinary ten-minute clock continuity guard.
+The lost server response cannot prove its exact deadline. Before a later
+candidate swap/rollback, Lead should stop traffic and confirm no request is
+in flight and no pending claim remains, under the shared profile lock. No
+new shutdown feature or live installation is part of this development step.
+
+The frozen EXE is `dist/companion-2026-10-14-api-budget-dev/BongoDeskSpotify.exe`, 19,654,754 bytes, SHA-256 `B8C7BB2859F86737686899C86C2FA48CDE3702BD5CCBF28A86B13D45C7CC417E`.
+The separate candidate and exact tests/simulations are documented in
+[`docs/api-budget-2026-10-14.md`](../docs/api-budget-2026-10-14.md).
+It has not been started or installed; F406/68CC runtime observations apply
+to that installed pair. Frozen seek artifacts and published releases remain
+unchanged. Local limits reduce this app's usage and cannot guarantee freedom
+from Spotify limits shared with other apps under the developer account.
+
+### Spotify Connect pacing and diagnostics, 2026-10-11 version
+
+The current source and separate **2026-10-11 adaptive Connect candidate** use the API's adaptive request-start interval for active playback. Without a recorded restriction, startup uses `api_min_interval_seconds` (new default **0.5 s**). A repeated unchanged track never adds the old 15-second wait. Polls, touch controls, confirmation reads and artwork fallback share one locked start-time gate; urgent calls cannot bypass that spacing or an active persisted `Retry-After`.
+
+`api_only_poll_interval_seconds` is deprecated. A saved value such as 15 remains in the profile for compatibility but is ignored, is no longer validated and is not edited by the active native UI. No profile/token migration is needed. Existing explicit adaptive values are preserved. New defaults are minimum 0.5 s, `api_initial_interval_seconds` 1 s as the least backoff **after a 429**, and idle 3 s. Paused/empty playback uses the idle bound; local Windows Spotify stays authoritative and needs no continuous Connect polling. The currently installed user profile was subsequently changed by Lead to **idle 15 s / active minimum 0.5 s**, after the user requested slower polling when nothing plays. Only `spotify.api_idle_interval_seconds` changed, with `config.pre-idle15-20261011.json` saved first. This is a profile preference supported by the existing implementation; the candidate's fresh-profile idle default remains 3 s, and explicit older values are preserved. Live reload and the pause trial were confirmed: the user reported paused playback, and fresh status at 13:44:51.110 Stockholm showed `api_only_idle=true`, effective interval 15.0 s and adaptive interval 0.5 s, with Spotify ready and the ESP32 connected. Total 429 remained 1, with zero in the last 15 minutes. The 32-call/30 s counter was a transition window, not a steady idle-rate measurement. Mobile playback starting during idle may take up to 15 s to be detected; active polling then follows the adaptive bound again. Resume was also confirmed in fresh status at 13:46:09.849: `spotify_api`, idle false, effective interval 0.5 s, Spotify ready, ESP32 connected and zero 429s in the last 15 minutes. Both 15 s paused and 0.5 s active intervals are observed; exact transition latency was not separately measured.
+
+On 429, the adaptive interval doubles within configured bounds and a 25% learned margin is recorded. The saved deadline blocks all API work across restarts. Starting with the first successful post-cooldown response, a clean 30-second window allows both interval and learned margin to decrease by 10%; later clean windows continue toward minimum. Quota recovery pauses this speed-up. The old learned margin is no longer permanently sticky.
+
+Waiting uses the **remaining request-start deadline**, including idle and quota floors, rather than adding another whole interval after HTTP or artwork work. HTTP latency, image work and scheduling may still make actual reads slower than the bound. The native UI shows the minimum in the Connect card and current adaptive/idle/quota-bound interval plus real 30-second/15-minute call counts in Diagnostics. `retry_remaining_seconds` separately describes an active Spotify wait. There is no extra track-end polling path.
+
+This source change is **not included in the published app-v1.3 EXE**, which retains its earlier fixed Connect floor. The isolated candidate is `dist/companion-2026-10-11-adaptive-connect-dev/BongoDeskSpotify.exe`, 19,300,127 bytes, SHA-256 `68CC5BC1D90E0AB734D0997D03980653858C717F88AB4B97E42648E6DC93FE97`. The packaged code, settings scripts, defaults and cat asset match the source; personal profiles/tokens are excluded. The 65 Python tests, diagnostic formatting test, source compilation and 538 native UI assertions passed. Fake HTTP lasting 120 ms produced starts 0.5 s apart through the actual media loop with a legacy saved 15 s field. Mocked 429/restart/urgent guards, gradual recovery, idle/quota bounds, config/token preservation and single-worker startup were verified. Native renders in ignored `build/adaptive-connect-ui/` use synthetic data; the tracked UI previews describe the earlier v1.3 view. Lead installed the exact candidate on 2026-10-11 with verified rollback and config/token backups. Config, token file and Windows Run entry were byte-identical during copying; runtime pacing metadata can subsequently change the token file. Fresh status at 13:38:51 Stockholm showed active `spotify_api`, adaptive mode and effective/current/safe intervals of 0.5 s, no cooldown/quota floor, unchanged config with the deprecated 15 s value still present, and connected ESP32 at 230400. Total 429 stayed 1, with zero in the last 15 minutes. The 24-call rolling counter came from a startup session shorter than 30 seconds, not a steady-state rate measurement. Two natural first-attempt covers took 5625/5593 ms, with successful ACKs 26/62 ms later. The user reported after a couple of mobile changes: “Nu byter den instantly, och skivan kommer snabbt och ser ut att vara smooth”. This qualitatively confirms prompt track changes, fast artwork and smooth vinyl; no stopwatch latency was measured. Later live status at 13:40:00.400 showed 56 requests over the preceding 30 seconds and the same 0.5 s active bound. Rapid mobile changes seq3–8 cancelled older covers as `track_mismatch`; final seq8 succeeded on attempt 1 in 5515 ms with ACK 19 ms later. No new 429, device error or serial disconnect was observed in this short trial. No firmware build/flash, real 429 test or new release was done.
 
 Spotify's [playback response](https://developer.spotify.com/documentation/web-api/reference/get-information-about-the-users-current-playback) includes track progress, duration and album image URLs together. The companion publishes new text before fetching or sending the image; it does not make a second Spotify Web API metadata request just to discover the cover URL.
 

@@ -11,6 +11,7 @@ silently producing an old layout.
 from __future__ import annotations
 
 import argparse
+from functools import lru_cache
 import hashlib
 import json
 import re
@@ -233,6 +234,76 @@ def compose(names: list[str], white_background: bool = False) -> Image.Image:
     return canvas
 
 
+@lru_cache(maxsize=4)
+def lvgl_ascii_font(name: str) -> dict:
+    """Read actual uncompressed LVGL glyphs for the narrow header rows."""
+    path = ROOT / ".pio/libdeps/esp32-024r-spotify-fastserial/lvgl/src/font" / f"lv_font_{name}.c"
+    source = re.sub(r"/\*.*?\*/", "", path.read_text(encoding="utf-8"), flags=re.S)
+    def array(key: str) -> list[int]:
+        body = re.search(rf"{key}\[\]\s*=\s*\{{(.*?)\}};", source, re.S)[1]
+        return [int(n, 0) for n in re.findall(r"-?0x[\da-fA-F]+|-?\d+", body)]
+    if not re.search(r"\.range_start = 32, \.range_length = 9[56], \.glyph_id_start = 1", source):
+        raise ValueError("Expected a contiguous ASCII glyph map")
+    require(source, ".bitmap_format = 0")
+    fields = ("bitmap_index", "adv_w", "box_w", "box_h", "ofs_x", "ofs_y")
+    body = re.search(r"glyph_dsc\[\]\s*=\s*\{(.*?)\};", source, re.S)[1]
+    glyphs = [dict(zip(fields, map(int, values))) for values in re.findall(
+        r"\{\.bitmap_index = (\d+), \.adv_w = (\d+), \.box_w = (\d+), "
+        r"\.box_h = (\d+), \.ofs_x = (-?\d+), \.ofs_y = (-?\d+)\}", body)]
+    result = {"path": path, "glyphs": glyphs, "bitmap": array("glyph_bitmap"),
+              "bpp": match_int(source, r"\.bpp = (\d+)", "font bpp"),
+              "height": match_int(source, r"\.line_height = (\d+)", "line height"),
+              "baseline": match_int(source, r"\.base_line = (\d+)", "baseline")}
+    if ".kern_classes = 1" in source:
+        result.update(left=array("kern_left_class_mapping"), right=array("kern_right_class_mapping"),
+                      kern=array("kern_class_values"),
+                      right_count=match_int(source, r"\.right_class_cnt\s*=\s*(\d+)", "kern classes"),
+                      kern_scale=match_int(source, r"\.kern_scale = (\d+)", "kern scale"))
+    return result
+
+
+def lvgl_advances(face: dict, value: str) -> list[int]:
+    ids = [ord(char) - 31 for char in value]
+    if any(not 1 <= gid <= 95 for gid in ids):
+        raise ValueError("Header preview supports ASCII only")
+    advances = []
+    for i, gid in enumerate(ids):
+        kern = 0
+        if "kern" in face and i + 1 < len(ids):
+            left, right = face["left"][gid], face["right"][ids[i + 1]]
+            if left and right:
+                kern = face["kern"][(left - 1) * face["right_count"] + right - 1]
+                kern = kern * face["kern_scale"] >> 4
+        advances.append((face["glyphs"][gid]["adv_w"] + kern + 8) >> 4)
+    return advances
+
+
+def lvgl_text(image: Image.Image, xy: tuple[int, int], value: str, fill: tuple[int, int, int],
+              name: str | dict, *, center: bool = False, right: bool = False) -> list:
+    face = lvgl_ascii_font(name) if isinstance(name, str) else name
+    advances = lvgl_advances(face, value)
+    width = sum(advances)
+    x, y = xy
+    x -= width // 2 if center else width if right else 0
+    bounds = []
+    for char, advance in zip(value, advances):
+        glyph = face["glyphs"][ord(char) - 31]
+        w, h, bpp = glyph["box_w"], glyph["box_h"], face["bpp"]
+        if w and h:
+            mask = Image.new("L", (w, h))
+            pixels = []
+            for i in range(w * h):
+                offset = i * bpp
+                byte = face["bitmap"][glyph["bitmap_index"] + offset // 8]
+                pixels.append(((byte >> (8 - bpp - offset % 8)) & ((1 << bpp) - 1)) * 255 // ((1 << bpp) - 1))
+            mask.putdata(pixels)
+            gx, gy = x + glyph["ofs_x"], y + face["height"] - face["baseline"] - h - glyph["ofs_y"]
+            image.paste(fill, (gx, gy), mask)
+            bounds.append((gx, gy, w, h))
+        x += advance
+    return bounds
+
+
 def bongo_base(source: str, sample: dict) -> Image.Image:
     body = section(source, "createBongoCat")
     zoom = match_int(body, r"lv_img_set_zoom\(cat_canvas,\s*(\d+)\)", "cat zoom")
@@ -245,13 +316,13 @@ def bongo_base(source: str, sample: dict) -> Image.Image:
     image.paste(cat, ((width - sprite_size) // 2 + ox, (height - sprite_size) // 2 + oy), cat)
     draw = ImageDraw.Draw(image)
     x, y = align(body, "cpu_label", "TOP_LEFT")
-    text(draw, (x, y), f"CPU: {sample['cpu_percent']}%", (0, 0, 0), 16, mono=True)
+    lvgl_text(image, (x, y), f"CPU: {sample['cpu_percent']}%", (0, 0, 0), "unscii_16")
     x, y = align(body, "ram_label", "TOP_LEFT")
-    text(draw, (x, y), f"RAM: {sample['ram_percent']}%", (0, 0, 0), 16, mono=True)
+    lvgl_text(image, (x, y), f"RAM: {sample['ram_percent']}%", (0, 0, 0), "unscii_16")
     x, y = align(body, "wpm_label", "TOP_LEFT")
-    text(draw, (x, y), f"WPM: {sample['wpm']}", (0, 0, 0), 16, mono=True)
+    lvgl_text(image, (x, y), f"WPM: {sample['wpm']}", (0, 0, 0), "unscii_16")
     x, y = align(body, "time_label", "TOP_RIGHT")
-    text(draw, (width + x, y), sample["time"], (0, 0, 0), 16, right=True, mono=True)
+    lvgl_text(image, (width + x, y), sample["time"], (0, 0, 0), "unscii_16", right=True)
     return image
 
 
@@ -494,7 +565,7 @@ def local_settings_view(source: str, theme: str = "green",
 
 
 def focus_cue_preview(source: str, base: Image.Image, *, kind: str,
-                      compact: bool, theme: str = "green") -> Image.Image:
+                      compact: bool, theme: str = "green", panel: str = "bongo") -> Image.Image:
     if compact and kind == "break":
         raise ValueError("Break completion has no persistent START badge")
     body = section(source, "createFocusScreen")
@@ -510,7 +581,7 @@ def focus_cue_preview(source: str, base: Image.Image, *, kind: str,
         by = 0
         width = match_int(update, r"lv_obj_set_size\(focus_completion_banner,\s*compact\s*\?\s*(\d+)",
                           "compact completion width")
-        height = 22
+        height = define(source, "FOCUS_PLAYER_CUE_HEIGHT") if panel == "player" else 22
     elif focus_done:
         bx, by = pos(body, "focus_completion_banner")
         width, height = size(body, "focus_completion_banner")
@@ -528,6 +599,9 @@ def focus_cue_preview(source: str, base: Image.Image, *, kind: str,
         text(draw, (bx + width // 2, by + 72),
              static_text(body, "focus_completion_sub_label"),
              (0x10, 0x14, 0x19), 14, center=True)
+    elif compact:
+        lvgl_text(image, (bx + width // 2, by + (height - 11) // 2), caption,
+                  theme_color(source, "focusAccentHex", theme), "montserrat_10", center=True)
     else:
         size_px = 10 if compact else 20
         text(draw, (bx + width // 2, by + (height - size_px) // 2), caption,
@@ -579,24 +653,30 @@ def timecode(seconds: int) -> str:
 
 def media_view(source: str, sample: dict, *, mode: str, state: str,
                media_source: str, dj_extras: list[str] | None = None,
-               theme: str = "green") -> Image.Image:
+               theme: str = "green", focus_active: bool = False) -> Image.Image:
     body = section(source, "createMediaScreen")
     width, height = define(source, "SCREEN_WIDTH"), define(source, "SCREEN_HEIGHT")
     image = Image.new("RGB", (width, height), color(body, "media_screen", "bg_color"))
     draw = ImageDraw.Draw(image)
     accent = theme_color(source, "focusAccentHex", theme)
     bx, by = pos(body, "media_brand_label")
-    text(draw, (bx, by), static_text(body, "media_brand_label"), accent, 10)
+    lvgl_text(image, (bx, by), static_text(body, "media_brand_label"), accent, "montserrat_10")
     sx, sy = align(body, "media_source_label", "TOP_RIGHT")
-    text(draw, (width + sx, sy), media_source, (0xD5, 0xD9, 0xDE), 10, right=True)
+    lvgl_text(image, (width + sx, sy), media_source, (0xD5, 0xD9, 0xDE), "montserrat_10", right=True)
 
     art_x, art_y = pos(body, "media_art_box")
     art_w, art_h = size(body, "media_art_box")
     radius = match_int(body, r"lv_obj_set_style_radius\(media_art_box,\s*(\d+)", "media art radius")
+    import sys
+    from focus_countdown_visuals import media_layout
+    layout = media_layout(sys.modules[__name__], focus_active)
+    if focus_active:
+        art_x, art_y, art_w, art_h = layout["box_xywh"]
+        radius = layout["radius"]
     if radius != art_w // 2 or art_w != art_h:
         raise ValueError("Unsupported noncircular media art box")
-    if not 168 <= art_w <= 176 or art_x * 2 + art_w != width:
-        raise ValueError("Media circle must be centered at 168–176 px")
+    if art_w != (144 if focus_active else 172) or art_x * 2 + art_w != width:
+        raise ValueError("Media circle must match the centered active/inactive layout")
     box_color = WHITE if mode == "dj" else color(body, "media_art_box", "bg_color")
     border_color = WHITE if mode == "dj" else color(body, "media_art_box", "border_color")
     draw.ellipse((art_x, art_y, art_x + art_w - 1, art_y + art_h - 1),
@@ -607,7 +687,7 @@ def media_view(source: str, sample: dict, *, mode: str, state: str,
         names = ["standardbody1", "stock_face", "dj_glasses", "dj_mixer_board", "twopawsup"]
         names += dj_extras or []
         cat = compose(names, white_background=True)
-        zoom = define(source, "MEDIA_CAT_ZOOM")
+        zoom = layout["cat_zoom"]
         cat_px = define(source, "CAT_SIZE") * zoom // 256
         if cat_px > art_w - 4:
             raise ValueError("DJ canvas zoom is clipped by circle")
@@ -622,7 +702,7 @@ def media_view(source: str, sample: dict, *, mode: str, state: str,
     else:
         art_size = define(source, "MEDIA_ART_SIZE")
         art = vinyl_art(art_size) if mode == "vinyl" else demo_art(art_size)
-        zoom = match_int(source, r"lv_img_set_zoom\(media_art_image,\s*(\d+)\)", "media image zoom")
+        zoom = layout["art_zoom"]
         pixels = art_size * zoom // 256
         if pixels > art_w - 4:
             raise ValueError("Album/vinyl zoom is clipped by circle")
@@ -798,7 +878,7 @@ def export(output: Path) -> None:
         ("focus_completed", "Fokus – klart", focus_view(source, "break_started"), "BREAK", "Stor central FOKUS KLART-avisering medan vald paus startar; LED visas inte."),
         ("bongo_focus_completed", "Bongo – Fokus klart", focus_cue_preview(source, bongo, kind="focus", compact=False), "BREAK", "Stor central slutsignal direkt vid fokusslut, även på Bongo."),
         ("bongo_focus_reminder", "Bongo – pausmärke", focus_cue_preview(source, bongo, kind="focus", compact=True), "BREAK", "Litet PAUS-märke mellan CPU och klocka efter tio sekunder."),
-        ("player_focus_reminder", "Spelare – pausmärke", focus_cue_preview(source, artwork, kind="focus", compact=True), "BREAK", "Liten pauspåminnelse efter tio sekunder."),
+        ("player_focus_reminder", "Spelare – pausmärke", focus_cue_preview(source, artwork, kind="focus", compact=True, panel="player"), "BREAK", "Liten pauspåminnelse efter tio sekunder."),
         ("player_break_done", "Spelare – paus klar", focus_cue_preview(source, artwork, kind="break", compact=False), "BREAK", "Kort, stillsam PAUS KLAR-remsa när pausen slutar."),
         ("bongo_break_done", "Bongo – paus klar", focus_cue_preview(source, bongo, kind="break", compact=False), "BREAK", "Kort PAUS KLAR-remsa; inget kvarstående START-märke efter sex sekunder."),
         ("media_vinyl", "Medieskärm – vinyl", media_view(source, SAMPLE, mode="vinyl", state="PLAYING", media_source=SAMPLE["source_windows"]), "PLAYING", "Windows Spotify och större generisk vinyl. Gesterna finns kvar utan text längst ned."),
@@ -847,11 +927,24 @@ def export(output: Path) -> None:
     print(f"Exported {len(views)} simulated 240x320 views to {output}")
 
 
+def focus_countdown_layout(source: str) -> dict:
+    import sys
+    import focus_countdown_visuals
+    return focus_countdown_visuals.layout(sys.modules[__name__], source)
+
+
+def export_focus_countdown(output: Path) -> None:
+    import sys
+    import focus_countdown_visuals
+    focus_countdown_visuals.export(sys.modules[__name__], output)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output", type=Path, default=ROOT / "visuals")
+    parser.add_argument("--focus-countdown", action="store_true", help="Export both panels with local Focus states")
     args = parser.parse_args()
-    export(args.output.resolve())
+    (export_focus_countdown if args.focus_countdown else export)(args.output.resolve())
 
 
 if __name__ == "__main__":

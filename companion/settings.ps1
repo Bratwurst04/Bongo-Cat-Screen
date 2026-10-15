@@ -99,7 +99,7 @@ function Get-DiagnosticValues($info) {
         $api = "Totalt $($limits.total) ($(Format-429-Baseline $limits))"
         $windows = "15 min: $last15  |  1 h: $lastHour  |  24 h: $lastDay"
         $effective = $info.media.effective_poll_interval_seconds
-        $adaptive = if ($null -ne $effective) { "Connect: minst $(Format-Seconds ([double]$effective)) s; adaptiv $(Format-Seconds ([double]$pacing.interval_seconds)) s; säker $(Format-Seconds ([double]$pacing.safe_interval_seconds)) s" } else { "API-gräns: $(Format-Seconds ([double]$pacing.interval_seconds)) s; lokal Windows-källa behöver ingen Connect-poll" }
+        $adaptive = if ($null -ne $effective) { "Connect adaptiv: $(Format-Seconds ([double]$effective)) s; API-gräns $(Format-Seconds ([double]$pacing.interval_seconds)) s; inlärd marginal $(Format-Seconds ([double]$pacing.safe_interval_seconds)) s" } else { "API-gräns: $(Format-Seconds ([double]$pacing.interval_seconds)) s; lokal Windows-källa behöver ingen Connect-poll" }
         $callsText = "$($pacing.calls_last_15_minutes) senaste 15 min, $($pacing.calls_last_30_seconds) senaste 30 s (denna körning)"
         $change = $pacing.last_change
         if ($null -ne $change) {

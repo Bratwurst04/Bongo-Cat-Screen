@@ -1,5 +1,22 @@
 # Bongo Cat – Project Context
 
+## Aktuellt underlag 2026-10-15
+
+Installerat utvecklingspar är companion **17466EBF / firmware F406C485**,
+med fortsatt **5 s grundintervall** för känd aktiv API-uppspelning dagtid.
+Automatisk mobilföljning med rätt låttext/omslag och jämnhet är kvalitativt
+godkänd; ingen separat uppmätt mobilhandlingstid eller end-to-end-latens.
+Budget/Retry/natt/idle kan ge längre intervall. 3 s är endast analyserat;
+användarbeslutet är att behålla 5 s.
+
+**Seek-firmware 57894EE0 är byggd men inte flashad, ännu inte skärmprovad
+eller fysiskt accepterad.** Aktuell arbetskälla och installerad firmware
+ska hållas isär. Långdrift och sleep/resume med nuvarande companion väntar.
+Se [daterade driftbevis](docs/api-budget-runtime-2026-10-15.md) och
+[Lead-överlämning](docs/lead-handoff-2026-10-15.md) för exakta hashar,
+roller och testat/väntande. Äldre daterade uppgifter nedan är historik;
+app-v1.3 är senast publicerade release, utan ny release i detta steg.
+
 ## Projekt
 
 Bongo Cat består av:
@@ -107,6 +124,16 @@ Nästa fokusområde är ESP32-skärmen och UI:t.
 Inställningsfönstret på Windows ska inte byggas om utan ett konkret behov.
 
 ## Aktuellt fokus
+
+Sedan 2026-10-11 är adaptiv Spotify Connect-pollning beställd: aktiv musik
+ska följa API-pacingens minimum (0,5 s som lokal undre gräns) och backa vid
+Spotify-begränsningar. En separat companionkandidat är byggd och testad i
+isolering samt installerad och driftprovad av Lead. Användaren bekräftar
+snabba mobilbyten och jämn skiva; exakt ändringslatens är omätt. Det gamla fasta Connect-
+intervallet är avvecklat i källan utan att skriva om befintliga profiler.
+Sparad Retry-After och kvotåterhämtning finns kvar. Publicerad app-v1.3,
+ESP32-firmware och serialtrafik är oförändrade. Detaljer finns i
+`01_CURRENT_STATE.md` och `companion/README.md`. UI-proven nedan är historik.
 
 Sedan 2026-10-07 är en UI-ombyggnad av Windows-companionen uttryckligen
 beställd: matcha skärmens stil och förbättra informationsstrukturen. Det

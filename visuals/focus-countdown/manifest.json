@@ -1,0 +1,240 @@
+{
+  "classification": "simulerade förhandsbilder",
+  "display_pixels": [
+    240,
+    320
+  ],
+  "generator": "tools/export_ui_visuals.py",
+  "command": "python tools/export_ui_visuals.py --focus-countdown --output visuals/focus-countdown",
+  "layout": {
+    "labels_xywh": {
+      "bongo": [
+        153,
+        25,
+        82,
+        11
+      ],
+      "player": [
+        79,
+        15,
+        82,
+        11
+      ]
+    },
+    "font": "lv_font_montserrat_10",
+    "line_height": 11,
+    "widest_text_px": 81,
+    "ram_100_percent_xywh": [
+      5,
+      25,
+      144,
+      17
+    ],
+    "player_compact_cue_xywh": [
+      85,
+      0,
+      70,
+      14
+    ],
+    "overlap_checks_passed": true
+  },
+  "views": [
+    {
+      "id": "bongo_focus",
+      "name": "Bongo – Fokus aktiv",
+      "file": "composed/bongo_focus.png",
+      "dimensions": [
+        240,
+        320
+      ],
+      "classification": "simulerad förhandsbild",
+      "countdown_text": "FOKUS 04:59",
+      "sha256": "8622c2e1bd6a91a5c7680db6ccd09c309782c9ff0515306a116603d5bbc9ff5a"
+    },
+    {
+      "id": "player_focus",
+      "name": "Spelare – Fokus aktiv",
+      "file": "composed/player_focus.png",
+      "dimensions": [
+        240,
+        320
+      ],
+      "classification": "simulerad förhandsbild",
+      "countdown_text": "FOKUS 04:59",
+      "sha256": "e3bc90f8363d170d06ff2da59cd35a6dede8860101d97aeca3f36fcf0dbf78e4"
+    },
+    {
+      "id": "bongo_break",
+      "name": "Bongo – Paus aktiv",
+      "file": "composed/bongo_break.png",
+      "dimensions": [
+        240,
+        320
+      ],
+      "classification": "simulerad förhandsbild",
+      "countdown_text": "PAUS 00:59",
+      "sha256": "99a9f015dd57e81f44d6e3b771ac0e584ded178a60e50120765ccf6b1e27f19a"
+    },
+    {
+      "id": "player_break",
+      "name": "Spelare – Paus aktiv",
+      "file": "composed/player_break.png",
+      "dimensions": [
+        240,
+        320
+      ],
+      "classification": "simulerad förhandsbild",
+      "countdown_text": "PAUS 00:59",
+      "sha256": "0a4abfa4a477d00f32e43f1c19c9b0417d1b942368c3b113d423a68e89238e63"
+    },
+    {
+      "id": "bongo_focus_paused",
+      "name": "Bongo – Fokus pausad",
+      "file": "composed/bongo_focus_paused.png",
+      "dimensions": [
+        240,
+        320
+      ],
+      "classification": "simulerad förhandsbild",
+      "countdown_text": "FOKUS 04:31 ||",
+      "sha256": "ad08874c1dc6baf29392dfee2999909a51b53b145518e482336b1f3b8b9d39fe"
+    },
+    {
+      "id": "player_focus_paused",
+      "name": "Spelare – Fokus pausad",
+      "file": "composed/player_focus_paused.png",
+      "dimensions": [
+        240,
+        320
+      ],
+      "classification": "simulerad förhandsbild",
+      "countdown_text": "FOKUS 04:31 ||",
+      "sha256": "ab496310eed48e42a44f3cdaa42f6882f5dee253fc75b5c7b56d9d2212414f50"
+    },
+    {
+      "id": "bongo_break_paused",
+      "name": "Bongo – Paus pausad",
+      "file": "composed/bongo_break_paused.png",
+      "dimensions": [
+        240,
+        320
+      ],
+      "classification": "simulerad förhandsbild",
+      "countdown_text": "PAUS 00:42 ||",
+      "sha256": "9bb60735b6d47e691d40b99aac477f9b51549fed2af9a6ace3ed7681cc5f0ff5"
+    },
+    {
+      "id": "player_break_paused",
+      "name": "Spelare – Paus pausad",
+      "file": "composed/player_break_paused.png",
+      "dimensions": [
+        240,
+        320
+      ],
+      "classification": "simulerad förhandsbild",
+      "countdown_text": "PAUS 00:42 ||",
+      "sha256": "5a45a3da851b69bcae72b5b11e5499e2f3ba7f22d77e47bc93b1cf9203b673c7"
+    },
+    {
+      "id": "bongo_idle",
+      "name": "Bongo – Inaktiv – raden dold",
+      "file": "composed/bongo_idle.png",
+      "dimensions": [
+        240,
+        320
+      ],
+      "classification": "simulerad förhandsbild",
+      "countdown_text": "",
+      "sha256": "efbeca3fc5fc16696e30c34749cd8ffab6607384e6af4207b8cb50aa0b395b3c"
+    },
+    {
+      "id": "player_idle",
+      "name": "Spelare – Inaktiv – raden dold",
+      "file": "composed/player_idle.png",
+      "dimensions": [
+        240,
+        320
+      ],
+      "classification": "simulerad förhandsbild",
+      "countdown_text": "",
+      "sha256": "df81313b378d09674bd6bb7b84dd54b253d25b7c1111d34756950a2295df57d2"
+    },
+    {
+      "id": "bongo_long_paused",
+      "name": "Bongo – 120 min pausad / RAM 100%",
+      "file": "composed/bongo_long_paused.png",
+      "dimensions": [
+        240,
+        320
+      ],
+      "classification": "simulerad förhandsbild",
+      "countdown_text": "FOKUS 120:00 ||",
+      "sha256": "ad624f2a34979d453ff27dc1c87872088c9462867e2278f1c41c310db6b76c8a"
+    },
+    {
+      "id": "player_long_paused",
+      "name": "Spelare – 120 min pausad / RAM 100%",
+      "file": "composed/player_long_paused.png",
+      "dimensions": [
+        240,
+        320
+      ],
+      "classification": "simulerad förhandsbild",
+      "countdown_text": "FOKUS 120:00 ||",
+      "sha256": "b038b53bfa0f1591106dcb809f15491f3b1ef4e7edc5b9555fc3ccb007c6a4e5"
+    },
+    {
+      "id": "bongo_compact_cue",
+      "name": "Bongo – Paus med fasslutssignal",
+      "file": "composed/bongo_compact_cue.png",
+      "dimensions": [
+        240,
+        320
+      ],
+      "classification": "simulerad förhandsbild",
+      "countdown_text": "PAUS 00:59",
+      "sha256": "31a0221a5a635a66cb816e561fab155e14819c0c8602ed9ca1b57ac147c52ce8"
+    },
+    {
+      "id": "player_compact_cue",
+      "name": "Spelare – Paus med fasslutssignal",
+      "file": "composed/player_compact_cue.png",
+      "dimensions": [
+        240,
+        320
+      ],
+      "classification": "simulerad förhandsbild",
+      "countdown_text": "PAUS 00:59",
+      "sha256": "db5c205132febc88d374d6dd2ebd7469d7005720a2fa5c3f90963bf86e2fb038"
+    }
+  ],
+  "contact_sheet": "contact_sheet_composed.png",
+  "source_sha256": {
+    "src/bongo_cat_featured.inc": "9bd9bc94ca27a78c11bb1c438a7d3859995e586072f27584ea63513369a5e0db",
+    "src/focus_logic.h": "828071c9d0dc01df93722a1898248a2e0f34b78953106dcb92736c1154e75559",
+    "src/focus_countdown.h": "efc87d887c6b34a3aafe83da2d1cee83f4c79164cb2a2a6655d88b81233e57e9",
+    "tools/export_ui_visuals.py": "e2e234519e8b9629de1b67195491c004c8baec7feaeb8e0c6cbb7f09693d59f5",
+    ".pio/libdeps/esp32-024r-spotify-fastserial/lvgl/src/font/lv_font_montserrat_10.c": "25be76110812574b73f90139453aad191e60694218b984371b4035a58068f237",
+    ".pio/libdeps/esp32-024r-spotify-fastserial/lvgl/src/font/lv_font_unscii_16.c": "09b133b9a1404bd7b3a3ce7d7d512dac116acc60bd701a52207e6bd03ae90282",
+    "animations_sprites.h": "730ae1062028efcdc667cebc7e12d00f274c3d9573b728e8df35829ef5e06267",
+    "animations/dj/dj_sprites.h": "63e76f062c9dd02b3f8cad54cb3e0db1fc372b591fa6cf00b51d23f5f2fc8260",
+    "assets/cat-sprites/body/standardbody1.png": "004875a5016576b2e5fbe7eff0f173a53bffea69006a83ab7e763cfdcc5be60a",
+    "assets/cat-sprites/face/stock_face.png": "7338be958b1bad87d09e52de0d2a421847578671048fc159472100a734a117f8",
+    "assets/cat-sprites/table/table1.png": "e8dd649ea1ae6cfd8045463ba044f673b6e97d59f1db605944cf70570ec0796c",
+    "assets/cat-sprites/paws/twopawsup.png": "2b0d635a56ea9ae3605cb598fc653ded73dfde1feb5cf7f26d6fdf27691cb661",
+    "assets/User-made/Glasses.png": "d09662b2d4463ec33541f45d7523e975289ab6544a4e81bc14867b2f0b888ea6",
+    "assets/User-made/Mixer bord 1.png": "7915b9dd6b4aac6d5a1129cc480ae1c2f1c34192d0748f6f40eb6f4cd071137d",
+    "assets/User-made/Effects R1.png": "02ab2858a1d768b87a11db95d731509cbf22f7cb58bded35f387a065737bb22e",
+    "assets/User-made/Effects R2.png": "d461699c4f59e3be83ccdac17a9e6516a431a14a5e90c195df19d3592f0fe788",
+    "assets/User-made/Music Notes L1.png": "ce3b9699c6b9abae277bb58b76b5229f2404545ce8fb44638db82bbbb7a00be1",
+    "assets/User-made/Music Notes L2.png": "9525e85ede42331d1b930cc3ba6f617ec27bd79b56622f22de1ad244655beb0f",
+    "assets/User-made/Music Notes R1.png": "adc1936b9f64cdc4e31433c2fc6295a00fbb82db8d3dd0b55eece5223b5ec36d",
+    "assets/User-made/Music Notes R2.png": "f661a8f962f9ee095b38a4c4791a50d5e7776e3917c61ebe2e2f1f41083d65e3"
+  },
+  "rendering_limits": [
+    "Header/countdown glyphs and advances use actual LVGL ASCII fonts; other text and borders use Pillow approximations.",
+    "Static example data and synthetic DEMO cover, not a hardware or serial-transfer test.",
+    "Physical heap, art2 smoothness, touch and legibility are pending Lead's device test.",
+    "Existing large temporary completion cues intentionally cover header content."
+  ]
+}

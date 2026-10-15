@@ -196,7 +196,7 @@ Add-StackControl $general $startup
 $null=Add-Text $general 'Companion körs i bakgrunden och nås via ikonen vid klockan.' 9 'Muted'
 $connectCard=Add-Card $settings 'SPOTIFY CONNECT'
 $null=Add-Text $connectCard 'Musik på en annan enhet' 13 'Text' $true
-$null=Add-Text $connectCard 'Kortare intervall ger snabbare musikuppdateringar och fler Spotify-anrop. Spotify kan kräva längre väntan. Standard är 15 sekunder.' 10 'Muted'
+$null=Add-Text $connectCard 'Aktiv musik uppdateras så snabbt som din lägsta gräns tillåter. Spotify-gränser ger längre väntan; takten återhämtas sedan gradvis. Vid paus läser appen mer sällan.' 10 'Muted'
 $script:fieldSpecs=[Collections.ArrayList]::new()
 function Add-Field($card,[string]$key,[string]$caption,[string]$help,[string]$value,[string]$unit) {
     $row=[Windows.Forms.TableLayoutPanel]::new()
@@ -225,7 +225,7 @@ function Add-Field($card,[string]$key,[string]$caption,[string]$help,[string]$va
     [void]$script:fieldSpecs.Add([pscustomobject]@{ Key=$key; Caption=$caption; Control=$input })
     return $input
 }
-$connectBox=Add-Field $connectCard 'api_only_poll_interval_seconds' 'Uppdateringsintervall' '10–120 s. Säkerhetsgräns och Spotify-väntan kan förlänga intervallet. Ett extra prov nära låtslut kan göras en gång per spår.' (Config-Value 'api_only_poll_interval_seconds' '15') 'sekunder'
+$minimumBox=Add-Field $connectCard 'api_min_interval_seconds' 'Snabbast tillåtet' 'Lägsta lokala API-intervall, minst 0,5 s. Pollning och touch delar samma gräns. Spotify kan kräva längre väntan.' (Config-Value 'api_min_interval_seconds' '0.5') 'sekunder'
 $advancedToggle=New-Button 'Visa avancerade inställningar  +'
 $advancedToggle.Anchor='Left'; $advancedToggle.Margin=[Windows.Forms.Padding]::new(0,0,0,8)
 $advancedToggle.AccessibleName='Avancerade inställningar'
@@ -236,10 +236,9 @@ $apiCard=Add-Card $advancedContent 'SPOTIFY · API-INTERVALL'
 $null=Add-Text $apiCard 'Den automatiska säkerhetsgränsen gäller alltid' 12 'Text' $true
 $null=Add-Text $apiCard 'Dessa värden styr API-takten. Windows lokala Spotify-session behöver ingen regelbunden Connect-läsning. Spotify kan kräva längre väntan.' 10 'Muted'
 $connectEstimate=Add-Text $apiCard '' 9 'Muted'
-$minimumBox=Add-Field $apiCard 'api_min_interval_seconds' 'Snabbast tillåtet' 'Lägsta adaptiva API-intervall, minst 0,5 s. Ett teoretiskt tak, inte verklig anropsfrekvens.' (Config-Value 'api_min_interval_seconds' '1') 'sekunder'
-$initialBox=Add-Field $apiCard 'api_initial_interval_seconds' 'Vanlig API-gräns' 'Startintervall. Minst Snabbast tillåtet och högst den konfigurerade maxgränsen (normalt 30 s).' (Config-Value 'api_initial_interval_seconds' '3') 'sekunder'
-$idleBox=Add-Field $apiCard 'api_idle_interval_seconds' 'API-gräns vid paus' 'Minst Vanlig API-gräns, högst 300 s. Connect, säkerhetsgräns och Retry-After kan ge längre väntan.' (Config-Value 'api_idle_interval_seconds' '10') 'sekunder'
-$null=Add-Text $apiCard 'Ordning: snabbast ≤ vanlig ≤ paus. Komma eller punkt fungerar för decimaler.' 9 'Muted'
+$initialBox=Add-Field $apiCard 'api_initial_interval_seconds' 'Efter en gränsträff' 'Lägsta backoff efter HTTP 429, utöver fördubblad adaptiv takt. Minst Snabbast tillåtet, högst konfigurerad maxgräns (normalt 30 s).' (Config-Value 'api_initial_interval_seconds' '1') 'sekunder'
+$idleBox=Add-Field $apiCard 'api_idle_interval_seconds' 'Vid paus eller inaktivitet' 'Minst gränsen Efter en gränsträff, högst 300 s. Backoff, kvotåterhämtning och Retry-After kan förlänga väntan.' (Config-Value 'api_idle_interval_seconds' '3') 'sekunder'
+$null=Add-Text $apiCard 'Ordning: snabbast ≤ efter gränsträff ≤ paus. Komma eller punkt fungerar för decimaler.' 9 'Muted'
 $artworkCard=Add-Card $advancedContent 'ALBUMOMSLAG'
 $retryBox=Add-Field $artworkCard 'artwork_retry_attempts' 'Hämtningsförsök för omslag' '1–5 försök att hämta ett saknat albumomslag. Detta är inte antalet seriella omförsök.' (Config-Value 'artwork_retry_attempts' '5') 'försök'
 
@@ -264,7 +263,7 @@ function Add-DiagnosticRow($card,[string]$key,[string]$caption,[string]$help) {
 }
 Add-DiagnosticRow $apiDiagnostics 'Api' 'Registrerade HTTP 429' 'Verkliga HTTP 429-svar. Sparad cooldown räknas inte igen. Äldre historia före räknaren kan saknas.'
 Add-DiagnosticRow $apiDiagnostics 'Windows' 'Senaste gränsträffar' 'Rullande tidsfönster. Den totala räknaren rensas inte när de löper ut.'
-Add-DiagnosticRow $apiDiagnostics 'Adaptive' 'Uppdatering och säkerhetsgräns' 'Regelbunden Connect-läsning följer det längsta av vald tid, säkerhetsgräns, paus och kvotåterhämtning. Retry-After respekteras alltid.'
+Add-DiagnosticRow $apiDiagnostics 'Adaptive' 'Adaptiv uppdatering' 'Visar aktuell gräns mellan anropsstarter. Aktiv Connect följer adaptiv takt, paus och kvotåterhämtning kan ge längre intervall. HTTP-latens kan göra verkliga anrop långsammare. Retry-After gäller alltid.'
 Add-DiagnosticRow $apiDiagnostics 'Change' 'Senaste automatiska ändring' 'Förändring av den adaptiva API-takten och dess orsak.'
 Add-DiagnosticRow $apiDiagnostics 'Calls' 'Verkliga API-anrop' 'Anrop under denna körning. Noll under 30 sekunder kan vara normalt.'
 $safetyReset=New-Button 'Återställ inlärd API-gräns…'; Add-StackControl $apiDiagnostics $safetyReset
@@ -326,10 +325,10 @@ function Update-EditState {
     }
     if ($null -ne $script:lastInfo) { $safetyReset.Enabled=(-not $script:dirty -and $null -ne $script:lastInfo.media.spotify.pacing -and -not $script:statusStale) }
     try {
-        $seconds=Parse-Decimal $connectBox.Text
-        if ($seconds -ge 10 -and $seconds -le 120) { $connectEstimate.Text="Cirka $([math]::Round(86400/$seconds)) grundfrågor per dygn vid ständig drift. Skärmen räknar tiden mellan uppdateringar." }
-        else { $connectEstimate.Text='Välj ett intervall mellan 10 och 120 sekunder.' }
-    } catch { $connectEstimate.Text='Ange intervallet i sekunder.' }
+        $seconds=Parse-Decimal $minimumBox.Text
+        if ($seconds -ge 0.5) { $connectEstimate.Text="Lägsta lokala gräns: $(Format-Seconds $seconds) s. Ingen garanti för Spotifys externa kvot; aktuell adaptiv takt visas i Diagnostik." }
+        else { $connectEstimate.Text='Lägsta lokala gräns är 0,5 sekunder.' }
+    } catch { $connectEstimate.Text='Ange den lägsta gränsen i sekunder.' }
     Update-FooterVisibility $hadFooterFocus
 }
 function Save-Settings {
@@ -347,13 +346,12 @@ function Save-Settings {
         if ($null -eq $fresh.startup) { $fresh | Add-Member -NotePropertyName startup -NotePropertyValue ([pscustomobject]@{}) }
         $maximum=if ($null -ne $fresh.spotify.api_max_interval_seconds) { [double]$fresh.spotify.api_max_interval_seconds } else { 30.0 }
         $minimum=$values.api_min_interval_seconds; $initial=$values.api_initial_interval_seconds
-        $idle=$values.api_idle_interval_seconds; $connect=$values.api_only_poll_interval_seconds; $retries=$values.artwork_retry_attempts
+        $idle=$values.api_idle_interval_seconds; $retries=$values.artwork_retry_attempts
         $badKey=$null; $errorText=''
-        if ($connect -lt 10 -or $connect -gt 120) { $badKey='api_only_poll_interval_seconds'; $errorText='Uppdateringsintervallet ska vara 10–120 sekunder.' }
-        elseif ($retries -lt 1 -or $retries -gt 5) { $badKey='artwork_retry_attempts'; $errorText='Välj 1–5 hämtningsförsök för omslag.' }
+        if ($retries -lt 1 -or $retries -gt 5) { $badKey='artwork_retry_attempts'; $errorText='Välj 1–5 hämtningsförsök för omslag.' }
         elseif ($minimum -lt 0.5 -or $minimum -gt $maximum) { $badKey='api_min_interval_seconds'; $errorText="Snabbast tillåtet ska vara 0,5–$(Format-Seconds $maximum) sekunder." }
-        elseif ($initial -lt $minimum -or $initial -gt $maximum) { $badKey='api_initial_interval_seconds'; $errorText="Vanlig API-gräns ska vara minst Snabbast tillåtet och högst $(Format-Seconds $maximum) sekunder." }
-        elseif ($idle -lt $initial -or $idle -gt 300) { $badKey='api_idle_interval_seconds'; $errorText='API-gräns vid paus ska vara minst Vanlig API-gräns och högst 300 sekunder.' }
+        elseif ($initial -lt $minimum -or $initial -gt $maximum) { $badKey='api_initial_interval_seconds'; $errorText="Efter en gränsträff ska vara minst Snabbast tillåtet och högst $(Format-Seconds $maximum) sekunder." }
+        elseif ($idle -lt $initial -or $idle -gt 300) { $badKey='api_idle_interval_seconds'; $errorText='Pausgränsen ska vara minst Efter en gränsträff och högst 300 sekunder.' }
         if ($null -ne $badKey) { $invalid=$fieldSpecs | Where-Object Key -eq $badKey | Select-Object -First 1; throw $errorText }
         $invalid=$null
         foreach ($key in $values.Keys) { $fresh.spotify | Add-Member -NotePropertyName $key -NotePropertyValue $values[$key] -Force }

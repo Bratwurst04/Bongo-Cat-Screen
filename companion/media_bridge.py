@@ -16,12 +16,15 @@ import time
 from dataclasses import dataclass, replace
 from typing import Callable, Optional
 from diagnostics import diagnostics
+from media_seek import (MEDIA_ACTIONS, SEEK_LIFETIME_SECONDS, RelativeSeek, MediaControlRequest, MediaRefreshRequest,
+                        clamp_seek, media_context_id)
 
 from PIL import Image, ImageDraw, ImageOps
 from spotify_api import (
     SpotifyApiBridge,
     SpotifyApiError,
     SpotifyPacingError,
+    SpotifyBudgetError,
     SpotifyRateLimitError,
 )
 from winrt.windows.media.control import (
@@ -36,12 +39,9 @@ SPOTIFY_COMMAND_CHECK_SECONDS = 0.05
 DEFAULT_ARTWORK_RETRY_ATTEMPTS = 5
 ARTWORK_EXHAUSTED_COOLDOWN_SECONDS = 90.0
 WINDOWS_API_ART_FALLBACK_SECONDS = 60.0
-# API-only playback is usually on a phone or another Connect device. The
-# display advances progress locally, so a slower poll avoids thousands of
-# unnecessary /me/player requests per day.
-SPOTIFY_API_ONLY_POLL_FLOOR_SECONDS = 15.0
-MIN_API_ONLY_POLL_SECONDS = 10.0
-MAX_API_ONLY_POLL_SECONDS = 120.0
+MANUAL_REFRESH_TTL_SECONDS = 3.0
+MANUAL_REFRESH_COOLDOWN_SECONDS = 5.0
+MANUAL_REFRESH_GESTURE_QUIET_SECONDS = 0.5  # F406 groups taps for 320 ms.
 
 
 @dataclass(frozen=True)
@@ -67,8 +67,24 @@ class WindowsMediaBridge:
     ):
         self._on_update = on_update
         self._on_error = on_error or (lambda message: None)
-        self._commands: queue.Queue[str] = queue.Queue()
-        self._pending_spotify_command: Optional[str] = None
+        self._commands: queue.Queue = queue.Queue()
+        self._pending_spotify_command = None
+        self._seek_lock = threading.Lock()
+        self._seek_requests = {}
+        self._control_requests = {}
+        self._confirmation_operation = None
+        self._pending_control_operation = None
+        self._next_api_poll_at = 0.0
+        self._activity_pending = False
+        self._activity_can_wake = False
+        self._last_api_snapshot_at = 0.0
+        self._source_mode = ""
+        self._source_epoch = 0
+        self._api_snapshot_epoch = -1
+        self._api_waiting = False
+        self._manual_refresh = None
+        self._manual_next_at = 0.0
+        self._manual_quiet_until = 0.0
         self._stop = threading.Event()
         self._thread: Optional[threading.Thread] = None
         self._last_snapshot: Optional[MediaSnapshot] = None
@@ -87,7 +103,6 @@ class WindowsMediaBridge:
         self._other_windows_media_available = False
         self._current_source = "generic"
         self._api_only_idle = False
-        self._end_probe_track_key = ""
         self._spotify_settings = dict(spotify_settings or {})
         self._artwork_retry_attempts = self._artwork_attempt_limit()
         self._windows_artwork_key = ""
@@ -122,9 +137,177 @@ class WindowsMediaBridge:
         if self._thread and self._thread.is_alive():
             self._thread.join(timeout=2.0)
 
-    def control(self, action: str) -> None:
+    def control(self, action: str, expected_context: Optional[int] = None) -> bool:
         action = action.upper()
-        self._commands.put(action)
+        if action not in MEDIA_ACTIONS:
+            return False
+        # Input/serial path: only a bounded in-memory slot, no API/file locks.
+        with self._seek_lock:
+            received_epoch = self._source_epoch
+            if self._manual_refresh is not None:
+                return True  # Coalesce all gesture variants while it is pending.
+            if time.monotonic() < self._manual_quiet_until:
+                return False
+            if self._api_waiting and self._source_mode == "spotify_api":
+                if action != "PLAY_PAUSE" or time.monotonic() < self._manual_next_at:
+                    return False
+                self._manual_refresh = MediaRefreshRequest(
+                    self._source_epoch, time.monotonic() + MANUAL_REFRESH_TTL_SECONDS)
+                self._manual_next_at = time.monotonic() + MANUAL_REFRESH_COOLDOWN_SECONDS
+                return True
+        self.notify_local_activity()
+        if action.startswith("SEEK:"):
+            snapshot = self._last_snapshot
+            if (not snapshot or not snapshot.available or not snapshot.track_key or
+                    self._current_source not in ("windows_spotify", "spotify_api")):
+                diagnostics.event("MEDIA_CONTROL", action=action, result="skipped",
+                                  reason="no_playback")
+                return False
+            if (expected_context is not None and
+                    expected_context != media_context_id(snapshot.source, snapshot.track_key)):
+                diagnostics.event("MEDIA_CONTROL", action=action, result="skipped", reason="track_mismatch")
+                return False
+            # The serial reader must never wait on the HTTP lock. This only
+            # guards four bounded seek slots; the existing worker executes them.
+            with self._seek_lock:
+                if received_epoch != self._source_epoch:
+                    return False
+                if len(self._seek_requests) >= 4:
+                    diagnostics.event("MEDIA_CONTROL", action=action, result="skipped",
+                                      reason="queue_full")
+                    return False
+                command = RelativeSeek(action, self._current_source, snapshot.track_key,
+                    self._spotify.playback_device_id if self._current_source == "spotify_api" else "",
+                    time.monotonic() + SEEK_LIFETIME_SECONDS)
+                self._seek_requests[id(command)] = command
+                self._commands.put(command)
+            return True
+        with self._seek_lock:
+            if received_epoch != self._source_epoch:
+                return False
+            if len(self._control_requests) >= 8:
+                diagnostics.event("MEDIA_CONTROL", action=action, result="skipped", reason="queue_full")
+                return False
+            command = MediaControlRequest(action,
+                self._current_source if self._current_source in ("windows_spotify", "spotify_api") else None,
+                time.monotonic() + 5, source_epoch=self._source_epoch if
+                self._source_mode == "spotify_api" else None)
+            self._control_requests[id(command)] = command
+            self._commands.put(command)
+        return True
+
+    def notify_local_activity(self):
+        self._activity_pending = True
+        if self._spotify:
+            self._spotify.notify_local_activity()
+
+    def _seek_valid(self, command: RelativeSeek) -> bool:
+        current = self._last_snapshot
+        return bool(time.monotonic() < command.expires_at and current and current.available and
+                    current.track_key == command.track_key and self._current_source == command.source)
+
+    def _finish_seek(self, command: RelativeSeek, accepted: bool, reason: str = "",
+                     error_type=None, http_status=None) -> None:
+        with self._seek_lock:
+            self._seek_requests.pop(id(command), None)
+        diagnostics.event("MEDIA_CONTROL", action=command.action,
+                          result="success" if accepted else "skipped",
+                          **({"reason": reason} if reason else {}),
+                          error_type=error_type, http_status=http_status)
+        if not accepted and command.operation is not None:
+            self._spotify.finish_operation(command.operation)
+
+    def _finish_control(self, command, accepted=False, reason="", error_type=None, http_status=None):
+        if isinstance(command, MediaControlRequest):
+            with self._seek_lock:
+                self._control_requests.pop(id(command), None)
+            if not accepted and command.operation is not None:
+                self._spotify.finish_operation(command.operation)
+            if not accepted:
+                diagnostics.event("MEDIA_CONTROL", action=command.action, result="skipped",
+                                  **({"reason":reason} if reason else {}),
+                                  error_type=error_type, http_status=http_status)
+
+    def _finish_manual_refresh(self, request):
+        if request is None:
+            return
+        with self._seek_lock:
+            if self._manual_refresh is request:
+                self._manual_refresh = None
+                self._manual_quiet_until = time.monotonic() + MANUAL_REFRESH_GESTURE_QUIET_SECONDS
+        if request.operation is not None:
+            self._spotify.finish_operation(request.operation)
+            request.operation = None
+
+    def _manual_refresh_valid(self, request, check_ttl=True):
+        return bool(request is not None and self._manual_refresh is request and
+                    request.source_epoch == self._source_epoch and self._source_mode == "spotify_api" and
+                    self._api_waiting and (not check_ttl or time.monotonic() < request.expires_at))
+
+    def _enter_source_mode(self, mode):
+        if self._source_mode == mode:
+            return
+        with self._seek_lock:
+            initial_owner = not self._source_mode
+            self._source_mode = mode
+            self._source_epoch += 1
+            self._api_snapshot_epoch = -1
+            self._last_api_snapshot_at = 0.0
+            self._api_waiting = mode == "spotify_api"
+            self._current_source = mode
+        if not initial_owner:
+            self._clear_api_work("source_mismatch")
+            if mode == "windows_spotify":
+                # Waiting's NONE cleared the engine cover. Re-read even the
+                # same Windows song instead of trusting its old completion.
+                self._last_track_key = ""
+                self._windows_artwork_complete_key = ""
+                self._api_fallback_complete_windows_key = ""
+        if self._api_waiting:
+            self._publish_api_waiting()
+
+    def _publish_api_waiting(self, busy=False):
+        if not self._api_waiting:
+            return
+        state = self._spotify.status()
+        if state.get("state") == "rate_limited":
+            snapshot = self._spotify_waiting_snapshot()
+        else:
+            local = state.get("local_budget", {})
+            can_reserve = (local.get("profile") != "guarded" and
+                not local.get("retry_remaining_seconds", 0) and not local.get("clock_guard_remaining_seconds", 0) and
+                local.get("short_total_limit", 0)-local.get("short_used", 0)-local.get("reserved", 0) >= 3 and
+                local.get("long_total_limit", 0)-local.get("long_used", 0)-local.get("reserved", 0) >= 3)
+            admitted = (busy and self._manual_refresh is not None and
+                        self._manual_refresh.operation is not None and local.get("profile") != "guarded" and
+                        not local.get("retry_remaining_seconds", 0) and not local.get("clock_guard_remaining_seconds", 0) and
+                        state.get("pacing", {}).get("next_allowed_at", 0) <= time.time())
+            artist = "Checking status..." if admitted else (
+                "Tap to check status" if can_reserve and time.monotonic() >= self._manual_next_at else
+                "Waiting for next check")
+            snapshot = MediaSnapshot(source="SPOTIFY API", title="Waiting for Spotify", artist=artist)
+        self._current_source = "spotify_api"
+        self._publish(snapshot, None)
+
+    def _clear_api_work(self, reason):
+        self._finish_manual_refresh(self._manual_refresh)
+        pending = self._pending_spotify_command
+        self._pending_spotify_command = None
+        items = [pending] if pending is not None else []
+        while True:
+            try:
+                items.append(self._commands.get_nowait())
+            except queue.Empty:
+                break
+        for command in items:
+            if isinstance(command, RelativeSeek):
+                self._finish_seek(command, False, reason)
+            else:
+                self._finish_control(command, False, reason)
+        for operation in (self._confirmation_operation, self._pending_control_operation):
+            if operation is not None and self._spotify:
+                self._spotify.finish_operation(operation)
+        self._confirmation_operation = self._pending_control_operation = None
 
     def configure_spotify(self, spotify_settings: dict) -> None:
         """Apply local API and artwork settings without network traffic."""
@@ -139,21 +322,18 @@ class WindowsMediaBridge:
             spotify = {"state": "not_configured"}
         else:
             spotify = self._spotify.status()
-        poll_floor = self._api_only_poll_floor()
         effective = None
         if self._spotify and self._current_source == "spotify_api":
-            effective = max(
-                poll_floor,
-                self._spotify.poll_interval_seconds(idle=self._api_only_idle),
-            )
+            effective = self._spotify.poll_interval_seconds(idle=self._api_only_idle)
         return {
             "spotify": spotify,
             "windows_spotify_available": self._windows_spotify_available,
             "other_windows_media_available": self._other_windows_media_available,
             "current_source": self._current_source,
-            "api_only_poll_floor_seconds": poll_floor,
+            "polling_mode": "adaptive",
             "effective_poll_interval_seconds": effective,
             "api_only_idle": self._api_only_idle,
+            "api_snapshot_age_seconds": max(0,time.monotonic()-self._last_api_snapshot_at) if self._last_api_snapshot_at else None,
             "artwork_retry_attempts": self._artwork_retry_attempts,
             "checked_at": time.time(),
         }
@@ -177,11 +357,21 @@ class WindowsMediaBridge:
                 spotify_session, other_media_playing = self._find_media_sources(manager)
                 self._windows_spotify_available = spotify_session is not None
                 self._other_windows_media_available = other_media_playing
+                self._enter_source_mode("windows_spotify" if spotify_session is not None else
+                    "spotify_api" if self._spotify and self._spotify.is_ready else "generic")
                 if spotify_session is not None:
                     self._current_source = "windows_spotify"
                     # A deferred Connect action belongs to the old remote
                     # source. Never replay it on Windows or hours later.
+                    if isinstance(self._pending_spotify_command, RelativeSeek):
+                        self._finish_seek(self._pending_spotify_command, False, "source_mismatch")
+                    else:
+                        self._finish_control(self._pending_spotify_command, False, "source_mismatch")
                     self._pending_spotify_command = None
+                    for operation in (self._confirmation_operation, self._pending_control_operation):
+                        if operation is not None:
+                            self._spotify.finish_operation(operation)
+                    self._confirmation_operation = self._pending_control_operation = None
                     # The local Windows session owns both controls and display
                     # state. An API snapshot has a different track key and can
                     # overwrite a newer local song while its cover is in flight.
@@ -195,18 +385,60 @@ class WindowsMediaBridge:
                             self._publish_windows_api_artwork(snapshot, spotify_session)
                         )
                 elif (self._spotify and self._spotify.is_ready and
-                      self._spotify_api_retry_due()):
+                      (self._spotify_api_retry_due() or self._manual_refresh is not None) and
+                      (asyncio.get_running_loop().time() >= self._next_api_poll_at or
+                       not self._commands.empty() or self._pending_spotify_command is not None or
+                       self._confirmation_operation is not None or self._manual_refresh is not None or
+                       self._activity_pending and self._activity_can_wake)):
                     self._current_source = "spotify_api"
+                    self._activity_pending = False
+                    manual = self._manual_refresh
                     try:
-                        command_sent = self._handle_spotify_commands()
+                        if manual is not None:
+                            if not self._manual_refresh_valid(manual):
+                                self._finish_manual_refresh(manual)
+                                self._publish_api_waiting()
+                                continue
+                            if manual.operation is None:
+                                manual.operation = self._spotify.begin_operation("control")
+                            self._publish_api_waiting(busy=True)
+                            def manual_guard():
+                                if (not self._manual_refresh_valid(manual) or manual.attempts >= 2 or
+                                        self._find_media_sources(manager)[0] is not None):
+                                    return False
+                                manual.attempts += 1
+                                return True
+                            spotify_data, artwork_url = self._spotify.get_playback(
+                                urgent=True, operation=manual.operation, start_guard=manual_guard,
+                                retry_guard=lambda: manual.attempts < 2 and self._manual_refresh_valid(manual))
+                            still_current = self._manual_refresh_valid(manual, check_ttl=False)
+                            windows_now = self._find_media_sources(manager)[0] is not None
+                            self._finish_manual_refresh(manual)
+                            if not still_current or windows_now:
+                                if windows_now:
+                                    self._enter_source_mode("windows_spotify")
+                                continue
+                        else:
+                            spotify_data = artwork_url = None
+                        command_sent = self._handle_spotify_commands() if manual is None else False
                         if command_sent:
                             # Give Spotify Connect a brief moment to expose the new
-                            # state before the confirming read. Urgent requests
-                            # have a 0.75 s guard and still obey Retry-After.
+                            # state before the confirming read. Controls and
+                            # reads share the adaptive gate and Retry-After.
                             await asyncio.sleep(0.8)
-                        spotify_data, artwork_url = self._spotify.get_playback(
-                            urgent=command_sent
-                        ) if command_sent else self._spotify.get_playback()
+                        operation = self._confirmation_operation
+                        if manual is None:
+                            spotify_data, artwork_url = self._spotify.get_playback(
+                                urgent=True, operation=operation
+                            ) if operation is not None else self._spotify.get_playback()
+                        if operation is not None:
+                            self._spotify.finish_operation(operation)
+                            self._confirmation_operation = None
+                        self._last_api_snapshot_at = time.monotonic()
+                        self._api_snapshot_epoch = self._source_epoch
+                        self._api_waiting = not bool(spotify_data and spotify_data.get("track_key"))
+                        local = self._spotify.status().get("local_budget", {})
+                        self._activity_can_wake = bool(local.get("activity_wake_allowed"))
                         self._spotify_retry_is_rate_limit = False
                         if spotify_data:
                             snapshot = MediaSnapshot(
@@ -221,27 +453,45 @@ class WindowsMediaBridge:
                             )
                             if artwork:
                                 self._publish(snapshot, artwork)
-                            await self._wait_for_spotify_work(
-                                self._api_only_poll_delay(idle=not snapshot.playing,
-                                                          snapshot=snapshot)
-                            )
+                            delay = self._api_only_poll_delay(idle=not snapshot.playing)
+                            if manual is not None:
+                                delay = max(delay, self._spotify.poll_interval_seconds(idle=not snapshot.playing))
+                            self._next_api_poll_at = asyncio.get_running_loop().time() + delay
+                            await self._wait_for_spotify_work(delay)
                             continue
-                        self._publish(MediaSnapshot(source="SPOTIFY API"), None)
+                        self._publish_api_waiting()
                         self._api_only_idle = True
                         # Empty playback must never fall through to the 0.45s
                         # UI loop. Keep a low-cost API watch for Spotify while
                         # another player (for example YouTube) owns Windows.
-                        await self._wait_for_spotify_work(
-                            self._api_only_poll_delay(idle=True)
-                        )
+                        delay = self._api_only_poll_delay(idle=True)
+                        if manual is not None:
+                            delay = max(delay, self._spotify.poll_interval_seconds(idle=True))
+                        self._next_api_poll_at = asyncio.get_running_loop().time() + delay
+                        await self._wait_for_spotify_work(delay)
                         continue
                     except SpotifyPacingError as exc:
+                        if manual is not None:
+                            if (not self._manual_refresh_valid(manual) or
+                                    isinstance(exc, SpotifyBudgetError) and
+                                    exc.reason not in ("start_spacing", "profile")):
+                                self._finish_manual_refresh(manual)
+                        self._activity_can_wake = bool(self._spotify.status().get(
+                            "local_budget", {}).get("activity_wake_allowed"))
+                        self._next_api_poll_at = asyncio.get_running_loop().time() + exc.wait_seconds
+                        if isinstance(exc, SpotifyBudgetError) and exc.reason in (
+                                "operation_expired", "clock_guard", "history_corrupt", "history_io"):
+                            self._clear_api_work(exc.reason)
+                        self._publish_api_waiting()
+                        if self._manual_refresh is not None:
+                            await asyncio.sleep(min(POLL_INTERVAL_SECONDS, exc.wait_seconds))
+                            continue
                         if self._commands.empty() and not self._pending_spotify_command:
                             await self._wait_for_spotify_work(exc.wait_seconds)
                         else:
                             # A queued explicit touch must not spin while the
-                            # short urgent-command guard is still active.
-                            await asyncio.sleep(exc.wait_seconds)
+                            # shared request guard is still active.
+                            await asyncio.sleep(min(POLL_INTERVAL_SECONDS, exc.wait_seconds))
                         continue
                     except SpotifyRateLimitError as exc:
                         diagnostics.event("SPOTIFY_FALLBACK", reason=exc.reason,
@@ -267,7 +517,25 @@ class WindowsMediaBridge:
                         self._spotify_retry_is_rate_limit = False
                         self._on_error(f"Spotify unavailable; using Windows media: {exc}")
                         self._publish_no_windows_status()
+                    except Exception as exc:
+                        if manual is None:
+                            raise
+                        # A strict parse/shape error or post-response metadata
+                        # I/O must not replay this single-read operation.
+                        self._finish_manual_refresh(manual)
+                        delay = self._spotify.poll_interval_seconds(idle=True)
+                        self._next_api_poll_at = asyncio.get_running_loop().time() + delay
+                        diagnostics.event("MEDIA_REFRESH", result="failure", reason="refresh_error",
+                                          stage="media_refresh", error_type=type(exc))
+                        self._publish_api_waiting()
+                        await self._wait_for_spotify_work(delay)
+                        continue
 
+                elif self._spotify and self._spotify.is_ready and self._spotify_api_retry_due():
+                    # Local wait preserves last metadata, with its age exposed
+                    # in status. Continue probing Windows sessions every 0.45s.
+                    self._current_source = "spotify_api"
+                    self._publish_api_waiting()
                 else:
                     self._publish_no_windows_status()
             except Exception as exc:
@@ -287,49 +555,11 @@ class WindowsMediaBridge:
             return self._spotify.status().get("state") != "rate_limited"
         return asyncio.get_running_loop().time() >= self._spotify_retry_at
 
-    def _api_only_poll_delay(self, idle: bool,
-                             snapshot: Optional[MediaSnapshot] = None) -> float:
-        base = max(self._api_only_poll_floor(),
-                   self._spotify.poll_interval_seconds(idle=idle),
-                   self._spotify.poll_delay_seconds(idle=idle))
-        if not snapshot or not snapshot.playing or not snapshot.track_key:
-            return base
-        if self._end_probe_track_key == snapshot.track_key:
-            if snapshot.position_seconds <= 5 and snapshot.duration_seconds >= 30:
-                # The same track has restarted or repeated.
-                self._end_probe_track_key = ""
-            else:
-                return base
-        remaining = snapshot.duration_seconds - snapshot.position_seconds
-        if remaining <= 0 or remaining + 0.75 >= base:
-            return base
-        pacing = self._spotify.status().get("pacing", {})
-        if pacing.get("quota_poll_floor_seconds", 0) > 0:
-            return base
-        # Replace the next regular poll with one just after the predicted
-        # natural end. At most one early probe per track; keep the adaptive
-        # safety interval and the HTTP Retry-After guard intact.
-        end_delay = max(
-            remaining + 0.75,
-            self._spotify.poll_interval_seconds(idle=False),
-            self._spotify.poll_delay_seconds(idle=False),
-        )
-        if end_delay < base:
-            self._end_probe_track_key = snapshot.track_key
-            diagnostics.event("SPOTIFY_END_PROBE", interval_ms=int(end_delay * 1000))
-            return end_delay
-        return base
-
-    def _api_only_poll_floor(self) -> float:
-        try:
-            requested = float(self._spotify_settings.get(
-                "api_only_poll_interval_seconds", SPOTIFY_API_ONLY_POLL_FLOOR_SECONDS
-            ))
-        except (TypeError, ValueError):
-            requested = SPOTIFY_API_ONLY_POLL_FLOOR_SECONDS
-        if not MIN_API_ONLY_POLL_SECONDS <= requested <= MAX_API_ONLY_POLL_SECONDS:
-            return SPOTIFY_API_ONLY_POLL_FLOOR_SECONDS
-        return requested
+    def _api_only_poll_delay(self, idle: bool) -> float:
+        # The API bridge owns request-start deadlines. Waiting another whole
+        # interval here would add HTTP/artwork latency to every active poll.
+        # Legacy api_only_poll_interval_seconds is intentionally ignored.
+        return self._spotify.poll_delay_seconds(idle=idle)
 
     def _spotify_waiting_snapshot(self) -> Optional[MediaSnapshot]:
         if not self._spotify:
@@ -348,12 +578,11 @@ class WindowsMediaBridge:
     def _publish_no_windows_status(self) -> None:
         # Touch commands made during a long cooldown must not play back hours
         # later when the API becomes available again.
-        self._pending_spotify_command = None
-        while True:
-            try:
-                self._commands.get_nowait()
-            except queue.Empty:
-                break
+        self._clear_api_work("rate_limited")
+        if self._source_mode == "spotify_api":
+            self._api_waiting = True
+            self._api_snapshot_epoch = -1
+            self._last_api_snapshot_at = 0.0
         snapshot = self._spotify_waiting_snapshot()
         self._current_source = "spotify_api" if snapshot else "generic"
         self._publish(snapshot or MediaSnapshot(), None)
@@ -361,15 +590,19 @@ class WindowsMediaBridge:
     async def _wait_for_spotify_work(self, delay_seconds: float) -> None:
         """Wait between API reads, but wake quickly when touch adds a command."""
         loop = asyncio.get_running_loop()
-        deadline = loop.time() + max(SPOTIFY_COMMAND_CHECK_SECONDS, delay_seconds)
+        deadline = loop.time() + min(POLL_INTERVAL_SECONDS, max(SPOTIFY_COMMAND_CHECK_SECONDS, delay_seconds))
         while not self._stop.is_set() and loop.time() < deadline:
-            if self._pending_spotify_command or not self._commands.empty():
+            if self._pending_spotify_command or not self._commands.empty() or self._manual_refresh is not None:
+                return
+            if self._activity_pending and self._activity_can_wake:
                 return
             await asyncio.sleep(
                 min(SPOTIFY_COMMAND_CHECK_SECONDS, max(0.0, deadline - loop.time()))
             )
 
     def _handle_spotify_commands(self) -> bool:
+        if self._confirmation_operation is not None:
+            return False
         handled = False
         while True:
             if self._pending_spotify_command:
@@ -381,20 +614,94 @@ class WindowsMediaBridge:
                     return handled
 
             try:
-                self._spotify.control(action)
-            except SpotifyPacingError:
+                if self._api_waiting:
+                    if isinstance(action, RelativeSeek):
+                        self._finish_seek(action, False, "no_playback")
+                    else:
+                        self._finish_control(action, False, "no_playback")
+                    self._pending_spotify_command = None
+                    continue
+                if isinstance(action, RelativeSeek):
+                    if not self._seek_valid(action):
+                        self._finish_seek(action, False, "seek_expired" if
+                            time.monotonic() >= action.expires_at else "track_mismatch")
+                        self._pending_spotify_command = None
+                        continue
+                    if action.operation is None:
+                        action.operation = self._spotify.begin_operation("seek")
+                    if action.context is None:
+                        action.context = self._spotify.get_seek_context(action.track_key, action.device_id,
+                                                                        operation=action.operation)
+                    accepted = bool(action.context and self._seek_valid(action) and
+                                    self._spotify.seek_relative(action.delta_seconds, action.context))
+                    self._finish_seek(action, accepted, "" if accepted else "seek_unsupported")
+                    self._pending_spotify_command = None
+                    # Read normal playback before another command. No fake
+                    # position, paused-state change or extra artwork request.
+                    if accepted:
+                        self._confirmation_operation = action.operation
+                        return True
+                    continue
+                value = action.action if isinstance(action, MediaControlRequest) else action
+                if isinstance(action, MediaControlRequest):
+                    if action.source_epoch is not None and action.source_epoch != self._source_epoch:
+                        self._finish_control(action, False, "source_mismatch")
+                        self._pending_spotify_command = None
+                        continue
+                    if (time.monotonic() >= action.expires_at or
+                            action.source is not None and action.source != self._current_source):
+                        self._finish_control(action, False, "command_expired")
+                        self._pending_spotify_command = None
+                        continue
+                    if action.operation is None:
+                        action.operation = self._spotify.begin_operation("control")
+                    operation = action.operation
+                else:
+                    if self._pending_control_operation is None:
+                        self._pending_control_operation = self._spotify.begin_operation("control")
+                    operation = self._pending_control_operation
+                self._spotify.control(value, operation=operation)
+            except SpotifyPacingError as exc:
+                if isinstance(exc, SpotifyBudgetError) and exc.reason in (
+                        "operation_expired", "clock_guard", "history_corrupt", "history_io"):
+                    if isinstance(action, RelativeSeek):
+                        self._finish_seek(action, False, exc.reason)
+                    else:
+                        self._finish_control(action, False, exc.reason)
+                    self._pending_spotify_command = None
+                    raise
                 self._pending_spotify_command = action
                 raise
+            except SpotifyRateLimitError:
+                if isinstance(action, RelativeSeek):
+                    self._finish_seek(action, False, "rate_limited")
+                    self._pending_spotify_command = None
+                else:
+                    self._finish_control(action, False, "rate_limited")
+                    self._pending_spotify_command = None
+                raise
+            except Exception as exc:
+                status = getattr(self._spotify, "last_control_http_status", None)
+                if isinstance(action, RelativeSeek):
+                    self._finish_seek(action, False, "api_error", type(exc), status)
+                else:
+                    self._finish_control(action, False, "api_error", type(exc), status)
+                self._pending_spotify_command = None
+                return handled
             self._pending_spotify_command = None
+            self._finish_control(action, True)
+            self._confirmation_operation = operation
+            self._pending_control_operation = None
             # Make the play icon react immediately after Spotify accepts the
             # command. The confirming read remains authoritative.
-            if action == "PLAY_PAUSE" and self._last_snapshot:
+            if value == "PLAY_PAUSE" and self._last_snapshot:
                 optimistic = replace(
                     self._last_snapshot,
                     playing=not self._last_snapshot.playing,
                 )
                 self._publish(optimistic, None)
             handled = True
+            return handled
 
     @staticmethod
     def _find_media_sources(manager):
@@ -422,6 +729,23 @@ class WindowsMediaBridge:
                 return handled
 
             try:
+                if isinstance(action, RelativeSeek):
+                    try:
+                        accepted = await self._seek_windows(session, action)
+                    except Exception:
+                        self._finish_seek(action, False, "seek_unsupported")
+                        continue
+                    self._finish_seek(action, accepted, "" if accepted else "seek_unsupported")
+                    if accepted:
+                        return True
+                    continue
+                command = action
+                if isinstance(command, MediaControlRequest):
+                    if (time.monotonic() >= command.expires_at or command.source is not None and
+                            command.source != self._current_source):
+                        self._finish_control(command, False, "command_expired")
+                        continue
+                    action = command.action
                 if action == "PLAY_PAUSE":
                     accepted = await session.try_toggle_play_pause_async()
                 elif action == "NEXT":
@@ -431,11 +755,50 @@ class WindowsMediaBridge:
                 else:
                     continue
             except Exception:
+                self._finish_control(command, False, "api_error")
                 diagnostics.event("MEDIA_CONTROL", action=action, result="failure")
                 raise
             diagnostics.event("MEDIA_CONTROL", action=action,
                               result="failure" if accepted is False else "success")
+            self._finish_control(command, accepted is not False)
             handled = handled or accepted is not False
+
+    @staticmethod
+    def _windows_track_key(session, props) -> str:
+        return "|".join((session.source_app_user_model_id, props.title or "Unknown track",
+            props.artist or props.album_artist or "Unknown artist", props.album_title or "",
+            str(props.track_number)))
+
+    async def _seek_windows(self, session, command: RelativeSeek) -> bool:
+        if not self._seek_valid(command):
+            return False
+        props = await session.try_get_media_properties_async()
+        if (not self._seek_valid(command) or
+                self._windows_track_key(session, props) != command.track_key):
+            return False
+        playback = session.get_playback_info()
+        if not playback.controls.is_playback_position_enabled:
+            return False
+        timeline = session.get_timeline_properties()
+
+        def ticks(value):
+            return (value.days * 86400 + value.seconds) * 10000000 + value.microseconds * 10
+
+        lower = max(0, ticks(timeline.start_time), ticks(timeline.min_seek_time))
+        # As with Spotify, never deliberately target the next track boundary.
+        upper = min(ticks(timeline.max_seek_time), ticks(timeline.end_time) - 10000)
+        position = ticks(timeline.position)
+        if str(playback.playback_status).endswith("PLAYING"):
+            updated = timeline.last_updated_time
+            now = dt.datetime.now(updated.tzinfo or dt.timezone.utc)
+            rate = playback.playback_rate
+            if rate is None:
+                rate = 1.0
+            position += int(max(0.0, (now - updated).total_seconds()) * 10000000 * rate)
+        target = clamp_seek(position, command.delta_seconds * 10000000, lower, upper)
+        if target is None or not self._seek_valid(command):
+            return False
+        return bool(await session.try_change_playback_position_async(target))
 
     def _artwork_attempt_limit(self) -> int:
         try:
@@ -449,6 +812,7 @@ class WindowsMediaBridge:
             return DEFAULT_ARTWORK_RETRY_ATTEMPTS
 
     async def _try_api_artwork(self, track_key: str, artwork_url: Optional[str]) -> Optional[bytes]:
+        source_epoch = self._source_epoch
         if track_key != self._api_artwork_key:
             self._api_artwork_key = track_key
             self._api_artwork_attempts = 0
@@ -473,7 +837,11 @@ class WindowsMediaBridge:
         try:
             raw = await asyncio.to_thread(self._spotify.download_artwork, artwork_url)
         except Exception as exc:
+            if source_epoch != self._source_epoch:
+                return None
             return self._artwork_failed("spotify_api", "download_error", type(exc))
+        if source_epoch != self._source_epoch:
+            return None
         if not raw:
             return self._artwork_failed("spotify_api", "empty_artwork")
         try:
@@ -521,9 +889,10 @@ class WindowsMediaBridge:
     async def _publish_windows_api_artwork(self, snapshot: MediaSnapshot, session) -> None:
         """Fetch without holding up Windows media polling or touch commands."""
         try:
+            source_epoch = self._source_epoch
             artwork = await self._try_windows_api_artwork(snapshot, session)
             current = self._last_snapshot
-            if (artwork and not self._stop.is_set() and self._current_source == "windows_spotify"
+            if (artwork and source_epoch == self._source_epoch and not self._stop.is_set() and self._current_source == "windows_spotify"
                     and current and current.track_key == snapshot.track_key):
                 self._publish(current, artwork)
         except Exception as exc:
@@ -532,6 +901,7 @@ class WindowsMediaBridge:
 
     async def _try_windows_api_artwork(self, snapshot: MediaSnapshot, session) -> Optional[bytes]:
         """Use a paced API read only when a Spotify Windows thumbnail is unavailable."""
+        source_epoch = self._source_epoch
         if not self._windows_api_artwork_due(snapshot, session):
             return None
         now = time.monotonic()
@@ -559,6 +929,8 @@ class WindowsMediaBridge:
             diagnostics.event("ART_API_FALLBACK", result="failure", reason="api_error",
                               stage="api_fallback", error_type=type(exc))
             return None
+        if source_epoch != self._source_epoch:
+            return None
         if not playback:
             diagnostics.event("ART_API_FALLBACK", result="skipped", reason="no_playback")
             return None
@@ -568,6 +940,8 @@ class WindowsMediaBridge:
             diagnostics.event("ART_API_FALLBACK", result="skipped", reason="track_mismatch")
             return None
         artwork = await self._try_api_artwork(playback.get("track_key", ""), artwork_url)
+        if source_epoch != self._source_epoch:
+            return None
         if artwork:
             self._api_fallback_complete_windows_key = snapshot.track_key
             diagnostics.event("ART_API_FALLBACK", result="success", bytes=len(artwork))
@@ -596,9 +970,7 @@ class WindowsMediaBridge:
         if duration:
             position = min(position, duration)
 
-        track_key = "|".join(
-            (source_id, title, artist, props.album_title or "", str(props.track_number))
-        )
+        track_key = self._windows_track_key(session, props)
         artwork = None
         if track_key != self._last_track_key:
             # Clear the previous cover before awaiting the new thumbnail.

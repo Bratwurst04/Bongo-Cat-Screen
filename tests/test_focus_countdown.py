@@ -1,0 +1,142 @@
+"""Run real C++ countdown/cache/UI-adapter checks and firmware font/layout checks."""
+import json
+from pathlib import Path
+import re
+import shutil
+import subprocess
+import sys
+import unittest
+
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "tools"))
+import export_ui_visuals as visuals
+
+
+class CountdownTests(unittest.TestCase):
+    def _run_cpp_case(self, stem, names):
+        build = ROOT / "build/focus-countdown-tests"
+        build.mkdir(parents=True, exist_ok=True)
+        source = visuals.FIRMWARE.read_text(encoding="utf-8")
+        functions = []
+        for name in names:
+            start = re.search(r"(?:lv_obj_t\s*\*|void)\s*" + name + r"\([^)]*\)\s*\{", source)
+            self.assertIsNotNone(start)
+            functions.append(start[0] + visuals.section(source, name) + "}\n")
+        constants = "\n".join(line for line in source.splitlines() if re.match(
+            r"#define (?:TOUCH_PRESSURE_THRESHOLD|MEDIA_MULTI_TAP_WINDOW_MS|MEDIA_SWIPE_THRESHOLD|FOCUS_TAP_MOVE_MAX_RAW) ", line))
+        (build / (stem + "_fixture.inc")).write_text(constants + "\n" + "\n".join(functions), encoding="utf-8")
+        compiler = shutil.which("g++") or shutil.which("clang++")
+        executable = build / (stem + ".exe")
+        if compiler:
+            command = [compiler, "-std=c++14", "-Wall", "-Wextra", "-Werror", "-I", str(build),
+                       str(ROOT / "tests" / (stem + ".cpp")), "-o", str(executable)]
+        else:
+            choices = sorted(Path("C:/Program Files/Microsoft Visual Studio").glob("*/*/VC/Auxiliary/Build/vcvars64.bat"))
+            if not choices or not (choices[-1].parent / "vcvarsall.bat").exists():
+                self.skipTest("Host C++ runtime test NOT RUN: complete MSVC setup/headers unavailable")
+            batch = build / "compile.cmd"
+            batch.write_text(f'@echo off\ncall "{choices[-1]}" >nul\n'
+                             'if errorlevel 1 exit /b 1\n'
+                             f'cl /nologo /std:c++14 /EHsc /W4 /WX /I"{build}" '
+                             f'/Fo"{build / "focus_countdown_test.obj"}" /Fe"{executable}" '
+                             f'"{ROOT / "tests" / (stem + ".cpp")}"\n', encoding="utf-8")
+            command = ["cmd.exe", "/d", "/c", str(batch)]
+        compiled = subprocess.run(command, cwd=ROOT, capture_output=True, text=True)
+        self.assertEqual(compiled.returncode, 0, compiled.stdout + compiled.stderr)
+        run = subprocess.run([str(executable)], cwd=ROOT, capture_output=True, text=True)
+        self.assertEqual(run.returncode, 0, run.stdout + run.stderr)
+        print(run.stdout.strip())
+
+    def test_cpp_state_cache_and_ui_calls(self):
+        self._run_cpp_case("focus_countdown_test", ("createFocusCountdownLabel", "setFocusCountdownVisible",
+            "refreshFocusMediaLayout", "refreshFocusCountdownTheme", "activateMediaArtwork", "toggleMediaCatMode",
+            "refreshFocusCountdownPresentation", "refreshFocusCountdown"))
+
+    def test_cpp_actual_touch_handler_and_media_dispatch(self):
+        self._run_cpp_case("focus_status_touch_test", ("hideFeatureOverlay", "toggleFeatureOverlay", "queueMediaTap",
+            "serviceMediaTaps", "setFocusState", "serviceFocusTimer", "handleFocusStatusTap", "handleTouchFeature"))
+
+    def test_actual_fonts_and_all_countdown_widths(self):
+        layout = visuals.focus_countdown_layout(visuals.FIRMWARE.read_text(encoding="utf-8"))
+        self.assertEqual(layout["labels_xywh"], {"bongo_phase": [5, 65, 96, 17], "bongo_time": [117, 65, 96, 17],
+                         "bongo_pause_0": [221, 69, 3, 11], "bongo_pause_1": [227, 69, 3, 11],
+                         "player_phase": [52, 25, 52, 16], "player_time": [112, 24, 56, 18],
+                         "player_pause_0": [176, 28, 3, 10], "player_pause_1": [182, 28, 3, 10]})
+        self.assertEqual(layout["max_text_widths"], {"bongo_phase": 96, "bongo_time": 96,
+                                                   "player_phase": 51, "player_time": 54})
+        self.assertEqual(layout["player_card_xywh"], [40, 20, 160, 26])
+        self.assertEqual(layout["active_media"], {"box_xywh": [48, 54, 144, 144], "radius": 72, "art_zoom": 320, "cat_zoom": 560})
+        self.assertEqual(layout["inactive_media"], {"box_xywh": [34, 26, 172, 172], "radius": 86, "art_zoom": 384, "cat_zoom": 672})
+        self.assertIn((0, 82, 240, 238), layout["reserved_xywh"]["bongo"])
+        self.assertEqual(layout["hit_xywh_half_open"], {"bongo": [5, 62, 230, 20], "player": [36, 16, 168, 37]})
+
+    def test_layout_rejects_real_collisions(self):
+        source = visuals.FIRMWARE.read_text(encoding="utf-8")
+        for bad_source in (source.replace("bongo_focus_time_label, 117, 65", "bongo_focus_time_label, 117, 66"),
+                           source.replace("bongo_focus_phase_label, 5, 65", "bongo_focus_phase_label, 5, 61"),
+                           source.replace("media_focus_phase_label, 11, 4", "media_focus_phase_label, 11, 17")):
+            with self.assertRaises(ValueError):
+                visuals.focus_countdown_layout(bad_source)
+
+    def test_preview_matches_current_sources(self):
+        preview = ROOT / "visuals/media-seek-implemented-2026-10-12"
+        manifest = json.loads((preview / "manifest.json").read_text(encoding="utf-8"))
+        self.assertEqual(len(manifest["views"]), 22)
+        for path, digest in manifest["source_sha256"].items():
+            self.assertEqual(visuals.sha256(ROOT / path), digest, path)
+        for view in manifest["views"]:
+            path = preview / view["file"]
+            with visuals.Image.open(path) as image:
+                self.assertEqual(image.size, (240, 320))
+            self.assertEqual(visuals.sha256(path), view["sha256"])
+
+    def test_player_presentation_preserved_from_08a(self):
+        current = json.loads((ROOT / "visuals/media-seek-implemented-2026-10-12/manifest.json").read_text())
+        previous = json.loads((ROOT / "visuals/focus-countdown/ui3-implemented-2026-10-12/manifest.json").read_text())
+        before = {view["id"]: view["sha256"] for view in previous["views"]}
+        for view in current["views"]:
+            if view["id"].startswith("player_"):
+                self.assertEqual(view["sha256"], before[view["id"]])
+        source = visuals.FIRMWARE.read_text(encoding="utf-8")
+        saved = (ROOT / "build/focus-status-tap-2026-10-12/baseline/src/bongo_cat_featured.inc").read_text(encoding="utf-8")
+        for function in ("createMediaScreen", "refreshFocusMediaLayout", "activateMediaArtwork", "toggleMediaCatMode", "refreshMediaUi"):
+            self.assertEqual(visuals.section(source, function), visuals.section(saved, function), function)
+
+    def test_bongo_protected_pixels_and_cue_color(self):
+        preview = ROOT / "visuals/media-seek-implemented-2026-10-12"
+        manifest = json.loads((preview / "manifest.json").read_text())
+        source = visuals.FIRMWARE.read_text(encoding="utf-8")
+        for view in manifest["views"]:
+            if not view["id"].startswith("bongo_"):
+                continue
+            sample = {**visuals.SAMPLE, "cpu_percent": 100, "ram_percent": 100, "wpm": 200} if view["id"] == "bongo_long_paused" else visuals.SAMPLE
+            base = visuals.bongo_base(source, sample)
+            image = visuals.Image.open(preview / view["file"])
+            for crop in ((0, 0, 240, 62), (0, 82, 240, 320)):
+                self.assertEqual(image.crop(crop).tobytes(), base.crop(crop).tobytes(), view["id"])
+        for cue, ordinary in (("bongo_compact_cue_paused", "bongo_break_paused"), ("bongo_cyan_cue", "bongo_break")):
+            image = visuals.Image.open(preview / "composed" / (cue + ".png"))
+            normal = visuals.Image.open(preview / "composed" / (ordinary + ".png"))
+            self.assertEqual(image.crop((101, 62, 240, 82)).tobytes(), normal.crop((101, 62, 240, 82)).tobytes())
+
+    def test_source_layout_and_cue_paths(self):
+        source = visuals.FIRMWARE.read_text(encoding="utf-8")
+        activate = visuals.section(source, "activateMediaArtwork")
+        self.assertIn("focusMediaLayout(media_focus_layout_active).art_zoom", activate)
+        toggle = visuals.section(source, "toggleMediaCatMode")
+        self.assertNotIn("lv_img_set_zoom", toggle)
+        self.assertNotIn("lv_img_set_zoom", visuals.section(source, "refreshMediaUi"))
+        refresh = visuals.section(source, "refreshFocusCountdown")
+        self.assertRegex(refresh, r"if \(before.visible != after.visible\) \{[\s\S]*?refreshFocusMediaLayout\(after.visible\)")
+        cue = visuals.section(source, "updateFocusCue")
+        self.assertIn("if (integrated) lv_obj_add_flag(focus_completion_banner, LV_OBJ_FLAG_HIDDEN)", cue)
+        self.assertIn("focusCountdownIntegratedCue(", cue)
+        presentation = visuals.section(source, "refreshFocusCountdownPresentation")
+        self.assertNotIn("lv_obj_set_pos", presentation)
+        self.assertNotIn("lv_label_set_text", presentation)
+        self.assertNotIn("focusCountdownNumberFont", source)
+        self.assertNotIn("lv_font_unscii_8", source)
+
+
+if __name__ == "__main__":
+    unittest.main()

@@ -5,6 +5,7 @@ Handles JSON-based settings persistence and validation
 """
 
 import json
+from api_budget import DEFAULTS as API_BUDGET_DEFAULTS, settings as validate_api_budget_settings
 import os
 import shutil
 import copy
@@ -53,12 +54,12 @@ class ConfigManager:
                 "show_notifications": True
             },
             "spotify": {
+                **API_BUDGET_DEFAULTS,
                 "client_id": "",
-                "api_initial_interval_seconds": 3.0,
-                "api_min_interval_seconds": 1.0,
+                "api_initial_interval_seconds": 1.0,
+                "api_min_interval_seconds": 0.5,
                 "api_max_interval_seconds": 30.0,
-                "api_idle_interval_seconds": 10.0,
-                "api_only_poll_interval_seconds": 15.0,
+                "api_idle_interval_seconds": 3.0,
                 "artwork_retry_attempts": 5,
             },
             "diagnostics": {
@@ -133,20 +134,17 @@ class ConfigManager:
                 return False
 
             spotify = config.get("spotify", {})
-            minimum = float(spotify.get("api_min_interval_seconds", 1.0))
-            initial = float(spotify.get("api_initial_interval_seconds", 3.0))
+            validate_api_budget_settings(spotify)
+            minimum = float(spotify.get("api_min_interval_seconds", 0.5))
+            initial = float(spotify.get("api_initial_interval_seconds", 1.0))
             maximum = float(spotify.get("api_max_interval_seconds", 30.0))
-            idle = float(spotify.get("api_idle_interval_seconds", 10.0))
-            api_only = float(spotify.get("api_only_poll_interval_seconds", 15.0))
+            idle = float(spotify.get("api_idle_interval_seconds", 3.0))
             retries = int(spotify.get("artwork_retry_attempts", 5))
             if not (0.5 <= minimum <= initial <= maximum <= 120.0):
                 print("Invalid Spotify API polling intervals")
                 return False
             if not (initial <= idle <= 300.0) or not (1 <= retries <= 5):
                 print("Invalid Spotify idle interval or artwork retry count")
-                return False
-            if not (10.0 <= api_only <= 120.0):
-                print("Invalid Spotify Connect poll interval (10-120 seconds)")
                 return False
 
             diagnostics = config.get("diagnostics", {})

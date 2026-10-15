@@ -18,12 +18,14 @@ from collections import deque
 import urllib.error
 import urllib.parse
 import urllib.request
+from media_seek import SpotifySeekContext, clamp_seek
 import webbrowser
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 from typing import Optional, Tuple
 
 from diagnostics import diagnostics
+from api_budget import ApiBudget, BudgetWait, OperationGrant
 
 
 ACCOUNTS_URL = "https://accounts.spotify.com"
@@ -58,13 +60,25 @@ class SpotifyPacingError(SpotifyApiError):
         super().__init__(f"Spotify request paced; retry after {self.wait_seconds:.2f}s")
 
 
+class SpotifyBudgetError(SpotifyPacingError):
+    def __init__(self, wait_seconds: float, reason: str):
+        super().__init__(wait_seconds)
+        self.reason = reason
+
+
 class SpotifyApiBridge:
-    def __init__(self, client_id: str, token_path: Path, pacing_settings: Optional[dict] = None):
+    def __init__(self, client_id: str, token_path: Path, pacing_settings: Optional[dict] = None, *, budget=None):
         self.client_id = (client_id or "").strip()
         self.token_path = Path(token_path)
         self._tokens = self._load_tokens()
+        self._budget = budget if budget is not None else ApiBudget(
+            self.token_path.with_name("spotify_api_budget.json"), pacing_settings or {})
+        self._budget_log_after = 0.0
         self._last_art_key = ""
         self._last_is_playing = False
+        self.last_control_http_status = None
+        self.playback_device_id = ""
+        self._playback_track_key = ""
         self._lock = threading.Lock()
         self._request_times = deque()
         self._request_times_15m = deque()
@@ -74,6 +88,12 @@ class SpotifyApiBridge:
         self._pacing_settings = {}
         self._configure_pacing_locked(pacing_settings or {}, reset_if_missing=True)
         self._initialize_429_total()
+        try:
+            quota_retry = max(0, float(self._tokens.get("adaptive_quota_recovery_until", 0) or 0) - QUOTA_RECOVERY_SECONDS)
+            self._budget.import_legacy_limits(self._rate_limit_until(), quota_retry,
+                self._tokens.get("adaptive_last_limit_reason") == "quota_exceeded")
+        except BudgetWait:
+            pass  # Status/admission remains fail-closed; never erase the file.
         if self.token_path.exists():
             self._save_tokens()
         if self._tokens.get("refresh_token"):
@@ -101,22 +121,29 @@ class SpotifyApiBridge:
 
         self._trim_request_times()
         retry_until = self._rate_limit_until()
-        remaining = max(0, math.ceil(retry_until - time.time()))
+        local = self._budget.view(idle=not self._last_is_playing)
+        remaining = max(0, math.ceil(retry_until - time.time()),
+                        math.ceil(local.get("retry_remaining_seconds", 0)))
         pacing = self._pacing_status()
         if remaining:
             return {
                 "state": "rate_limited",
-                "retry_until": retry_until,
+                "retry_until": max(retry_until, time.time()+local.get("retry_remaining_seconds",0)),
                 "retry_remaining_seconds": remaining,
-                "limit_reason": self._tokens.get("adaptive_last_limit_reason", "unspecified_429"),
+                "limit_reason": "quota_exceeded" if local.get("retry_reason") == 2 else
+                    self._tokens.get("adaptive_last_limit_reason", "unspecified_429"),
                 "limit_request_kind": self._tokens.get("adaptive_last_limit_request_kind", "other"),
                 "pacing": pacing,
+                "local_budget": local,
             }
-        return {"state": "ready", "pacing": pacing}
+        local_block = local.get("wait_reason") not in ("none", "profile", "start_spacing")
+        return {"state": "locally_limited" if local_block else "ready", "pacing": pacing,
+                "local_budget": local}
 
     def configure_pacing(self, pacing_settings: dict) -> None:
         """Apply local limits. This makes no Spotify request."""
         with self._lock:
+            self._budget.configure(pacing_settings)
             self._configure_pacing_locked(pacing_settings or {}, reset_if_missing=False)
             self._save_tokens()
 
@@ -124,11 +151,14 @@ class SpotifyApiBridge:
         """The next safe metadata poll delay, determined entirely locally."""
         with self._lock:
             now = time.time()
-            due = max(now, self._next_allowed_at())
-            delay = max(0.05, due - now)
-            if idle:
-                delay = max(delay, float(self._pacing_settings["idle_interval_seconds"]))
-            return delay
+            poll_floor = max(
+                self._quota_poll_floor(idle=idle),
+                float(self._pacing_settings["idle_interval_seconds"]) if idle else 0.0,
+            )
+            due = max(now, self._next_allowed_at(), self._rate_limit_until(),
+                      float(self._tokens.get("adaptive_last_request_at", 0)) + poll_floor)
+            local = self._budget.view(idle=idle)
+            return max(0.05, due - now, local["wait_seconds"])
 
     def poll_interval_seconds(self, idle: bool = False) -> float:
         """Base automatic interval, including persisted safety and quota recovery."""
@@ -137,8 +167,41 @@ class SpotifyApiBridge:
                 self._current_interval(),
                 float(self._tokens.get("adaptive_safe_interval_seconds", 0) or 0),
                 float(self._pacing_settings["idle_interval_seconds"]) if idle else 0.0,
-                self._quota_poll_floor(),
+                self._quota_poll_floor(idle=idle),
+                self._budget.view(idle=idle)["interval_seconds"],
             )
+
+    def notify_local_activity(self) -> None:
+        self._budget.notify_activity()
+
+    def begin_operation(self, kind: str) -> OperationGrant:
+        try:
+            return self._budget.begin_operation(kind)
+        except BudgetWait as exc:
+            self._log_budget_wait(exc)
+            if exc.reason == "server_retry":
+                local = self._budget.view()
+                raise SpotifyRateLimitError(exc.wait_seconds,
+                    "quota_exceeded" if local.get("retry_reason") == 2 else
+                    self._tokens.get("adaptive_last_limit_reason", "unspecified_429"), cached=True) from None
+            raise SpotifyBudgetError(exc.wait_seconds, exc.reason) from None
+
+    def _log_budget_wait(self, exc):
+        now = time.monotonic()
+        if now < self._budget_log_after:
+            return
+        self._budget_log_after = now + 60
+        view = self._budget.view(idle=not self._last_is_playing)
+        diagnostics.event("SPOTIFY_API_LOCAL_WAIT", reason=exc.reason,
+            profile=view.get("profile", "guarded"), wait_seconds=int(math.ceil(exc.wait_seconds)),
+            calls_30s=view.get("short_used",0), local_calls_24h=view.get("long_used",0),
+            interval_ms=int(view.get("interval_seconds",60)*1000))
+
+    def finish_operation(self, operation) -> None:
+        try:
+            self._budget.finish_operation(operation)
+        except BudgetWait:
+            pass  # An unused claim remains bounded by its ten-second expiry.
 
     def authorize_interactive(self, timeout_seconds: int = 180) -> bool:
         if not self.client_id:
@@ -212,7 +275,8 @@ class SpotifyApiBridge:
         return True
 
     def get_playback(self, urgent: bool = False,
-                     artwork_fallback: bool = False) -> Tuple[Optional[dict], Optional[str]]:
+                     artwork_fallback: bool = False, operation=None,
+                     start_guard=None, retry_guard=None) -> Tuple[Optional[dict], Optional[str]]:
         """Return playback metadata immediately and an optional artwork URL.
 
         Artwork is downloaded by the media bridge after metadata has already
@@ -221,12 +285,23 @@ class SpotifyApiBridge:
         """
         if not self.is_ready:
             return None, None
+        urgent = urgent or operation is not None
+        endpoint = "/me/player?additional_types=track%2Cepisode"
+        def guarded_endpoint():
+            if not start_guard():
+                raise SpotifyBudgetError(0.05, "operation_expired")
+            return endpoint
         data = self._api_request(
-            "GET", "/me/player?additional_types=track%2Cepisode", urgent=urgent,
+            "GET", guarded_endpoint if start_guard is not None else endpoint, urgent=urgent,
             request_kind=("artwork_fallback" if artwork_fallback else
                           "playback_urgent" if urgent else "playback_poll"),
+            operation=None if artwork_fallback else operation,
+            **({"retry_guard": retry_guard} if retry_guard is not None else {}),
         )
         if not data or not data.get("item"):
+            self.playback_device_id = ""
+            self._playback_track_key = ""
+            self._last_is_playing = False
             return None, None
 
         item = data["item"]
@@ -254,6 +329,8 @@ class SpotifyApiBridge:
             "track_key": f"spotify:{track_key}",
         }
         self._last_is_playing = playback["playing"]
+        self.playback_device_id = (data.get("device") or {}).get("id") or ""
+        self._playback_track_key = playback["track_key"]
 
         # Return the current URL on every metadata response. The bridge owns
         # the bounded retry policy, so a temporary thumbnail failure cannot
@@ -265,18 +342,81 @@ class SpotifyApiBridge:
     def download_artwork(self, url: str) -> bytes:
         return self._download(url) if url else b""
 
-    def control(self, action: str) -> None:
+    def get_seek_context(self, track_key: str, device_id: str, operation=None) -> Optional[SpotifySeekContext]:
+        """Fresh, paced playback read before a relative seek, including raw ms."""
+        if not self.is_ready or not track_key or not device_id:
+            return None
+        data = self._api_request("GET", "/me/player?additional_types=track%2Cepisode",
+                                 urgent=True, request_kind="playback_urgent", operation=operation)
+        if not data or not data.get("item"):
+            return None
+        item, device = data["item"], data.get("device") or {}
+        key = f"spotify:{item.get('id') or item.get('uri') or item.get('name') or 'Unknown track'}"
+        if (key != track_key or device.get("id") != device_id or
+                device.get("is_restricted") or
+                (data.get("actions") or {}).get("disallows", {}).get("seeking")):
+            return None
+        duration = max(0, int(item.get("duration_ms") or 0))
+        if duration == 0:
+            return None
+        return SpotifySeekContext(key, device_id, max(0, int(data.get("progress_ms") or 0)),
+                                  duration, bool(data.get("is_playing")), time.monotonic(), operation)
+
+    def seek_relative(self, delta_seconds: int, context: SpotifySeekContext) -> bool:
+        """One paced PUT; keep the confirming regular snapshot authoritative."""
+        if (not self.is_ready or delta_seconds not in (-15, 15) or
+                context.track_key != self._playback_track_key or
+                context.device_id != self.playback_device_id):
+            return False
+        age = max(0.0, time.monotonic() - context.received_at)
+        if age >= 5.0:
+            return False
+        position = context.position_ms + (int(age * 1000) if context.playing else 0)
+        # Spotify can advance to NEXT at/after the end. Stay strictly within
+        # the actual millisecond duration, including subsecond track lengths.
+        target = clamp_seek(position, delta_seconds * 1000, 0, context.duration_ms - 1)
+        if target is None:
+            return False
+        def endpoint_at_start():
+            actual_age=max(0,time.monotonic()-context.received_at)
+            if (actual_age>=5 or context.track_key!=self._playback_track_key or
+                    context.device_id!=self.playback_device_id):
+                raise SpotifyBudgetError(0.05,'operation_expired')
+            actual_position=context.position_ms+(int(actual_age*1000) if context.playing else 0)
+            actual_target=clamp_seek(actual_position,delta_seconds*1000,0,context.duration_ms-1)
+            query=urllib.parse.urlencode({'position_ms':actual_target,'device_id':context.device_id})
+            return '/me/player/seek?'+query
+        operation = context.operation or self.begin_operation("seek")
+        try:
+            self._api_request("PUT", endpoint_at_start, empty_ok=True, urgent=True,
+                              operation=operation)
+        except Exception:
+            if context.operation is None:
+                self.finish_operation(operation)
+            raise
+        return True
+
+    def control(self, action: str, operation=None):
         if not self.is_ready:
             return
         action = action.upper()
-        if action == "PLAY_PAUSE":
-            endpoint = "/me/player/pause" if self._last_is_playing else "/me/player/play"
-            self._api_request("PUT", endpoint, empty_ok=True, urgent=True)
-            self._last_is_playing = not self._last_is_playing
-        elif action == "NEXT":
-            self._api_request("POST", "/me/player/next", empty_ok=True, urgent=True)
-        elif action == "PREVIOUS":
-            self._api_request("POST", "/me/player/previous", empty_ok=True, urgent=True)
+        if action not in ("PLAY_PAUSE", "NEXT", "PREVIOUS"):
+            return None
+        created = operation is None
+        operation = operation or self.begin_operation("control")
+        try:
+            if action == "PLAY_PAUSE":
+                endpoint = "/me/player/pause" if self._last_is_playing else "/me/player/play"
+                self._api_request("PUT", endpoint, empty_ok=True, urgent=True, operation=operation)
+                self._last_is_playing = not self._last_is_playing
+            else:
+                endpoint = "/me/player/next" if action == "NEXT" else "/me/player/previous"
+                self._api_request("POST", endpoint, empty_ok=True, urgent=True, operation=operation)
+        except Exception:
+            if created:
+                self.finish_operation(operation)
+            raise
+        return operation
 
     def _access_token(self) -> str:
         if not self._tokens.get("access_token") or time.time() >= self._tokens.get("expires_at", 0) - 60:
@@ -301,66 +441,115 @@ class SpotifyApiBridge:
 
     def _api_request(
         self, method: str, endpoint: str, empty_ok: bool = False, urgent: bool = False,
-        request_kind: str = "control",
+        request_kind: str = "control", operation=None, retry_guard=None,
     ):
         with self._lock:
+            if request_kind == "control":
+                self.last_control_http_status = None
             return self._api_request_locked(method, endpoint, empty_ok, retry=True,
-                                            urgent=urgent, request_kind=request_kind)
+                                            urgent=urgent, request_kind=request_kind, operation=operation,
+                                            retry_guard=retry_guard)
 
     def _api_request_locked(
         self, method: str, endpoint: str, empty_ok: bool, retry: bool, urgent: bool = False,
-        request_kind: str = "control",
+        request_kind: str = "control", operation=None, retry_guard=None,
     ):
         now = time.time()
-        retry_remaining = max(0, math.ceil(self._rate_limit_until() - now))
+        local = self._budget.view(idle=not self._last_is_playing)
+        retry_remaining = max(0, math.ceil(self._rate_limit_until() - now),
+                              math.ceil(local.get("retry_remaining_seconds", 0)))
         if retry_remaining:
             # Spotify's Retry-After is authoritative.  Persisting this means a
             # restart cannot turn into a burst of retries while it is active.
             raise SpotifyRateLimitError(
                 retry_remaining,
-                reason=self._tokens.get("adaptive_last_limit_reason", "unspecified_429"),
+                reason="quota_exceeded" if local.get("retry_reason") == 2 else
+                    self._tokens.get("adaptive_last_limit_reason", "unspecified_429"),
                 request_kind=self._tokens.get("adaptive_last_limit_request_kind", "other"),
                 cached=True,
             )
-        # A screen-originated track change is an explicit user action, not a
-        # polling loop. Allow it to confirm immediately, while keeping a
-        # small local guard so rapid swiping cannot turn into a request burst.
-        if urgent:
-            urgent_next = float(self._tokens.get("adaptive_urgent_next_allowed_at", 0) or 0)
-            if urgent_next > now:
-                raise SpotifyPacingError(urgent_next - now)
-            self._tokens["adaptive_urgent_next_allowed_at"] = now + 0.75
+        # Polling, controls and confirmation reads share one start-time gate.
+        # Urgent identifies explicit user work; it never bypasses this gate.
         next_allowed_at = self._next_allowed_at()
-        if not urgent and next_allowed_at > now:
+        if not urgent:
+            next_allowed_at = max(
+                next_allowed_at,
+                float(self._tokens.get("adaptive_last_request_at", 0)) + self._quota_poll_floor(),
+            )
+        if next_allowed_at > now:
             raise SpotifyPacingError(next_allowed_at - now)
+        # OAuth may be slow. Prepare it before the final shared network guard,
+        # then recheck pacing/grant/Retry-After after durable I/O as well.
         token = self._access_token()
-        now = time.time()
-        self._request_times.append(now)
-        self._request_times_15m.append(now)
-        self._record_api_request(request_kind, now)
-        self._tokens["adaptive_next_allowed_at"] = now + self._current_interval()
-        self._tokens["adaptive_request_total"] = int(
-            self._tokens.get("adaptive_request_total", 0)
-        ) + 1
-        request = urllib.request.Request(
-            f"{API_URL}{endpoint}",
-            data=b"" if method in ("POST", "PUT") else None,
-            method=method,
-            headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
-        )
+
+        resolved_endpoint=None
+        def start_check():
+            nonlocal resolved_endpoint
+            actual_now=time.time()
+            remaining=max(0,math.ceil(self._rate_limit_until()-actual_now))
+            if remaining:raise SpotifyRateLimitError(remaining,cached=True)
+            due=self._next_allowed_at()
+            if not urgent:due=max(due,float(self._tokens.get('adaptive_last_request_at',0))+self._quota_poll_floor())
+            if due>actual_now:raise SpotifyPacingError(due-actual_now)
+            resolved_endpoint=endpoint() if callable(endpoint) else endpoint
+
+        def invoke():
+            request=urllib.request.Request(f'{API_URL}{resolved_endpoint}',
+                data=b'' if method in ('POST','PUT') else None,method=method,
+                headers={'Authorization':f'Bearer {token}','Content-Type':'application/json'})
+            actual_now=time.time()
+            self._request_times.append(actual_now);self._request_times_15m.append(actual_now)
+            self._record_api_request(request_kind,actual_now)
+            self._tokens['adaptive_last_request_at']=actual_now
+            self._tokens['adaptive_next_allowed_at']=actual_now+self._current_interval()
+            self._tokens['adaptive_request_total']=int(self._tokens.get('adaptive_request_total',0))+1
+            try:
+                with urllib.request.urlopen(request,timeout=8) as response:
+                    if request_kind == "control":
+                        status = getattr(response, "status", None)
+                        self.last_control_http_status = status if type(status) is int else None
+                    # Control/seek endpoints acknowledge success without JSON.
+                    # A body (even whitespace/non-JSON) is not a playback
+                    # snapshot and must not turn an accepted action into a
+                    # retry or discard its reserved confirmation.
+                    if empty_ok:
+                        return None
+                    return response.read()
+            except urllib.error.HTTPError as error:
+                if request_kind == "control":
+                    self.last_control_http_status = error.code
+                if error.code==429:
+                    try:seconds=float(error.headers.get('Retry-After','60'))
+                    except (AttributeError,TypeError,ValueError):seconds=60.0
+                    seconds=max(1.0,seconds) if math.isfinite(seconds) else 60.0
+                    error._budget_retry_after=seconds
+                    error._budget_reason=self._classify_429(error.read(4096))
+                    error._budget_quota=error._budget_reason=='quota_exceeded'
+                raise
         try:
-            with urllib.request.urlopen(request, timeout=8) as response:
-                payload = response.read()
+            payload=self._budget.http_attempt(invoke,idle=not self._last_is_playing,
+                                              operation=operation,start_check=start_check)
+            try:
                 self._record_success()
-                if not payload:
-                    return None
-                return json.loads(payload.decode("utf-8"))
+            except OSError as exc:
+                if not empty_ok:
+                    raise
+                # A failed save of clean-window pacing metadata cannot undo
+                # an acknowledged control. Durable budget/Retry guards remain.
+                diagnostics.event("SPOTIFY_API_STATE", result="failure", reason="history_io",
+                                  error_type=type(exc), http_status=self.last_control_http_status)
+            return json.loads(payload.decode('utf-8')) if payload else None
+        except BudgetWait as exc:
+            self._log_budget_wait(exc)
+            raise SpotifyBudgetError(exc.wait_seconds,exc.reason) from None
         except urllib.error.HTTPError as exc:
-            if exc.code == 401 and retry:
+            if exc.code == 401 and retry and (retry_guard is None or retry_guard()):
                 self._refresh()
                 return self._api_request_locked(
                     method, endpoint, empty_ok, retry=False, urgent=urgent,
                     request_kind=request_kind,
+                    operation=operation,
+                    retry_guard=retry_guard,
                 )
             if exc.code == 204 and empty_ok:
                 return None
@@ -372,10 +561,13 @@ class SpotifyApiBridge:
                 if not math.isfinite(retry_after):
                     retry_after = 60.0
                 retry_after = max(1.0, retry_after)
-                reason = self._classify_429(exc.read(4096))
+                reason = getattr(exc,'_budget_reason',self._classify_429(b''))
                 interval_before = self._current_interval()
                 self._record_rate_limit(retry_after, reason, request_kind)
-                self._save_tokens()
+                try:
+                    self._save_tokens()
+                except OSError:
+                    pass  # Keep the known server deadline in memory/ledger.
                 self._trim_request_times()
                 diagnostics.event(
                     "SPOTIFY_API_429", reason=reason, request_kind=request_kind,
@@ -390,6 +582,8 @@ class SpotifyApiBridge:
                 raise SpotifyRateLimitError(retry_after, reason, request_kind) from exc
             detail = exc.read().decode("utf-8", "replace")[:300]
             raise SpotifyApiError(f"Spotify API {exc.code}: {detail}") from exc
+        except urllib.error.URLError as exc:
+            raise SpotifyApiError("Spotify API connection failed") from exc
 
     @staticmethod
     def _classify_429(body: bytes) -> str:
@@ -463,10 +657,10 @@ class SpotifyApiBridge:
         self._save_tokens()
 
     def _configure_pacing_locked(self, settings: dict, reset_if_missing: bool) -> None:
-        initial = float(settings.get("api_initial_interval_seconds", 3.0))
-        minimum = float(settings.get("api_min_interval_seconds", 1.0))
+        initial = float(settings.get("api_initial_interval_seconds", 1.0))
+        minimum = float(settings.get("api_min_interval_seconds", 0.5))
         maximum = float(settings.get("api_max_interval_seconds", 30.0))
-        idle = float(settings.get("api_idle_interval_seconds", 10.0))
+        idle = float(settings.get("api_idle_interval_seconds", 3.0))
         minimum = min(maximum, max(0.5, minimum))
         initial = min(maximum, max(minimum, initial))
         self._pacing_settings = {
@@ -476,7 +670,14 @@ class SpotifyApiBridge:
             "idle_interval_seconds": max(initial, idle),
         }
         if reset_if_missing and not self._tokens.get("adaptive_interval_seconds"):
-            self._tokens["adaptive_interval_seconds"] = initial
+            self._tokens["adaptive_interval_seconds"] = minimum
+        # A legacy start interval is not learned backoff. Start at the chosen
+        # minimum when no rate limit has been recorded; retain actual history.
+        if (not self._tokens.get("adaptive_last_limit_at")
+                and self._rate_limit_until() <= time.time()
+                and not self._quota_poll_floor()):
+            self._tokens["adaptive_interval_seconds"] = minimum
+            self._tokens["adaptive_safe_interval_seconds"] = minimum
         current = float(self._tokens.get("adaptive_interval_seconds", initial))
         self._tokens["adaptive_interval_seconds"] = min(maximum, max(minimum, current))
         safe = float(self._tokens.get("adaptive_safe_interval_seconds", minimum))
@@ -484,6 +685,10 @@ class SpotifyApiBridge:
         self._tokens["adaptive_interval_seconds"] = max(
             self._tokens["adaptive_interval_seconds"],
             self._tokens["adaptive_safe_interval_seconds"],
+        )
+        self._tokens["adaptive_next_allowed_at"] = max(
+            self._next_allowed_at(),
+            float(self._tokens.get("adaptive_last_request_at", 0)) + self._current_interval(),
         )
         requested_reset_at = float(settings.get("api_reset_safety_requested_at", 0) or 0)
         completed_reset_at = float(self._tokens.get("adaptive_last_manual_reset_at", 0) or 0)
@@ -516,17 +721,28 @@ class SpotifyApiBridge:
         now = time.time()
         last_limit = float(self._tokens.get("adaptive_last_limit_at", 0) or 0)
         last_adjustment = float(self._tokens.get("adaptive_last_adjustment_at", 0) or 0)
-        # After a clean rolling window, cautiously probe a little faster, but
-        # never beyond the user's minimum interval or the learned safety margin.
-        if (now - last_limit >= 30 and now - last_adjustment >= 30
+        if not self._tokens.get("adaptive_clean_window_started_at"):
+            self._tokens["adaptive_clean_window_started_at"] = now
+        clean_start = float(self._tokens["adaptive_clean_window_started_at"])
+        # Cooldown time is not a clean request window. After successful traffic
+        # for a full window, decay both backoff and its learned margin so a 429
+        # does not create a permanent floor above the configured minimum.
+        clean_seconds = 6*3600 if self._tokens.get("adaptive_last_limit_reason") == "quota_exceeded" else 600
+        if (now - max(last_limit, self._rate_limit_until(), clean_start) >= clean_seconds
+                and now - last_adjustment >= clean_seconds
                 and now >= float(self._tokens.get("adaptive_quota_recovery_until", 0) or 0)):
             safe_interval = float(self._tokens.get(
                 "adaptive_safe_interval_seconds",
                 self._pacing_settings["minimum_interval_seconds"],
             ))
             current = self._current_interval()
-            updated = max(safe_interval, current * 0.90)
+            minimum = self._pacing_settings["minimum_interval_seconds"]
+            updated = max(minimum, current * 0.90)
+            self._tokens["adaptive_safe_interval_seconds"] = max(minimum, safe_interval * 0.90)
             self._tokens["adaptive_interval_seconds"] = updated
+            self._tokens["adaptive_next_allowed_at"] = (
+                float(self._tokens.get("adaptive_last_request_at", 0)) + updated
+            )
             self._tokens["adaptive_last_adjustment_at"] = now
             if updated < current - 0.001:
                 self._tokens["adaptive_last_change"] = {
@@ -549,12 +765,13 @@ class SpotifyApiBridge:
         )
         updated = min(
             self._pacing_settings["maximum_interval_seconds"],
-            max(current * 2.0, safe_interval),
+            max(current * 2.0, safe_interval, self._pacing_settings["initial_interval_seconds"]),
         )
         self._tokens["adaptive_safe_interval_seconds"] = safe_interval
         self._tokens["adaptive_interval_seconds"] = updated
         self._tokens["adaptive_last_limit_at"] = now
         self._tokens["adaptive_last_adjustment_at"] = now
+        self._tokens["adaptive_clean_window_started_at"] = 0
         self._tokens["adaptive_last_retry_after_seconds"] = max(1.0, retry_after)
         self._tokens["adaptive_last_limit_reason"] = reason
         self._tokens["adaptive_last_limit_request_kind"] = request_kind
@@ -582,6 +799,10 @@ class SpotifyApiBridge:
             "from_seconds": current,
             "to_seconds": updated,
         }
+        try:
+            self._budget.note_retry(retry_after, reason == "quota_exceeded")
+        except BudgetWait:
+            pass  # The token deadline still wins and the ledger stays guarded.
 
     def _trim_request_times(self) -> None:
         now = time.time()
@@ -607,6 +828,7 @@ class SpotifyApiBridge:
             "observed_seconds": min(900, max(0, int(now - self._session_started_at))),
             "calls_per_second": last_five_seconds / 5.0,
             "interval_seconds": self._current_interval(),
+            "minimum_interval_seconds": self._pacing_settings["minimum_interval_seconds"],
             "safe_interval_seconds": float(self._tokens.get(
                 "adaptive_safe_interval_seconds",
                 self._pacing_settings["minimum_interval_seconds"],
@@ -629,10 +851,13 @@ class SpotifyApiBridge:
             ),
         }
 
-    def _quota_poll_floor(self) -> float:
-        return (QUOTA_POLL_FLOOR_SECONDS
-                if time.time() < float(self._tokens.get("adaptive_quota_recovery_until", 0) or 0)
-                else 0.0)
+    def _quota_poll_floor(self, idle: bool = False) -> float:
+        if time.time() >= float(self._tokens.get("adaptive_quota_recovery_until", 0) or 0):
+            return 0.0
+        if (self._last_is_playing and not idle and
+                self._budget.view(idle=False).get("profile") == "day"):
+            return 0.0
+        return QUOTA_POLL_FLOOR_SECONDS
 
     def _initialize_429_total(self) -> None:
         if "adaptive_total_429" in self._tokens:

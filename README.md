@@ -8,7 +8,28 @@ omslag, vinyl och DJ-katt.
 > [!Important]
 > Vibe-coded project made by me
 
-## Aktuell release: app-v1.3 (2026-10-07)
+## Aktuell utvecklingsstatus (2026-10-15)
+
+Installerat utvecklingspar är companion **17466EBF** och firmware **F406C485**.
+Aktiv API-uppspelning dagtid har **5 s grundintervall**, med budgettryck,
+högre pacing och Retry-After kvar. Natt/idle kan ge längre väntan; 0,5 s är
+en separat lägsta anropsgräns, inte den aktuella automatiska dagtakten.
+Mobilens automatiska låttext, rätt omslag och jämnhet är kvalitativt godkända
+av användaren. Mobilhandlingarnas tidpunkter och end-to-end-latens är inte
+separat uppmätta; långdrift och sleep/resume med detta par återstår.
+
+**Seek-firmware 57894EE0 är endast byggd, inte flashad och ännu inte
+skärmprovad/fysiskt accepterad.** Arbetskällan innehåller seek-stödet;
+det innebär inte att F406 på skärmen har tidslinjesvep. 3 s har jämförts
+isolerat och användarbeslutet är att behålla **5 s**. Denna källuppdatering
+skapar ingen ny release; app-v1.3 är fortsatt senast publicerad nedan.
+
+Se [aktuella driftbevis](docs/api-budget-runtime-2026-10-15.md),
+[3/5 s-analys](docs/api-cadence-3s-analysis-2026-10-15.md) och
+[överlämningen med exakta hashar och väntande prov](docs/lead-handoff-2026-10-15.md).
+De äldre daterade installationsuppgifterna längre ned är historik.
+
+## Senast publicerad release: app-v1.3 (2026-10-07)
 
 App-v1.3 parar **230400 baud i drift** med **115200 baud vid flashning**.
 Den innehåller snabbare omslagsöverföring, större Spelare med stabil tidslinje,
@@ -38,6 +59,17 @@ det måste ändras vid denna uppgradering. Nya profiler får 230400 direkt.
 Övriga inställningar och Spotify-token återanvänds och ingår inte i paketet.
 Se [flashinstruktioner](#flasha-från-windows), [companioninstruktioner](companion/README.md),
 [release notes](release/app-v1.3-notes.md) och [verifieringsrapport](release/app-v1.3-verification.md).
+
+### Historik: adaptiv Connect (2026-10-11)
+
+En separat companionkandidat har installerats och provats och tar bort det fasta
+15-sekundersintervallet för aktiv Spotify Connect. Källan använder gemensam
+adaptiv takt för pollning och touch, ned till konfigurerat minimum (ny standard
+0,5 s), med bevarad Retry-After och kvotåterhämtning. Gamla sparade Connect-
+värden bevaras men påverkar inte denna källversion. Firmware och app-v1.3-
+nedladdningarna ovan är oförändrade. Färsk status visade 0,5 s adaptiv gräns;
+användaren rapporterade direkt låtbyte från mobilen, snabbt omslag och jämn skiva.
+Det är kvalitativt, utan stoppursmätt ändringslatens. Se [companionens modell och verifiering](companion/README.md#spotify-connect-pacing-and-diagnostics).
 
 ### Föregående app-v1.2 (2026-10-03)
 

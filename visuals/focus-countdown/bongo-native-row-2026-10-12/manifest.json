@@ -1,0 +1,706 @@
+{
+  "classification": "Bongo-only design simulation, not firmware or a physical photograph",
+  "dimensions": [
+    240,
+    320
+  ],
+  "font": "lv_font_unscii_16",
+  "font_line_height": 17,
+  "geometry_xywh": {
+    "phase": [
+      5,
+      65,
+      96,
+      17
+    ],
+    "time": [
+      117,
+      65,
+      96,
+      17
+    ],
+    "pause_bars": [
+      [
+        221,
+        69,
+        3,
+        11
+      ],
+      [
+        227,
+        69,
+        3,
+        11
+      ]
+    ]
+  },
+  "alignment": "LEFT",
+  "normal_color": "000000",
+  "hit_regions_xywh": {
+    "bongo": [
+      5,
+      62,
+      230,
+      20
+    ],
+    "player": [
+      36,
+      16,
+      168,
+      37
+    ]
+  },
+  "hit_regions_do_not_overlap_protected_areas": true,
+  "touch_rule": "Visible status only; single tap toggles local timer in place; existing swipe/long-press arbitration retained",
+  "cue": "Existing compact FocusDone cue accents only the phase prefix; no additional object or line",
+  "max_time_width_0_to_7200_seconds": 96,
+  "reserved_xywh": [
+    [
+      5,
+      5,
+      144,
+      17
+    ],
+    [
+      5,
+      25,
+      144,
+      17
+    ],
+    [
+      5,
+      45,
+      128,
+      17
+    ],
+    [
+      155,
+      5,
+      80,
+      17
+    ],
+    [
+      0,
+      82,
+      240,
+      238
+    ]
+  ],
+  "control_and_glyph_overlap_checks_passed": true,
+  "protected_pixels_unchanged": true,
+  "scope": "Bongo only; no Player, firmware, shared exporter or focus-logic edits",
+  "views": [
+    {
+      "state": "focus",
+      "caption": "Fokus aktiv",
+      "file": "bongo-focus.png",
+      "sha256": "41093b6d063043b8d28782706b8673fccbf53ba35d72d7cacf8ff34487fef95b",
+      "phase": "focus",
+      "time": "04:59",
+      "paused": false,
+      "compact_cue": false,
+      "theme": "green",
+      "maximum_stats": false,
+      "glyph_boxes": [
+        [
+          7,
+          66,
+          12,
+          14
+        ],
+        [
+          23,
+          66,
+          12,
+          14
+        ],
+        [
+          37,
+          66,
+          14,
+          14
+        ],
+        [
+          55,
+          66,
+          12,
+          14
+        ],
+        [
+          71,
+          66,
+          12,
+          14
+        ],
+        [
+          91,
+          68,
+          4,
+          12
+        ],
+        [
+          119,
+          66,
+          12,
+          14
+        ],
+        [
+          133,
+          66,
+          14,
+          14
+        ],
+        [
+          155,
+          68,
+          4,
+          12
+        ],
+        [
+          167,
+          66,
+          12,
+          14
+        ],
+        [
+          183,
+          66,
+          12,
+          14
+        ]
+      ]
+    },
+    {
+      "state": "focus-paused",
+      "caption": "Fokus fryst",
+      "file": "bongo-focus-paused.png",
+      "sha256": "46193380812965bc7078f147458caef292ac17cbec52206822e50c5ac57d631a",
+      "phase": "focus",
+      "time": "04:31",
+      "paused": true,
+      "compact_cue": false,
+      "theme": "green",
+      "maximum_stats": false,
+      "glyph_boxes": [
+        [
+          7,
+          66,
+          12,
+          14
+        ],
+        [
+          23,
+          66,
+          12,
+          14
+        ],
+        [
+          37,
+          66,
+          14,
+          14
+        ],
+        [
+          55,
+          66,
+          12,
+          14
+        ],
+        [
+          71,
+          66,
+          12,
+          14
+        ],
+        [
+          91,
+          68,
+          4,
+          12
+        ],
+        [
+          119,
+          66,
+          12,
+          14
+        ],
+        [
+          133,
+          66,
+          14,
+          14
+        ],
+        [
+          155,
+          68,
+          4,
+          12
+        ],
+        [
+          167,
+          66,
+          12,
+          14
+        ],
+        [
+          183,
+          66,
+          12,
+          14
+        ],
+        [
+          221,
+          69,
+          3,
+          11
+        ],
+        [
+          227,
+          69,
+          3,
+          11
+        ]
+      ]
+    },
+    {
+      "state": "long-paused",
+      "caption": "120 min / maxstatistik",
+      "file": "bongo-long-paused.png",
+      "sha256": "18c21671fd2a929f76d1ae82d1faf65c49be4a86f951a275a1067b9072cbd516",
+      "phase": "focus",
+      "time": "120:00",
+      "paused": true,
+      "compact_cue": false,
+      "theme": "green",
+      "maximum_stats": true,
+      "glyph_boxes": [
+        [
+          7,
+          66,
+          12,
+          14
+        ],
+        [
+          23,
+          66,
+          12,
+          14
+        ],
+        [
+          37,
+          66,
+          14,
+          14
+        ],
+        [
+          55,
+          66,
+          12,
+          14
+        ],
+        [
+          71,
+          66,
+          12,
+          14
+        ],
+        [
+          91,
+          68,
+          4,
+          12
+        ],
+        [
+          119,
+          66,
+          12,
+          14
+        ],
+        [
+          135,
+          66,
+          12,
+          14
+        ],
+        [
+          151,
+          66,
+          12,
+          14
+        ],
+        [
+          171,
+          68,
+          4,
+          12
+        ],
+        [
+          183,
+          66,
+          12,
+          14
+        ],
+        [
+          199,
+          66,
+          12,
+          14
+        ],
+        [
+          221,
+          69,
+          3,
+          11
+        ],
+        [
+          227,
+          69,
+          3,
+          11
+        ]
+      ]
+    },
+    {
+      "state": "break",
+      "caption": "Pausfas aktiv",
+      "file": "bongo-break.png",
+      "sha256": "c6ee352761fbf6d9f2f3cc2e0a4be33b8e8c97f347c4ab530e9ec61557647345",
+      "phase": "break",
+      "time": "00:59",
+      "paused": false,
+      "compact_cue": false,
+      "theme": "green",
+      "maximum_stats": false,
+      "glyph_boxes": [
+        [
+          7,
+          66,
+          12,
+          14
+        ],
+        [
+          23,
+          66,
+          12,
+          14
+        ],
+        [
+          39,
+          66,
+          12,
+          14
+        ],
+        [
+          55,
+          66,
+          12,
+          14
+        ],
+        [
+          75,
+          68,
+          4,
+          12
+        ],
+        [
+          119,
+          66,
+          12,
+          14
+        ],
+        [
+          135,
+          66,
+          12,
+          14
+        ],
+        [
+          155,
+          68,
+          4,
+          12
+        ],
+        [
+          167,
+          66,
+          12,
+          14
+        ],
+        [
+          183,
+          66,
+          12,
+          14
+        ]
+      ]
+    },
+    {
+      "state": "break-paused",
+      "caption": "Pausfas fryst",
+      "file": "bongo-break-paused.png",
+      "sha256": "d782e7d64eca79133fdefa0ee97721969a74b26cb0e23c848eaa2d413d1074f3",
+      "phase": "break",
+      "time": "00:42",
+      "paused": true,
+      "compact_cue": false,
+      "theme": "green",
+      "maximum_stats": false,
+      "glyph_boxes": [
+        [
+          7,
+          66,
+          12,
+          14
+        ],
+        [
+          23,
+          66,
+          12,
+          14
+        ],
+        [
+          39,
+          66,
+          12,
+          14
+        ],
+        [
+          55,
+          66,
+          12,
+          14
+        ],
+        [
+          75,
+          68,
+          4,
+          12
+        ],
+        [
+          119,
+          66,
+          12,
+          14
+        ],
+        [
+          135,
+          66,
+          12,
+          14
+        ],
+        [
+          155,
+          68,
+          4,
+          12
+        ],
+        [
+          165,
+          66,
+          14,
+          14
+        ],
+        [
+          183,
+          66,
+          12,
+          14
+        ],
+        [
+          221,
+          69,
+          3,
+          11
+        ],
+        [
+          227,
+          69,
+          3,
+          11
+        ]
+      ]
+    },
+    {
+      "state": "cue-paused",
+      "caption": "Fasnotis / fryst / maxstatistik",
+      "file": "bongo-cue-paused.png",
+      "sha256": "e90f7fae3cdbe0c852b18dbd0a1176e8f2b85a15f8ce8f18eb9c8f2cdbe92e2c",
+      "phase": "break",
+      "time": "00:42",
+      "paused": true,
+      "compact_cue": true,
+      "theme": "green",
+      "maximum_stats": true,
+      "glyph_boxes": [
+        [
+          7,
+          66,
+          12,
+          14
+        ],
+        [
+          23,
+          66,
+          12,
+          14
+        ],
+        [
+          39,
+          66,
+          12,
+          14
+        ],
+        [
+          55,
+          66,
+          12,
+          14
+        ],
+        [
+          75,
+          68,
+          4,
+          12
+        ],
+        [
+          119,
+          66,
+          12,
+          14
+        ],
+        [
+          135,
+          66,
+          12,
+          14
+        ],
+        [
+          155,
+          68,
+          4,
+          12
+        ],
+        [
+          165,
+          66,
+          14,
+          14
+        ],
+        [
+          183,
+          66,
+          12,
+          14
+        ],
+        [
+          221,
+          69,
+          3,
+          11
+        ],
+        [
+          227,
+          69,
+          3,
+          11
+        ]
+      ]
+    },
+    {
+      "state": "cyan-cue",
+      "caption": "Fasnotis / cyan",
+      "file": "bongo-cyan-cue.png",
+      "sha256": "b862d8b679df1859235f2fe954eb6753c8350616b6b90092ec77b80bf852256d",
+      "phase": "break",
+      "time": "00:59",
+      "paused": false,
+      "compact_cue": true,
+      "theme": "cyan",
+      "maximum_stats": false,
+      "glyph_boxes": [
+        [
+          7,
+          66,
+          12,
+          14
+        ],
+        [
+          23,
+          66,
+          12,
+          14
+        ],
+        [
+          39,
+          66,
+          12,
+          14
+        ],
+        [
+          55,
+          66,
+          12,
+          14
+        ],
+        [
+          75,
+          68,
+          4,
+          12
+        ],
+        [
+          119,
+          66,
+          12,
+          14
+        ],
+        [
+          135,
+          66,
+          12,
+          14
+        ],
+        [
+          155,
+          68,
+          4,
+          12
+        ],
+        [
+          167,
+          66,
+          12,
+          14
+        ],
+        [
+          183,
+          66,
+          12,
+          14
+        ]
+      ]
+    },
+    {
+      "state": "idle",
+      "caption": "Inaktiv / dold",
+      "file": "bongo-idle.png",
+      "sha256": "efbeca3fc5fc16696e30c34749cd8ffab6607384e6af4207b8cb50aa0b395b3c",
+      "phase": null,
+      "time": "",
+      "paused": false,
+      "compact_cue": false,
+      "theme": "green",
+      "maximum_stats": false,
+      "glyph_boxes": []
+    }
+  ],
+  "source_sha256": {
+    "src/bongo_cat_featured.inc": "ed54326102fc05d85f82be7d7483d5f7ee1ffd10217977de1790daa6485b4c4d",
+    ".pio/libdeps/esp32-024r-spotify-fastserial/lvgl/src/font/lv_font_unscii_16.c": "09b133b9a1404bd7b3a3ce7d7d512dac116acc60bd701a52207e6bd03ae90282",
+    "tools/export_ui_visuals.py": "a5584766ff87b66b2128730fe096695702560dd20c395ccf7b0daf2d9bb59f19",
+    "assets/cat-sprites/body/standardbody1.png": "004875a5016576b2e5fbe7eff0f173a53bffea69006a83ab7e763cfdcc5be60a",
+    "assets/cat-sprites/face/stock_face.png": "7338be958b1bad87d09e52de0d2a421847578671048fc159472100a734a117f8",
+    "assets/cat-sprites/table/table1.png": "e8dd649ea1ae6cfd8045463ba044f673b6e97d59f1db605944cf70570ec0796c",
+    "assets/cat-sprites/paws/twopawsup.png": "2b0d635a56ea9ae3605cb598fc653ded73dfde1feb5cf7f26d6fdf27691cb661"
+  }
+}

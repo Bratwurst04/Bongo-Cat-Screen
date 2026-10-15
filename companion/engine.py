@@ -24,6 +24,7 @@ import json
 from typing import Callable, Optional, Dict, Any
 
 from media_bridge import MediaSnapshot, WindowsMediaBridge
+from media_seek import media_context_id, parse_media_command
 from windows_integration import get_foreground_app
 from diagnostics import diagnostics
 
@@ -89,6 +90,7 @@ class BongoCatEngine:
             spotify_settings=spotify_settings,
         )
         self._last_media_meta = None
+        self._last_media_seek_context_id = None
         self._last_media_state = None
         self._last_media_time = None
         self._last_media_full_sync = 0.0
@@ -539,6 +541,7 @@ class BongoCatEngine:
                     self.port = port
                     self._last_device_reply_at = time.time()
                 self._last_media_meta = None
+                self._last_media_seek_context_id = None
                 self._last_media_state = None
                 self._last_media_time = None
                 self._last_media_full_sync = 0.0
@@ -654,6 +657,8 @@ class BongoCatEngine:
         # position during a long cover upload would rewind its clock every
         # three seconds. Fresh seeks/repeats and a new track still send time.
         send_time = media_time != self._last_media_time or track_changed
+        seek_context = media_context_id(snapshot.source, snapshot.track_key) if snapshot.available else 0
+        send_seek_context = seek_context != getattr(self, "_last_media_seek_context_id", None)
         if send_meta:
             lines.extend(
                 (
@@ -670,6 +675,11 @@ class BongoCatEngine:
             # The ESP32 must clear the previous cover before a new one is
             # uploaded, even if the new cover is already in the queue.
             lines.append("MEDIA_ART_DEFAULT")
+        if send_seek_context:
+            # Completion marker for this metadata bundle. During a deferred
+            # or partially received update, the old displayed id stays old
+            # and the bridge rejects it against its newer snapshot.
+            lines.append(f"MEDIA_SEEK_CONTEXT:{seek_context}")
 
         try:
             if lines:
@@ -690,6 +700,8 @@ class BongoCatEngine:
                         self._last_media_state = state
                     if send_time:
                         self._last_media_time = media_time
+                    if send_seek_context:
+                        self._last_media_seek_context_id = seek_context
                     if full_sync_due:
                         self._last_media_full_sync = now
                     if track_changed:
@@ -969,6 +981,7 @@ class BongoCatEngine:
         self._artwork_v2_epoch += 1
         self._artwork_retry = None
         self._last_media_meta = None
+        self._last_media_seek_context_id = None
         self._last_media_state = None
         self._last_media_time = None
         self._last_media_full_sync = 0.0
@@ -1035,10 +1048,17 @@ class BongoCatEngine:
                 elif line == "SYNC_REQUEST":
                     self._resync_device()
                 elif line.startswith("MEDIA_CMD:"):
-                    action = line.split(":", 1)[1]
-                    if action in ("PLAY_PAUSE", "NEXT", "PREVIOUS"):
+                    try:
+                        parsed = parse_media_command(raw.decode("ascii").strip())
+                    except UnicodeDecodeError:
+                        parsed = None
+                    if parsed:
+                        action, seek_context = parsed
                         diagnostics.event("MEDIA_CMD_RX", action=action)
-                        self.media_bridge.control(action)
+                        if seek_context is None:
+                            self.media_bridge.control(action)
+                        else:
+                            self.media_bridge.control(action, expected_context=seek_context)
                         print(f"🎵 Touch control: {action}")
                 elif line.startswith("ESP32_STATUS:"):
                     values = {}
@@ -1401,6 +1421,9 @@ class BongoCatEngine:
                         self.tray.update_typing_status(True, self.current_wpm)
             
             # NO heavy operations here - everything moved to background thread
+            bridge = getattr(self, "media_bridge", None)
+            if bridge is not None:
+                bridge.notify_local_activity()
                 
         except Exception as e:
             print(f"❌ Keystroke detection error: {e}")

@@ -30,6 +30,9 @@ _ENUMS = {
         "api_error", "pacing", "startup_error",
         "no_artwork_url", "no_thumbnail",
         "device_error", "track_mismatch", "no_playback",
+        "seek_unsupported", "seek_expired", "source_mismatch",
+        "command_expired", "operation_expired", "operation_capacity", "short_budget", "long_budget",
+        "history_corrupt", "history_io", "clock_guard", "profile", "start_spacing", "server_retry",
         "art2_line", "art2_decode", "art2_offset", "art2_crc",
         "art2_length", "art2_pixels", "art2_stall", "art2_duration",
     },
@@ -40,16 +43,19 @@ _ENUMS = {
               "thumbnail_read", "api_fallback", "export"},
     "request_kind": {"playback_poll", "playback_urgent", "artwork_fallback",
                      "control", "other"},
-    "action": {"PLAY_PAUSE", "NEXT", "PREVIOUS"},
+    "action": {"PLAY_PAUSE", "NEXT", "PREVIOUS", "SEEK:+15", "SEEK:-15"},
     "origin": {"http_response", "saved_cooldown"},
     "protocol": {"legacy", "art2"},
+    "profile": {"day", "night", "guarded"},
 }
 _NUMBER_FIELDS = {"attempt", "bytes", "track_seq", "wait_seconds", "retry_limit",
                   "window_seconds", "interval_ms", "next_interval_ms",
                   "request_total", "calls_30s", "total_429", "total_since",
                   "legacy_events_included",
+                  "local_calls_24h",
                   "duration_ms",
                   "frames_per_write",
+                  "http_status",
                   "playback_poll", "playback_urgent", "artwork_fallback",
                   "control", "other"}
 _ERROR_TYPES = {
@@ -57,6 +63,8 @@ _ERROR_TYPES = {
     "ConnectionError", "RuntimeError", "ValueError", "TypeError", "KeyError",
     "AttributeError", "SerialException", "SerialTimeoutException",
     "SpotifyApiError", "SpotifyPacingError", "SpotifyRateLimitError",
+    "SpotifyBudgetError",
+    "JSONDecodeError", "UnicodeDecodeError",
     "HTTPError", "URLError", "COMError", "UnidentifiedImageError",
 }
 
