@@ -24,14 +24,17 @@ import json
 from typing import Callable, Optional, Dict, Any
 
 from media_bridge import MediaSnapshot, WindowsMediaBridge
-from media_seek import media_context_id, parse_media_command
+from media_commands import media_track_context_id, parse_media_command
 from windows_integration import get_foreground_app
 from diagnostics import diagnostics
+from artwork_codec import COMPACT_EDGE, pack_compact_rgb565, refinement_rgb888
 
 ARTWORK_SIZE = 112
 ARTWORK_CHUNK_BYTES = 128
 ARTWORK_CHUNK_PAUSE_SECONDS = 0.015
 ARTWORK_V2_FAST_BATCH_FRAMES = 2
+ARTWORK_V2_921600_BATCH_FRAMES = 8
+ARTWORK_V2_921600_PAUSE_SECONDS = 0.0
 ARTWORK_V2_FRAME_BYTES = ARTWORK_SIZE * ARTWORK_SIZE * 3
 ARTWORK_V2_RETRY_DELAYS_SECONDS = (2.0, 12.0, 30.0)
 ARTWORK_V2_ERROR_REASONS = frozenset({
@@ -39,6 +42,7 @@ ARTWORK_V2_ERROR_REASONS = frozenset({
     "art2_length", "art2_pixels", "art2_stall", "art2_duration",
 })
 DEVICE_REPLY_TIMEOUT_SECONDS = 15
+ARTWORK_REFINEMENT_NOTICE_SECONDS = 8.0
 
 class BongoCatEngine:
     """Bongo Cat engine using proven original implementation with configuration support"""
@@ -90,7 +94,7 @@ class BongoCatEngine:
             spotify_settings=spotify_settings,
         )
         self._last_media_meta = None
-        self._last_media_seek_context_id = None
+        self._last_media_track_context_id = None
         self._last_media_state = None
         self._last_media_time = None
         self._last_media_full_sync = 0.0
@@ -104,6 +108,11 @@ class BongoCatEngine:
         self._artwork_ack = threading.Event()
         self._artwork_v2_supported = False
         self._artwork_v2_challenge = ""
+        self._artwork_v2_fast_challenge = ""
+        self._artwork_v2_compact_challenge = ""
+        self._artwork_v2_refine_challenge = ""
+        self._artwork_refinement = None
+        self._capability_fallback = None
         self._artwork_v2_epoch = 0
         self._artwork_v2_next_id = 0
         self._artwork_v2_pending_id = None
@@ -430,9 +439,16 @@ class BongoCatEngine:
             stats_command = f"STATS:CPU:{cpu},RAM:{ram},WPM:0"
             self.send_command(stats_command)
             print(f"📊 Initial stats: CPU {cpu}%, RAM {ram}%")
-            # One capability query per connection/wake. Older firmware ignores
-            # it, so the raw RGB protocol remains the safe default.
+            # Initial capability query; at most one readiness-triggered resend.
+            # Older firmware ignores it, keeping raw RGB as the safe fallback.
+            self._artwork_v2_fast_challenge = ""
+            self._artwork_v2_compact_challenge = ""
+            self._artwork_v2_refine_challenge = ""
+            self._artwork_refinement = None
             self._artwork_v2_challenge = secrets.token_hex(8).upper()
+            self._capability_fallback = (
+                self.serial_conn, self._artwork_v2_epoch, self._artwork_v2_challenge
+            )
             self.send_command(f"CAPS?:{self._artwork_v2_challenge}")
             
             # Initialize timing variables
@@ -541,7 +557,7 @@ class BongoCatEngine:
                     self.port = port
                     self._last_device_reply_at = time.time()
                 self._last_media_meta = None
-                self._last_media_seek_context_id = None
+                self._last_media_track_context_id = None
                 self._last_media_state = None
                 self._last_media_time = None
                 self._last_media_full_sync = 0.0
@@ -616,8 +632,19 @@ class BongoCatEngine:
 
     @staticmethod
     def _clean_media_text(value, limit=72):
-        value = unicodedata.normalize("NFKD", value or "")
-        value = value.encode("ascii", "ignore").decode("ascii")
+        # Preserve the six glyphs provided by the paired firmware. Compose
+        # decomposed Swedish input first; retain the previous ASCII fallback
+        # for other scripts/accents. Never allow controls/line injection.
+        pieces = []
+        for char in unicodedata.normalize("NFC", value or ""):
+            if char in "åäöÅÄÖ":
+                pieces.append(char)
+            elif char.isspace():
+                pieces.append(" ")
+            else:
+                fallback = unicodedata.normalize("NFKD", char).encode("ascii", "ignore").decode("ascii")
+                pieces.append("".join(c for c in fallback if 32 <= ord(c) <= 126))
+        value = "".join(pieces)
         value = " ".join(value.replace("|", "/").split())
         return value[:limit]
 
@@ -632,9 +659,12 @@ class BongoCatEngine:
             self._cached_artwork_track_key = snapshot.track_key
             self._cached_artwork = None
             self._artwork_retry = None
+            self._artwork_refinement = None
         if artwork:
             self._cached_artwork = artwork
             self._artwork_retry = None
+            # A new cache revision, including the same track, wins immediately.
+            self._artwork_refinement = None
         if not self.serial_conn or not self.serial_conn.is_open:
             return
 
@@ -655,10 +685,10 @@ class BongoCatEngine:
         send_state = state != self._last_media_state or full_sync_due
         # ESP32 advances playback time locally. Repeating the same sampled
         # position during a long cover upload would rewind its clock every
-        # three seconds. Fresh seeks/repeats and a new track still send time.
+        # three seconds. Fresh position changes/repeats and a new track still send time.
         send_time = media_time != self._last_media_time or track_changed
-        seek_context = media_context_id(snapshot.source, snapshot.track_key) if snapshot.available else 0
-        send_seek_context = seek_context != getattr(self, "_last_media_seek_context_id", None)
+        track_context = media_track_context_id(snapshot.source, snapshot.track_key) if snapshot.available else 0
+        send_track_context = track_context != getattr(self, "_last_media_track_context_id", None)
         if send_meta:
             lines.extend(
                 (
@@ -675,15 +705,16 @@ class BongoCatEngine:
             # The ESP32 must clear the previous cover before a new one is
             # uploaded, even if the new cover is already in the queue.
             lines.append("MEDIA_ART_DEFAULT")
-        if send_seek_context:
-            # Completion marker for this metadata bundle. During a deferred
-            # or partially received update, the old displayed id stays old
-            # and the bridge rejects it against its newer snapshot.
-            lines.append(f"MEDIA_SEEK_CONTEXT:{seek_context}")
+        if send_track_context:
+            # Completion marker for the record's track identity, even when
+            # different tracks have identical visible metadata.
+            lines.append(f"MEDIA_TRACK_CONTEXT:{track_context}")
 
         try:
             if lines:
-                payload = ("\n".join(lines) + "\n").encode("ascii", "replace")
+                # At most 72 characters with only these six two-byte extras:
+                # every metadata line remains well below the 256-byte framer.
+                payload = ("\n".join(lines) + "\n").encode("utf-8")
                 # Never stall Spotify polling or touch handling behind a cover
                 # upload. A skipped packet is retried on the next snapshot, and
                 # metadata and playback state are resent every three seconds.
@@ -700,8 +731,8 @@ class BongoCatEngine:
                         self._last_media_state = state
                     if send_time:
                         self._last_media_time = media_time
-                    if send_seek_context:
-                        self._last_media_seek_context_id = seek_context
+                    if send_track_context:
+                        self._last_media_track_context_id = track_context
                     if full_sync_due:
                         self._last_media_full_sync = now
                     if track_changed:
@@ -784,7 +815,44 @@ class BongoCatEngine:
             self._artwork_retry = None
             return track_key, artwork, attempt
 
-    def _send_artwork_v2(self, conn, track_key, artwork, attempt):
+    def _artwork_refinement_current(self, job):
+        return bool(job is not None and getattr(self, "_artwork_refinement", None) is job and
+                    not self._stop_requested.is_set() and
+                    self._artwork_v2_supported and self.baudrate == 921600 and job["conn"].is_open and
+                    self._art2_track_current(job["conn"], job["track"], job["epoch"]) and
+                    self._cached_artwork is job["artwork"] and
+                    self._cached_artwork_track_key == job["track"] and
+                    self._artwork_v2_challenge == job["challenge"] and
+                    getattr(self, "_artwork_v2_compact_challenge", "") == job["challenge"] and
+                    getattr(self, "_artwork_v2_refine_challenge", "") == job["challenge"])
+
+    def _record_artwork_shown(self, conn, generation, transfer_id, challenge):
+        # The read's generation is captured before blocking; a late line from
+        # an old process/epoch cannot release a new same-id refinement.
+        with self._media_lock:
+            job = getattr(self, "_artwork_refinement", None)
+            if (not self._artwork_refinement_current(job) or job["conn"] is not conn or
+                    generation != (job["epoch"], job["challenge"]) or
+                    transfer_id != job["id"] or challenge != job["challenge"]):
+                return
+            job["shown"] = True
+        diagnostics.event("ART_REFINE_SLOT", result="ready", protocol="art2")
+
+    def _take_artwork_refinement(self):
+        with self._media_lock:
+            job = getattr(self, "_artwork_refinement", None)
+            if job is None:
+                return None
+            if not self._artwork_refinement_current(job) or time.monotonic() >= job["expires"]:
+                self._artwork_refinement = None
+                return None
+            if (not job["acknowledged"] or not job["shown"] or job["started"] or
+                    not self._artwork_queue.empty()):
+                return None
+            job["started"] = True
+            return job
+
+    def _send_artwork_v2(self, conn, track_key, artwork, attempt, refinement=None):
         """Interleave metadata between bounded cover frames on capable devices."""
         if len(artwork) != ARTWORK_V2_FRAME_BYTES:
             diagnostics.event("ART_SEND", result="skipped", reason="invalid_size")
@@ -798,35 +866,65 @@ class BongoCatEngine:
         self._artwork_ack.clear()
         self._artwork_transfer_active.set()
         started = time.monotonic()
+        notice = None
+        def current():
+            return (self._art2_track_current(conn, track_key, epoch) and
+                    (refinement is None or self._artwork_refinement_current(refinement)))
+        def failed(reason="device_error"):
+            if refinement is None:
+                self._schedule_artwork_v2_retry(conn, track_key, artwork, attempt, epoch)
+            else:
+                diagnostics.event("ART_REFINE", result="failure", reason=reason, protocol="art2")
         try:
+            compact = bool(refinement is None and self.baudrate == 921600 and self._artwork_v2_supported and
+                self._artwork_v2_challenge and getattr(self, "_artwork_v2_compact_challenge", "") ==
+                self._artwork_v2_challenge)
+            payload = (refinement_rgb888(artwork, refinement["compact_payload"]) if refinement is not None
+                       else pack_compact_rgb565(artwork) if compact else artwork)
             with self._media_lock:
-                if not self._art2_track_current(conn, track_key, epoch):
+                if not current():
                     diagnostics.event("ART_SEND", result="skipped", reason="track_mismatch")
                     return
-                checksum = zlib.crc32(artwork) & 0xFFFFFFFF
-                header = (f"MEDIA_ART2_BEGIN:{transfer_id}:{ARTWORK_SIZE}:"
-                          f"{ARTWORK_SIZE}:{len(artwork)}:{checksum:08X}\n")
+                if (compact and getattr(self, "_artwork_v2_refine_challenge", "") == self._artwork_v2_challenge
+                        and self._cached_artwork is artwork):
+                    # Arm BEFORE END/ACK/SHOWN. Either reply order is retained,
+                    # but both are required before the optional full transfer.
+                    notice = dict(conn=conn, track=track_key, artwork=artwork, epoch=epoch,
+                        compact_payload=payload,
+                        challenge=self._artwork_v2_challenge, id=transfer_id, shown=False,
+                        acknowledged=False, started=False,
+                        expires=time.monotonic() + ARTWORK_REFINEMENT_NOTICE_SECONDS)
+                    self._artwork_refinement = notice
+                checksum = zlib.crc32(payload) & 0xFFFFFFFF
+                edge = COMPACT_EDGE if compact else ARTWORK_SIZE
+                prefix = "MEDIA_ART2_BEGIN565" if compact else "MEDIA_ART2_BEGIN"
+                header = (f"{prefix}:{transfer_id}:{edge}:"
+                          f"{edge}:{len(payload)}:{checksum:08X}\n")
                 self._write_art2_line(conn, header.encode("ascii"))
 
-            # At 230400, two unchanged newline-framed chunks share one host
-            # write/flush. Metadata and aborts still get a slot between pairs;
-            # a rejected fast attempt retries with the original single-frame
-            # pacing instead of repeating at the aggressive rate.
+            # The experimental tier requires this connection's fresh challenge
+            # AND the explicit 921600 receiver profile with core-0 RX. Old peers
+            # and every retry keep their established conservative pacing.
             frames_per_write = (
                 ARTWORK_V2_FAST_BATCH_FRAMES
                 if self.baudrate >= 230400 and attempt == 0 else 1
             )
+            pause_seconds = ARTWORK_CHUNK_PAUSE_SECONDS
+            if (refinement is None and attempt == 0 and self.baudrate == 921600 and
+                    self._artwork_v2_supported and self._artwork_v2_challenge and
+                    (compact or getattr(self, "_artwork_v2_fast_challenge", "") == self._artwork_v2_challenge)):
+                frames_per_write = ARTWORK_V2_921600_BATCH_FRAMES
+                pause_seconds = ARTWORK_V2_921600_PAUSE_SECONDS
             batch_bytes = ARTWORK_CHUNK_BYTES * frames_per_write
-            for offset in range(0, len(artwork), batch_bytes):
+            for offset in range(0, len(payload), batch_bytes):
                 if self._artwork_ack.is_set() and self._artwork_v2_ack_result is False:
                     # A bad chunk was rejected while the next one was being
                     # prepared. Stop immediately; the receiver has discarded
                     # its staging buffer.
-                    self._schedule_artwork_v2_retry(conn, track_key, artwork,
-                                                    attempt, epoch)
+                    failed()
                     return
                 self._flush_latest_media()
-                if not self._art2_track_current(conn, track_key, epoch):
+                if not current():
                     if self.serial_conn is conn and self._artwork_v2_epoch == epoch:
                         self._write_art2_line(
                             conn, f"MEDIA_ART2_ABORT:{transfer_id}\n".encode("ascii")
@@ -835,19 +933,23 @@ class BongoCatEngine:
                     self._flush_latest_media()
                     return
                 frames = []
-                for chunk_offset in range(offset, min(offset + batch_bytes, len(artwork)),
+                for chunk_offset in range(offset, min(offset + batch_bytes, len(payload)),
                                           ARTWORK_CHUNK_BYTES):
-                    chunk = artwork[chunk_offset:chunk_offset + ARTWORK_CHUNK_BYTES]
+                    chunk = payload[chunk_offset:chunk_offset + ARTWORK_CHUNK_BYTES]
                     encoded = base64.b64encode(chunk)
                     frames.append(
                         f"MEDIA_ART2_CHUNK:{transfer_id}:{chunk_offset}:".encode("ascii") +
                         encoded + b"\n"
                     )
                 self._write_art2_line(conn, b"".join(frames))
-                time.sleep(ARTWORK_CHUNK_PAUSE_SECONDS)
+                if pause_seconds:
+                    time.sleep(pause_seconds)
 
             with self._media_lock:
-                if not self._art2_track_current(conn, track_key, epoch):
+                if self._artwork_ack.is_set() and self._artwork_v2_ack_result is False:
+                    failed()
+                    return
+                if not current():
                     if self.serial_conn is conn and self._artwork_v2_epoch == epoch:
                         self._write_art2_line(
                             conn, f"MEDIA_ART2_ABORT:{transfer_id}\n".encode("ascii")
@@ -858,30 +960,53 @@ class BongoCatEngine:
                     conn, f"MEDIA_ART2_END:{transfer_id}\n".encode("ascii")
                 )
             self._last_artwork_transfer_at = time.time()
-            diagnostics.event("ART_SENT", bytes=len(artwork), attempt=attempt + 1,
+            diagnostics.event("ART_SENT", bytes=len(payload), attempt=attempt + 1,
                               duration_ms=int((time.monotonic() - started) * 1000),
-                              protocol="art2", frames_per_write=frames_per_write)
+                              protocol="art2", frames_per_write=frames_per_write,
+                              interval_ms=int(pause_seconds * 1000))
             self._flush_latest_media()
-            acknowledged = self._artwork_ack.wait(timeout=4.0)
+            if refinement is None:
+                acknowledged = self._artwork_ack.wait(timeout=4.0)
+            else:
+                diagnostics.event("ART_REFINE_SENT", bytes=len(payload), protocol="art2")
+                deadline = time.monotonic() + 4.0
+                while not self._artwork_ack.is_set() and current() and time.monotonic() < deadline:
+                    self._artwork_ack.wait(timeout=0.02)
+                if not current():
+                    if self.serial_conn is conn and self._artwork_v2_epoch == epoch:
+                        self._write_art2_line(conn, f"MEDIA_ART2_ABORT:{transfer_id}\n".encode("ascii"))
+                    return
+                acknowledged = self._artwork_ack.is_set()
             if not acknowledged:
                 diagnostics.event("ART_ACK", result="failure", reason="ack_timeout",
                                   attempt=attempt + 1, protocol="art2")
             if acknowledged and self._artwork_v2_ack_result:
                 with self._media_lock:
                     self._artwork_retry = None
+                    if notice is not None and self._artwork_refinement_current(notice):
+                        notice["acknowledged"] = True
+                        notice["expires"] = time.monotonic() + ARTWORK_REFINEMENT_NOTICE_SECONDS
+                if refinement is not None:
+                    diagnostics.event("ART_REFINE_ACK", result="success", bytes=len(payload), protocol="art2")
             else:
-                self._schedule_artwork_v2_retry(conn, track_key, artwork,
-                                                attempt, epoch)
+                failed("ack_timeout" if not acknowledged else "device_error")
             self._flush_latest_media()
         finally:
+            with self._media_lock:
+                if (refinement is not None and getattr(self, "_artwork_refinement", None) is refinement or
+                        notice is not None and not notice["acknowledged"] and
+                        getattr(self, "_artwork_refinement", None) is notice):
+                    self._artwork_refinement = None
             self._artwork_v2_pending_id = None
             self._artwork_transfer_active.clear()
 
     def _artwork_sender_loop(self):
         """Serialize cover uploads without blocking Spotify API handling."""
         while self.running:
+            refinement = None
             try:
-                track_key, artwork, attempt = self._artwork_queue.get(timeout=0.2)
+                track_key, artwork, attempt = self._artwork_queue.get(
+                    timeout=0.05 if getattr(self, "_artwork_refinement", None) is not None else 0.2)
                 if attempt == 0:
                     # A newly supplied cover supersedes any older delayed
                     # retry for the same track.
@@ -890,14 +1015,28 @@ class BongoCatEngine:
             except queue.Empty:
                 retry = self._take_due_artwork_v2_retry()
                 if retry is None:
-                    continue
-                track_key, artwork, attempt = retry
+                    refinement = self._take_artwork_refinement()
+                    if refinement is None:
+                        continue
+                    track_key, artwork, attempt = refinement["track"], refinement["artwork"], 0
+                else:
+                    track_key, artwork, attempt = retry
             if not self.serial_conn or not self.serial_conn.is_open:
                 diagnostics.event("ART_SEND", result="skipped", reason="connection_lost")
                 continue
             conn = self.serial_conn
             try:
                 self._flush_latest_media()
+                if refinement is not None:
+                    # Optional work never turns into raw fallback or a normal
+                    # three-tuple job after a generation/metadata race.
+                    if self._artwork_refinement_current(refinement):
+                        self._send_artwork_v2(conn, track_key, artwork, attempt, refinement)
+                    else:
+                        with self._media_lock:
+                            if getattr(self, "_artwork_refinement", None) is refinement:
+                                self._artwork_refinement = None
+                    continue
                 if (self._last_media_snapshot is None or
                         track_key != self._last_media_snapshot.track_key):
                     diagnostics.event("ART_SEND", result="skipped", reason="track_mismatch")
@@ -981,7 +1120,7 @@ class BongoCatEngine:
         self._artwork_v2_epoch += 1
         self._artwork_retry = None
         self._last_media_meta = None
-        self._last_media_seek_context_id = None
+        self._last_media_track_context_id = None
         self._last_media_state = None
         self._last_media_time = None
         self._last_media_full_sync = 0.0
@@ -995,6 +1134,42 @@ class BongoCatEngine:
             )
             self._on_media_update(snapshot, artwork)
 
+    def _retry_capability_after_status(self, conn, context, values):
+        """One query after normal firmware readiness; never reset media/epoch."""
+        if context is None:
+            return
+        required = ("HEAP", "HEAP_TOTAL", "MIN_HEAP", "UPTIME")
+        if any(type(values.get(key)) is not int for key in required):
+            return
+        if not (0 <= values["MIN_HEAP"] <= values["HEAP"] <= values["HEAP_TOTAL"] <= 0xFFFFFFFF
+                and values["HEAP_TOTAL"] > 0 and 0 <= values["UPTIME"] <= 0xFFFFFFFF):
+            return
+        try:
+            # No data/media lock here. Validate and write the captured handle
+            # under the same serial lock, so reconnect cannot redirect this query.
+            with self._serial_lock:
+                if (getattr(self, "_capability_fallback", None) is not context or
+                        context[0] is not conn or self.serial_conn is not conn or
+                        context[1] != self._artwork_v2_epoch or
+                        not context[2] or context[2] != self._artwork_v2_challenge or
+                        not conn.is_open):
+                    return
+                self._capability_fallback = None
+                if not self.running or self._stop_requested.is_set():
+                    return
+                if (self.baudrate == 921600 and self._artwork_v2_supported and
+                        self._artwork_v2_compact_challenge == context[2] and
+                        getattr(self, "_artwork_v2_refine_challenge", "") == context[2]):
+                    return
+                payload = f"CAPS?:{context[2]}\n".encode("ascii")
+                if conn.write(payload) != len(payload):
+                    raise serial.SerialTimeoutException("Partial capability query")
+        except Exception as exc:
+            # This helper no longer holds the serial lock when retiring a handle.
+            self._mark_serial_failed(conn, exc)
+            return
+        diagnostics.event("ART_CAPABILITY_RESEND", result="retry", protocol="art2")
+
     def _serial_reader_loop(self):
         """Receive touch media commands and diagnostics from the ESP32."""
         while self.running:
@@ -1003,6 +1178,8 @@ class BongoCatEngine:
                 time.sleep(0.1)
                 continue
             try:
+                capability_context = getattr(self, "_capability_fallback", None)
+                refinement_generation = (self._artwork_v2_epoch, self._artwork_v2_challenge)
                 raw = conn.readline()
                 if not raw:
                     continue
@@ -1015,6 +1192,26 @@ class BongoCatEngine:
                         line == f"CAPS:MEDIA_ART2:{self._artwork_v2_challenge}"):
                     self._artwork_v2_supported = True
                     diagnostics.event("ART_CAPABILITY", result="success", protocol="art2")
+                elif (self.baudrate == 921600 and self._artwork_v2_challenge and
+                      line == f"CAPS:MEDIA_ART2_FAST:{self._artwork_v2_challenge}:921600"):
+                    self._artwork_v2_fast_challenge = self._artwork_v2_challenge
+                    diagnostics.event("ART_FAST_CAPABILITY", result="success", protocol="art2",
+                                      frames_per_write=ARTWORK_V2_921600_BATCH_FRAMES,
+                                      interval_ms=int(ARTWORK_V2_921600_PAUSE_SECONDS * 1000))
+                elif (self.baudrate == 921600 and self._artwork_v2_challenge and
+                      line == f"CAPS:MEDIA_ART2_RGB56580:{self._artwork_v2_challenge}:921600"):
+                    self._artwork_v2_compact_challenge = self._artwork_v2_challenge
+                    diagnostics.event("ART_COMPACT_CAPABILITY", result="success", protocol="art2",
+                                      bytes=COMPACT_EDGE * COMPACT_EDGE * 2)
+                elif (self.baudrate == 921600 and self._artwork_v2_challenge and
+                      line == f"CAPS:MEDIA_ART2_REFINE:{self._artwork_v2_challenge}:921600"):
+                    self._artwork_v2_refine_challenge = self._artwork_v2_challenge
+                    diagnostics.event("ART_REFINE_CAPABILITY", result="success", protocol="art2")
+                elif line.startswith("MEDIA_ART2_SHOWN:"):
+                    fields = line.split(":")
+                    if (len(fields) == 3 and fields[1].isascii() and fields[1].isdecimal()
+                            and 1 <= len(fields[1]) <= 5 and 1 <= int(fields[1]) <= 65535):
+                        self._record_artwork_shown(conn, refinement_generation, int(fields[1]), fields[2])
                 elif line.startswith("MEDIA_ART2_REASON:"):
                     _, _, value = line.partition(":")
                     transfer_id, separator, reason = value.partition(":")
@@ -1053,12 +1250,9 @@ class BongoCatEngine:
                     except UnicodeDecodeError:
                         parsed = None
                     if parsed:
-                        action, seek_context = parsed
+                        action = parsed
                         diagnostics.event("MEDIA_CMD_RX", action=action)
-                        if seek_context is None:
-                            self.media_bridge.control(action)
-                        else:
-                            self.media_bridge.control(action, expected_context=seek_context)
+                        self.media_bridge.control(action)
                         print(f"🎵 Touch control: {action}")
                 elif line.startswith("ESP32_STATUS:"):
                     values = {}
@@ -1084,6 +1278,7 @@ class BongoCatEngine:
                         )
                         self.esp32_cpu_sample_ms = values.get("CPU_SAMPLE_MS")
                         self.esp32_status_at = time.time()
+                    self._retry_capability_after_status(conn, capability_context, values)
             except Exception as e:
                 if self.running:
                     self._mark_serial_failed(conn, e, reason="read_error")
@@ -1744,6 +1939,7 @@ class BongoCatEngine:
         with self._lifecycle_lock:
             self.running = False
             self._artwork_retry = None
+            self._artwork_refinement = None
             if self.keyboard_listener:
                 self.keyboard_listener.stop()
             self._foreground_stop.set()

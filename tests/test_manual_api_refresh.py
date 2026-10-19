@@ -59,7 +59,7 @@ class ManualRefreshTests(unittest.TestCase):
                 manual_times.append(clock.mono)
                 if burst:
                     for _ in range(12):
-                        for action in ('PLAY_PAUSE','NEXT','PREVIOUS','SEEK:+15'):
+                        for action in ('PLAY_PAUSE','NEXT','PREVIOUS'):
                             touches.append(bridge.control(action))
                 if (error401 and not once401) or persistent401:
                     once401=True
@@ -204,7 +204,6 @@ class ManualRefreshTests(unittest.TestCase):
         self.assertEqual(len(r['manual_times']),1)
         self.assertTrue(all(c[0]=='GET' for c in r['calls']))
         self.assertFalse(r['bridge']._control_requests)
-        self.assertFalse(r['bridge']._seek_requests)
 
     def test_empty_snapshot_remains_read_only_waiting(self):
         r=self.scenario(empty=True)

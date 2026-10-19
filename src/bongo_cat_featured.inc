@@ -5,6 +5,7 @@
 #include <Preferences.h>
 #include <esp_freertos_hooks.h>
 #include <esp_sleep.h>
+#include <esp_heap_caps.h>
 #include <driver/rtc_io.h>
 #include <mbedtls/base64.h>
 #include <ctype.h>
@@ -19,8 +20,13 @@
 #include "focus_countdown.h"
 #include "focus_countdown_layout.h"
 #include "focus_status_touch.h"
-#include "media_seek_touch.h"
+#include "media_track_context.h"
+#include "media_record_flip.h"
+#include "media_art_refinement.h"
+#include "media_turntable.h"
+#include "media_swedish_font.h"
 #include "media_art_v2.h"
+#include "media_art_compact.h"
 #include "serial_line_receiver.h"
 
 // Display settings
@@ -135,13 +141,7 @@ bool touch_long_press_fired = false;
 bool touch_started_in_menu = false;
 bool touch_started_in_focus_status = false;
 bool touch_focus_status_cancelled = false;
-bool touch_started_in_media_seek = false;
-bool touch_media_seek_cancelled = false;
-bool touch_media_seek_context_cancelled = false;
-bool touch_media_seek_moved = false;
-uint32_t media_context_revision = 0;
-uint32_t media_seek_context_id = 0;
-uint32_t touch_media_seek_start_revision = 0;
+uint32_t media_track_context_id = 0;
 bool touch_bonk_active = false;
 uint32_t touch_down_time = 0;
 uint32_t touch_bonk_until = 0;
@@ -175,6 +175,20 @@ lv_obj_t * media_cat_canvas = NULL;
 static lv_color_t media_cat_canvas_buffer[CAT_SIZE * CAT_SIZE];
 static lv_color_t media_art_buffers[2][MEDIA_ART_SIZE * MEDIA_ART_SIZE];
 static lv_img_dsc_t media_art_descriptor;
+static unsigned short *media_record_pixels = nullptr;
+static lv_img_dsc_t media_record_descriptor;
+static MediaTurntable media_record_flip;
+static MediaArtRefinementNotice media_art_refinement_notice;
+static uint32_t media_record_metadata_revision = 0;
+static bool media_record_dirty = true;
+static TurntableFrame media_record_last_frame = {};
+static TurntableFrame media_turntable_frame = {};
+static lv_obj_t *media_arm_layer = nullptr, *media_paw_layer = nullptr;
+static uint32_t media_turntable_last_tick = 0;
+static_assert(MEDIA_ART_SIZE == RECORD_PIXELS && sizeof(lv_color_t) == sizeof(unsigned short),
+              "Record projection requires the existing 112px RGB565 format");
+static_assert((RECORD_PIXELS / 2) * (RECORD_PIXELS / 2) <= CAT_SIZE * CAT_SIZE,
+              "OOM generic must fit the hidden DJ scratch canvas");
 uint8_t media_art_active_buffer = 0;
 uint8_t media_art_receiving_buffer = 1;
 bool media_art_receiving = false;
@@ -185,7 +199,12 @@ uint32_t media_art_last_byte_ms = 0;
 uint8_t media_art_rgb_triplet[3] = {0, 0, 0};
 uint8_t media_art_rgb_triplet_used = 0;
 bool media_art_valid = false;
+#ifdef BONGO_ART2_COMPACT80
+MediaArtV2Transfer media_art_v2(MEDIA_ART_RGB_BYTES, COMPACT_ART_BYTES);
+#else
 MediaArtV2Transfer media_art_v2(MEDIA_ART_RGB_BYTES);
+#endif
+bool media_art_compact_active = false;
 SerialLineReceiver<SERIAL_LINE_BYTES> serial_line_receiver;
 BufferedSerialSource<HardwareSerial, SERIAL_LINE_BYTES> &serialInput() {
     static BufferedSerialSource<HardwareSerial, SERIAL_LINE_BYTES> input(Serial);
@@ -749,8 +768,8 @@ void refreshMediaUi() {
     if (media_cat_mode) {
         lv_obj_add_flag(media_state_label, LV_OBJ_FLAG_HIDDEN);
         lv_obj_add_flag(media_art_image, LV_OBJ_FLAG_HIDDEN);
-        lv_obj_clear_flag(media_cat_canvas, LV_OBJ_FLAG_HIDDEN);
         renderMediaCat();
+        lv_obj_clear_flag(media_cat_canvas, LV_OBJ_FLAG_HIDDEN);
     } else if (media_art_valid) {
         lv_obj_add_flag(media_state_label, LV_OBJ_FLAG_HIDDEN);
         lv_obj_clear_flag(media_art_image, LV_OBJ_FLAG_HIDDEN);
@@ -763,9 +782,79 @@ void refreshMediaUi() {
     }
 }
 
-void activateMediaArtwork(uint8_t buffer_index, bool acknowledge) {
-    memset(&media_art_descriptor, 0, sizeof(media_art_descriptor));
-    media_art_active_buffer = buffer_index;
+bool mediaRecordVisible() {
+    return active_panel == PanelId::Player && !media_cat_mode &&
+           !(feature_overlay && !lv_obj_has_flag(feature_overlay, LV_OBJ_FLAG_HIDDEN));
+}
+
+void drawMediaTurntableLayer(lv_event_t *event) {
+    const bool paw = lv_event_get_target(event) == media_paw_layer;
+    TurntablePrimitive primitives[64];
+    const TurntablePalette palette = {lv_color_hex(0x000000).full, lv_color_hex(0xFFFFFF).full,
+        lv_color_hex(0xBDC6CC).full, lv_color_hex(0x6E7983).full, lv_color_hex(0xFF83AA).full};
+    const int count = turntablePrimitives(media_turntable_frame, media_focus_layout_active,
+                                          paw, palette, primitives, 64);
+    lv_draw_ctx_t *context = lv_event_get_draw_ctx(event);
+    for (int i = 0; i < count; ++i) {
+        const TurntablePrimitive &p = primitives[i];
+        lv_color_t color; color.full = p.color;
+        if (p.shape == TurntableShape::Line) {
+            lv_draw_line_dsc_t dsc; lv_draw_line_dsc_init(&dsc);
+            dsc.color = color; dsc.width = p.width;
+            const lv_point_t from = {p.x1, p.y1}, to = {p.x2, p.y2};
+            // Immediate draw only: LVGL retains no points from this callback.
+            lv_draw_line(context, &dsc, &from, &to);
+        } else {
+            lv_draw_rect_dsc_t dsc; lv_draw_rect_dsc_init(&dsc);
+            dsc.bg_color = color; dsc.bg_opa = LV_OPA_COVER;
+            const lv_area_t area = {p.x1, p.y1, p.x2, p.y2};
+            lv_draw_rect(context, &dsc, &area);
+        }
+    }
+}
+
+void updateMediaTurntableLayers(bool visible) {
+    static TurntableGeometry last = {};
+    static bool sampled = false, last_compact = false;
+    const TurntableGeometry g = turntableGeometry(media_turntable_frame, media_focus_layout_active);
+    for (int side = 0; side < 2; ++side) {
+        lv_obj_t *layer = side ? media_paw_layer : media_arm_layer;
+        if (!layer) continue;
+        if (!visible || (side && !media_turntable_frame.paw)) {
+            lv_obj_add_flag(layer, LV_OBJ_FLAG_HIDDEN);
+            continue;
+        }
+        const bool changed = !sampled || last_compact != media_focus_layout_active ||
+            lv_obj_has_flag(layer, LV_OBJ_FLAG_HIDDEN) || (side ?
+                (g.paw_x != last.paw_x || g.paw_y != last.paw_y) :
+                (g.tip_x != last.tip_x || g.tip_y != last.tip_y || g.lift != last.lift));
+        if (!changed) continue;
+        TurntablePrimitive primitives[64];
+        const TurntablePalette palette = {};
+        const int count = turntablePrimitives(media_turntable_frame, media_focus_layout_active,
+                                              side != 0, palette, primitives, 64);
+        int x1 = 240, y1 = 205, x2 = -1, y2 = -1;
+        for (int i = 0; i < count; ++i) {
+            const TurntablePrimitive &p = primitives[i];
+            const int margin = p.width / 2 + 1;
+            x1 = min(x1, min((int)p.x1, (int)p.x2) - margin);
+            x2 = max(x2, max((int)p.x1, (int)p.x2) + margin);
+            y1 = min(y1, min((int)p.y1, (int)p.y2) - margin);
+            y2 = max(y2, max((int)p.y1, (int)p.y2) + margin);
+        }
+        x1 = max(0, x1); x2 = min(239, x2);
+        y1 = max(20, y1); y2 = min(202, y2);
+        if (x1 > x2 || y1 > y2) { lv_obj_add_flag(layer, LV_OBJ_FLAG_HIDDEN); continue; }
+        lv_obj_set_pos(layer, x1, y1);
+        lv_obj_set_size(layer, x2-x1+1, y2-y1+1);
+        lv_obj_clear_flag(layer, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_invalidate(layer);
+    }
+    last = g; sampled = true; last_compact = media_focus_layout_active;
+}
+
+void syncMediaArtworkDescriptor() {
+    media_art_active_buffer = media_record_flip.visibleSlot();
     media_art_descriptor.header.cf = LV_IMG_CF_TRUE_COLOR_CHROMA_KEYED;
     media_art_descriptor.header.w = MEDIA_ART_SIZE;
     media_art_descriptor.header.h = MEDIA_ART_SIZE;
@@ -773,49 +862,106 @@ void activateMediaArtwork(uint8_t buffer_index, bool acknowledge) {
     media_art_descriptor.data = reinterpret_cast<const uint8_t *>(
         media_art_buffers[media_art_active_buffer]);
     lv_img_cache_invalidate_src(&media_art_descriptor);
-    lv_img_set_src(media_art_image, &media_art_descriptor);
-    lv_img_set_pivot(media_art_image, MEDIA_ART_SIZE / 2, MEDIA_ART_SIZE / 2);
-    lv_img_set_zoom(media_art_image, focusMediaLayout(media_focus_layout_active).art_zoom);
-    media_vinyl_angle = 0;
-    lv_img_set_angle(media_art_image, media_vinyl_angle);
+}
+
+void setMediaArtRefinementGeneration(const char *challenge) {
+    if (media_art_refinement_notice.generation(challenge)) {
+        // Retire only old RX/notice state. Keep the visible disc and motion.
+        media_art_v2.abort();
+        media_art_receiving = false;
+    }
+}
+
+void serviceMediaArtShown(const TurntableFrame &frame) {
+    const uint16_t id = media_art_refinement_notice.take(media_art_active_buffer,
+        media_track_context_id, frame.side == RecordSide::Artwork);
+    if (id) Serial.printf("MEDIA_ART2_SHOWN:%u:%s\n", static_cast<unsigned int>(id),
+                           media_art_refinement_notice.challenge());
+}
+
+void updateMediaRecordFlip(uint32_t now) {
+    if (!media_record_dirty && now - media_turntable_last_tick < RECORD_FLIP_FRAME_MS) return;
+    media_turntable_last_tick = now;
+    const bool visible = mediaRecordVisible();
+    media_record_flip.playback(media_is_playing, media_position_seconds, media_duration_seconds);
+    const TurntableFrame frame = media_record_flip.frame(now, visible && media_record_pixels);
+    if (media_art_active_buffer != media_record_flip.visibleSlot()) {
+        syncMediaArtworkDescriptor();
+        media_record_dirty = true;
+    }
+    media_turntable_frame = frame;
+    updateMediaTurntableLayers(visible && media_record_pixels && media_art_valid);
+    if (!visible) {
+        // Selected/pinned for this identity, not a measured physical LCD event.
+        serviceMediaArtShown(frame);
+        media_record_dirty = true;
+        return;
+    }
+    if (!media_art_image || !media_art_valid) return;
+    if (!media_record_dirty && ttSameDisc(frame, media_record_last_frame)) return;
+
+    const lv_img_dsc_t *image = &media_art_descriptor;
+    const bool projection = frame.changing || frame.side == RecordSide::Generic;
+    if (projection) {
+        RecordPalette palette = {lv_color_make(0, 255, 0).full, lv_color_hex(0x111318).full,
+            lv_color_hex(0x343941).full, lv_color_hex(0x1ED760).full, lv_color_hex(0xE8EBEE).full};
+        const int angle = media_vinyl_angle / 10;
+        if (media_record_pixels) renderTurntableDisc(media_record_pixels, RECORD_PIXELS * RECORD_PIXELS,
+                          reinterpret_cast<const unsigned short *>(media_art_buffers[media_art_active_buffer]),
+                          frame, frame.changing ? lv_trigo_sin(angle) : 0,
+                          frame.changing ? lv_trigo_sin(angle + 90) : 32768, palette);
+        media_record_descriptor.header.cf = LV_IMG_CF_TRUE_COLOR_CHROMA_KEYED;
+        const int size = media_record_pixels ? RECORD_PIXELS : RECORD_PIXELS / 2;
+        if (!media_record_pixels) {
+            // OOM: reduced generic in the hidden DJ scratch, never RX/committed art.
+            renderTurntableGenericReduced(reinterpret_cast<unsigned short *>(media_cat_canvas_buffer),
+                                           CAT_SIZE * CAT_SIZE, palette);
+        }
+        media_record_descriptor.header.w = size;
+        media_record_descriptor.header.h = size;
+        media_record_descriptor.data_size = size * size * sizeof(lv_color_t);
+        media_record_descriptor.data = media_record_pixels ?
+            reinterpret_cast<const uint8_t *>(media_record_pixels) :
+            reinterpret_cast<const uint8_t *>(media_cat_canvas_buffer);
+        lv_img_cache_invalidate_src(&media_record_descriptor);
+        image = &media_record_descriptor;
+    }
+    lv_obj_invalidate(media_art_image);
+    lv_img_set_src(media_art_image, image);
+    lv_img_set_pivot(media_art_image, image->header.w / 2, image->header.h / 2);
+    const FocusMediaLayout layout = focusMediaLayout(media_focus_layout_active);
+    lv_img_set_zoom(media_art_image, layout.art_zoom * (image->header.w == RECORD_PIXELS / 2 ? 2 : 1));
     lv_img_set_antialias(media_art_image, false);
-    lv_obj_center(media_art_image);
+    lv_img_set_angle(media_art_image, frame.changing ? 0 : media_vinyl_angle);
+    // Image is a screen child, so the complete disc can leave the round artbox.
+    lv_obj_set_pos(media_art_image, layout.x + layout.size/2 - image->header.w/2 + frame.dx*layout.art_zoom/256,
+                   layout.y + layout.size/2 - image->header.h/2 + frame.dy*layout.art_zoom/256);
+    lv_obj_invalidate(media_art_image);
+    if (frame.changing) media_vinyl_last_frame = now;
+    media_record_last_frame = frame;
+    media_record_dirty = false;
+    serviceMediaArtShown(frame);
+}
+
+void activateMediaArtwork(uint8_t buffer_index, bool acknowledge) {
+    // CRC-complete staging can be acknowledged while the old face is pinned.
+    media_record_flip.artworkInSlot(buffer_index, media_track_context_id,
+                                     millis(), mediaRecordVisible());
+    syncMediaArtworkDescriptor();
     media_art_valid = true;
+    media_record_dirty = true;
+    // Only constant-size state changes above. Render after RX/ACK in loop().
     refreshMediaUi();
     if (acknowledge) Serial.println("MEDIA_ART_OK");
 }
 
 void loadGenericVinyl() {
-    uint8_t buffer_index = 1 - media_art_active_buffer;
-    lv_color_t chroma = lv_color_make(0, 255, 0);
-    lv_color_t record = lv_color_hex(0x111318);
-    lv_color_t groove = lv_color_hex(0x343941);
-    lv_color_t label = lv_color_hex(0x1ED760);
-    lv_color_t spindle = lv_color_hex(0xE8EBEE);
-    const int center = MEDIA_ART_SIZE / 2;
-
-    for (int y = 0; y < MEDIA_ART_SIZE; y++) {
-        for (int x = 0; x < MEDIA_ART_SIZE; x++) {
-            int dx = x - center;
-            int dy = y - center;
-            int radius2 = dx * dx + dy * dy;
-            lv_color_t pixel = chroma;
-            if (radius2 <= 46 * 46) pixel = record;
-            if ((radius2 >= 38 * 38 && radius2 <= 39 * 39) ||
-                (radius2 >= 31 * 31 && radius2 <= 32 * 32)) pixel = groove;
-            if (radius2 <= 24 * 24) pixel = label;
-            if (radius2 <= 5 * 5) pixel = spindle;
-            if (radius2 <= 2 * 2) pixel = record;
-            // An off-centre marker makes the rotation clearly visible.
-            int marker_dx = x - center;
-            int marker_dy = y - (center - 39);
-            if (marker_dx * marker_dx + marker_dy * marker_dy <= 3 * 3) {
-                pixel = label;
-            }
-            media_art_buffers[buffer_index][y * MEDIA_ART_SIZE + x] = pixel;
-        }
-    }
-    activateMediaArtwork(buffer_index, false);
+    media_art_refinement_notice.cancel();
+    // Generic pixels belong only to the projection buffer, never a RX slot.
+    media_record_flip.request(RecordSide::Generic, millis(), false);
+    media_record_dirty = true;
+    media_art_valid = true;
+    refreshMediaUi();
 }
 
 void finishMediaArtwork() {
@@ -856,7 +1002,7 @@ bool serviceMediaArtworkReceive() {
             media_art_rgb_triplet_used == 0) {
             finishMediaArtwork();
         } else {
-            media_art_valid = false;
+            // Keep the committed face (generic for a new track) on bad RGB.
             Serial.println("MEDIA_ART_ERROR");
         }
     } else if (millis() - media_art_last_byte_ms >= MEDIA_ART_STALL_MS) {
@@ -895,7 +1041,7 @@ void consumeQueuedMediaArtwork(const uint8_t *incoming, size_t length) {
             media_art_rgb_triplet_used == 0) {
             finishMediaArtwork();
         } else {
-            media_art_valid = false;
+            // Keep the committed face (generic for a new track) on bad RGB.
             Serial.println("MEDIA_ART_ERROR");
         }
     }
@@ -939,8 +1085,12 @@ bool handleMediaArt2Command(const String &command, uint32_t now) {
         if (media_art_v2.active) failMediaArt2(media_art_v2.id, "art2_line");
         return true;
     }
-    if (command.startsWith("MEDIA_ART2_BEGIN:")) {
-        String args = command.substring(17);
+    const bool compact_begin = command.startsWith("MEDIA_ART2_BEGIN565:");
+    if (command.startsWith("MEDIA_ART2_BEGIN:") || compact_begin) {
+#ifndef BONGO_ART2_COMPACT80
+        if (compact_begin) return true;
+#endif
+        String args = command.substring(command.indexOf(':') + 1);
         String fields[5];
         int start = 0;
         for (int index = 0; index < 4; ++index) {
@@ -957,11 +1107,15 @@ bool handleMediaArt2Command(const String &command, uint32_t now) {
             !parseMediaArt2Number(fields[3], &length) ||
             fields[4].length() != 8 ||
             !parseMediaArt2Number(fields[4], &crc, 16) ||
-            id == 0 || id > UINT16_MAX || width != MEDIA_ART_SIZE ||
-            height != MEDIA_ART_SIZE || length != MEDIA_ART_RGB_BYTES) return true;
+            id == 0 || id > UINT16_MAX ||
+            width != (compact_begin ? COMPACT_ART_EDGE : MEDIA_ART_SIZE) ||
+            height != (compact_begin ? COMPACT_ART_EDGE : MEDIA_ART_SIZE) ||
+            length != (compact_begin ? COMPACT_ART_BYTES : MEDIA_ART_RGB_BYTES)) return true;
         media_art_receiving = false;
+        media_art_refinement_notice.cancel();
         media_art_v2.begin(static_cast<uint16_t>(id), length, crc);
-        media_art_receiving_buffer = 1 - media_art_active_buffer;
+        media_art_receiving_buffer = media_record_flip.beginArtwork();
+        media_art_compact_active = compact_begin;
         media_art_pixels_received = 0;
         media_art_rgb_triplet_used = 0;
         media_art_v2_started_ms = now;
@@ -998,6 +1152,14 @@ bool handleMediaArt2Command(const String &command, uint32_t now) {
             return true;
         }
         media_art_v2_last_chunk_ms = now;
+        if (media_art_compact_active) {
+            // RGB565_BE is already the byte sequence used by LV_COLOR_16_SWAP=1.
+            // Only the inactive transport slot is written; CRC precedes expansion.
+            memcpy(reinterpret_cast<uint8_t *>(media_art_buffers[media_art_receiving_buffer]) + offset,
+                   bytes, decoded);
+            media_art_pixels_received = media_art_v2.received / 2;
+            return true;
+        }
         for (size_t index = 0; index < decoded; ++index) {
             media_art_rgb_triplet[media_art_rgb_triplet_used++] = bytes[index];
             if (media_art_rgb_triplet_used == 3) {
@@ -1018,13 +1180,23 @@ bool handleMediaArt2Command(const String &command, uint32_t now) {
             id == 0 || id > UINT16_MAX) return true;
         if (media_art_v2.active && id == media_art_v2.id) {
             if (media_art_v2.complete(static_cast<uint16_t>(id)) &&
-                media_art_pixels_received == MEDIA_ART_SIZE * MEDIA_ART_SIZE &&
+                media_art_pixels_received == (media_art_compact_active ?
+                    COMPACT_ART_PIXELS : MEDIA_ART_SIZE * MEDIA_ART_SIZE) &&
                 media_art_rgb_triplet_used == 0) {
+                if (media_art_compact_active &&
+                    !expandCompactArtwork565(reinterpret_cast<unsigned short *>(
+                        media_art_buffers[media_art_receiving_buffer]), MEDIA_ART_SIZE * MEDIA_ART_SIZE)) {
+                    failMediaArt2(static_cast<uint16_t>(id), "art2_pixels");
+                    return true;
+                }
                 media_art_v2.abort();
                 activateMediaArtwork(media_art_receiving_buffer, false);
+                if (media_art_compact_active)
+                    media_art_refinement_notice.stage(static_cast<uint16_t>(id),
+                        media_art_receiving_buffer, media_track_context_id);
                 Serial.printf("MEDIA_ART2_OK:%u\n", static_cast<unsigned int>(id));
             } else {
-                const char *reason = media_art_v2.received != MEDIA_ART_RGB_BYTES ?
+                const char *reason = media_art_v2.received != media_art_v2.expected_bytes ?
                                      "art2_length" :
                                      (~media_art_v2.crc) != media_art_v2.expected_crc ?
                                      "art2_crc" : "art2_pixels";
@@ -1045,7 +1217,7 @@ bool handleMediaArt2Command(const String &command, uint32_t now) {
 }
 
 void updateMediaVinyl(uint32_t current_time) {
-    if (active_panel != PanelId::Player || media_cat_mode || !media_art_valid || !media_is_playing ||
+    if (media_record_flip.moving() || active_panel != PanelId::Player || media_cat_mode || !media_art_valid || !media_is_playing ||
         !media_art_image) {
         return;
     }
@@ -1084,6 +1256,7 @@ void updateMediaCat(uint32_t current_time) {
 }
 
 void toggleMediaCatMode() {
+    media_record_dirty = true;  // Also restores generic after sharing the OOM scratch.
     media_cat_mode = !media_cat_mode;
     media_cat_last_frame = 0;
     media_cat_left_note = 0;
@@ -1259,6 +1432,18 @@ bool probeForCompanion() {
     return false;
 }
 
+// Record identity is independent of gestures and visible title/artist text.
+void updateMediaTrackContext(uint32_t value, uint32_t current_time) {
+    if (media_track_context_id != value) {
+        media_art_refinement_notice.cancel();
+        media_art_v2.abort();
+        media_art_receiving = false;
+    }
+    media_track_context_id = value;
+    media_record_dirty |= media_record_flip.trackContext(
+        value, current_time, mediaRecordVisible());
+}
+
 // Handle one complete command from the companion.
 void processSerialCommand(String command, uint32_t current_time) {
         command.trim();
@@ -1267,26 +1452,23 @@ void processSerialCommand(String command, uint32_t current_time) {
 
         if (handleMediaArt2Command(command, current_time)) return;
         
-        if (command.startsWith("MEDIA_SEEK_CONTEXT:")) {
-            String text = command.substring(19);
-            MediaSeekContextValue next = parseMediaSeekContext(text.c_str(), text.length());
-            if (next.valid) {
-                if (media_seek_context_id != next.value) ++media_context_revision;
-                media_seek_context_id = next.value;
-            }
+        if (command.startsWith("MEDIA_TRACK_CONTEXT:")) {
+            String text = command.substring(20);
+            MediaTrackContextValue next = parseMediaTrackContext(text.c_str(), text.length());
+            if (next.valid) updateMediaTrackContext(next.value, current_time);
         } else if (command.startsWith("MEDIA_SOURCE:")) {
             String next_source = command.substring(13);
-            if (media_source != next_source) ++media_context_revision;
+            if (media_source != next_source) { ++media_record_metadata_revision; }
             media_source = next_source;
             refreshMediaUi();
         } else if (command.startsWith("MEDIA_TITLE:")) {
             String next_title = command.substring(12);
-            if (media_title != next_title) ++media_context_revision;
+            if (media_title != next_title) { ++media_record_metadata_revision; }
             media_title = next_title;
             refreshMediaUi();
         } else if (command.startsWith("MEDIA_ARTIST:")) {
             String next_artist = command.substring(13);
-            if (media_artist != next_artist) ++media_context_revision;
+            if (media_artist != next_artist) { ++media_record_metadata_revision; }
             media_artist = next_artist;
             refreshMediaUi();
         } else if (command.startsWith("MEDIA_STATE:")) {
@@ -1299,10 +1481,11 @@ void processSerialCommand(String command, uint32_t current_time) {
             }
             media_is_playing = next_playing;
             bool next_has_track = state != "NONE";
-            if (media_has_track != next_has_track) ++media_context_revision;
+            if (media_has_track != next_has_track) { ++media_record_metadata_revision; }
             media_has_track = next_has_track;
             if (state == "NONE") {
                 media_art_v2.abort();
+                media_art_receiving = false;
                 loadGenericVinyl();
             }
             refreshMediaUi();
@@ -1312,7 +1495,7 @@ void processSerialCommand(String command, uint32_t current_time) {
             if (separator > 0) {
                 media_position_seconds = timing.substring(0, separator).toInt();
                 uint32_t next_duration = timing.substring(separator + 1).toInt();
-                if (media_duration_seconds != next_duration) ++media_context_revision;
+                // A corrected duration on the same track is not a new record.
                 media_duration_seconds = next_duration;
                 media_position_anchor_ms = current_time;
                 refreshMediaProgressUi();
@@ -1323,7 +1506,8 @@ void processSerialCommand(String command, uint32_t current_time) {
             if (command == "MEDIA_ART_RGB:112:112:37632" &&
                 incoming_size == MEDIA_ART_RGB_BYTES) {
                 media_art_v2.abort();
-                media_art_receiving_buffer = 1 - media_art_active_buffer;
+                media_art_refinement_notice.cancel();
+                media_art_receiving_buffer = media_record_flip.beginArtwork();
                 media_art_expected = incoming_size;
                 media_art_received = 0;
                 media_art_pixels_received = 0;
@@ -1333,7 +1517,9 @@ void processSerialCommand(String command, uint32_t current_time) {
             }
         } else if (command == "MEDIA_ART_DEFAULT") {
             media_art_v2.abort();
-            loadGenericVinyl();
+            media_art_receiving = false;
+            media_record_dirty |= media_record_flip.trackDefault(
+                media_record_metadata_revision, current_time, mediaRecordVisible());
         } else if (command.startsWith("SPEED:")) {
             cancelTouchBonk();
             // Handle speed commands with enhanced logic  
@@ -1458,6 +1644,19 @@ void processSerialCommand(String command, uint32_t current_time) {
                 valid = isxdigit(static_cast<unsigned char>(challenge[index]));
             }
             if (valid) Serial.println("CAPS:MEDIA_ART2:" + challenge);
+#if defined(BONGO_ART2_FAST_TIER) && BONGO_SERIAL_BAUD == 921600
+            // Only the explicit paired profile with live core-0 framing may
+            // advertise the faster sender tier. Payload/ACK framing is unchanged.
+            if (valid && serial_rx_task)
+                Serial.println("CAPS:MEDIA_ART2_FAST:" + challenge + ":921600");
+#endif
+#if defined(BONGO_ART2_COMPACT80) && BONGO_SERIAL_BAUD == 921600
+            if (valid && serial_rx_task) {
+                Serial.println("CAPS:MEDIA_ART2_RGB56580:" + challenge + ":921600");
+                setMediaArtRefinementGeneration(challenge.c_str());
+                Serial.println("CAPS:MEDIA_ART2_REFINE:" + challenge + ":921600");
+            }
+#endif
             
         } else if (command.startsWith("ANIM:")) {
             // Handle specific animation commands from tester
@@ -2081,6 +2280,8 @@ lv_obj_t *createFocusCountdownBlock(lv_obj_t *parent, int width, int height,
 
 void refreshFocusMediaLayout(bool visible) {
     if (!media_art_box || visible == media_focus_layout_active) return;
+    media_record_flip.frame(millis(), false);
+    media_record_dirty = true;
     media_focus_layout_active = visible;
     const FocusMediaLayout layout = focusMediaLayout(visible);
     lv_obj_set_pos(media_art_box, layout.x, layout.y);
@@ -2088,7 +2289,10 @@ void refreshFocusMediaLayout(bool visible) {
     lv_obj_set_style_radius(media_art_box, layout.radius, 0);
     lv_img_set_zoom(media_art_image, layout.art_zoom);
     lv_img_set_zoom(media_cat_canvas, layout.cat_zoom);
-    lv_obj_center(media_art_image);
+    lv_obj_set_pos(media_art_image, layout.x + layout.size/2 - lv_obj_get_width(media_art_image)/2,
+                   layout.y + layout.size/2 - lv_obj_get_height(media_art_image)/2);
+    if (media_arm_layer) lv_obj_add_flag(media_arm_layer, LV_OBJ_FLAG_HIDDEN);
+    if (media_paw_layer) lv_obj_add_flag(media_paw_layer, LV_OBJ_FLAG_HIDDEN);
     lv_obj_center(media_cat_canvas);
     lv_obj_center(media_state_label);
 }
@@ -2325,7 +2529,18 @@ lv_obj_t *createMediaControlButton(lv_obj_t *parent, const char *symbol,
     return label;
 }
 
+void allocateMediaRecordPixels() {
+    // One allocation for the screen lifetime, outside the animation/RX paths.
+    // Failure disables flips and uses the bounded hidden-DJ generic fallback.
+    static bool attempted = false;
+    if (attempted) return;
+    attempted = true;
+    media_record_pixels = static_cast<unsigned short *>(heap_caps_malloc(
+        RECORD_PIXELS * RECORD_PIXELS * sizeof(unsigned short), MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT));
+}
+
 void createMediaScreen() {
+    allocateMediaRecordPixels();
     media_screen = lv_obj_create(NULL);
     lv_obj_set_style_bg_color(media_screen, lv_color_hex(0x080A0C), 0);
     lv_obj_set_style_bg_opa(media_screen, LV_OPA_COVER, 0);
@@ -2390,7 +2605,18 @@ void createMediaScreen() {
     lv_obj_set_style_text_align(media_state_label, LV_TEXT_ALIGN_CENTER, 0);
     lv_obj_center(media_state_label);
 
-    media_art_image = lv_img_create(media_art_box);
+    media_art_image = lv_img_create(media_screen);
+    lv_obj_clear_flag(media_art_image, LV_OBJ_FLAG_CLICKABLE);
+    // Independent, non-interactive layers, outside the artbox's round clipping.
+    media_arm_layer = lv_obj_create(media_screen);
+    media_paw_layer = lv_obj_create(media_screen);
+    for (lv_obj_t *layer : {media_arm_layer, media_paw_layer}) {
+        lv_obj_remove_style_all(layer);
+        lv_obj_set_size(layer, 1, 1);
+        lv_obj_clear_flag(layer, LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_SCROLLABLE);
+        lv_obj_add_flag(layer, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_add_event_cb(layer, drawMediaTurntableLayer, LV_EVENT_DRAW_MAIN, NULL);
+    }
     lv_obj_add_flag(media_art_image, LV_OBJ_FLAG_HIDDEN);
 
     media_cat_canvas = lv_canvas_create(media_art_box);
@@ -2418,7 +2644,7 @@ void createMediaScreen() {
     lv_obj_set_pos(media_title_label, 10, 7);
     lv_obj_set_width(media_title_label, 204);
     lv_label_set_long_mode(media_title_label, LV_LABEL_LONG_SCROLL_CIRCULAR);
-    lv_obj_set_style_text_font(media_title_label, &lv_font_montserrat_16, 0);
+    lv_obj_set_style_text_font(media_title_label, &lv_font_media_swedish_16, 0);
     lv_obj_set_style_text_color(media_title_label, lv_color_hex(0xFFFFFF), 0);
 
     media_artist_label = lv_label_create(info_panel);
@@ -2426,7 +2652,7 @@ void createMediaScreen() {
     lv_obj_set_pos(media_artist_label, 10, 32);
     lv_obj_set_width(media_artist_label, 204);
     lv_label_set_long_mode(media_artist_label, LV_LABEL_LONG_SCROLL_CIRCULAR);
-    lv_obj_set_style_text_font(media_artist_label, &lv_font_montserrat_14, 0);
+    lv_obj_set_style_text_font(media_artist_label, &lv_font_media_swedish_14, 0);
     lv_obj_set_style_text_color(media_artist_label, lv_color_hex(0xD7DBE0), 0);
 
     media_progress_bar = lv_bar_create(info_panel);
@@ -3303,27 +3529,11 @@ void handleTouchFeature(uint32_t current_time) {
             active_panel, focus_state.mode, touch_started_in_menu,
             touch_start_x, touch_start_y);
         touch_focus_status_cancelled = false;
-        touch_started_in_media_seek = mediaSeekStartHit(
-            active_panel, touch_started_in_menu, media_has_track, media_duration_seconds,
-            touch_start_x, touch_start_y);
-        touch_media_seek_start_revision = media_context_revision;
-        touch_media_seek_cancelled = false;
-        touch_media_seek_context_cancelled = false;
-        touch_media_seek_moved = false;
         touch_button_cancelled = false;
         setTouchFeedback(pressedButtonAt(touch_start_x, touch_start_y));
     } else if (pressed && touch_is_down) {
         tft.getTouchRaw(&touch_last_x, &touch_last_y);
-        if (touch_started_in_media_seek) {
-            touch_media_seek_cancelled = mediaSeekSampleCancelled(
-                touch_media_seek_cancelled, touch_start_x, touch_last_x);
-            touch_media_seek_context_cancelled = touch_media_seek_context_cancelled ||
-                active_panel != touch_start_panel || media_context_revision != touch_media_seek_start_revision ||
-                (feature_overlay && !lv_obj_has_flag(feature_overlay, LV_OBJ_FLAG_HIDDEN));
-            touch_media_seek_moved = touch_media_seek_moved ||
-                abs(int(touch_last_x) - int(touch_start_x)) > MEDIA_SEEK_NOISE_RAW ||
-                abs(int(touch_last_y) - int(touch_start_y)) > MEDIA_SEEK_NOISE_RAW;
-        }
+
         if (touch_started_in_focus_status)
             touch_focus_status_cancelled = focusStatusDragCancelled(
                 touch_focus_status_cancelled, touch_start_panel,
@@ -3360,10 +3570,7 @@ void handleTouchFeature(uint32_t current_time) {
                 ((route == TouchRoute::Menu || route == TouchRoute::Focus ||
                   route == TouchRoute::Settings) && touch_button_cancelled)) {
                 // Dragging outside the pressed button cancels a short tap.
-                if (touch_started_in_media_seek) {
-                    media_tap_count = 0;
-                    media_tap_deadline = 0;
-                }
+
             } else if (route == TouchRoute::Menu) {
                 if (feature_overlay &&
                     !lv_obj_has_flag(feature_overlay, LV_OBJ_FLAG_HIDDEN)) {
@@ -3379,30 +3586,11 @@ void handleTouchFeature(uint32_t current_time) {
                 // The touch controller's raw axes are rotated relative to
                 // this portrait display: raw X increases down; raw Y
                 // decreases right. Preserve the older disc swipe mapping.
-                if (touch_started_in_media_seek &&
-                    (touch_media_seek_context_cancelled ||
-                     media_context_revision != touch_media_seek_start_revision || !media_has_track ||
-                     (feature_overlay && !lv_obj_has_flag(feature_overlay, LV_OBJ_FLAG_HIDDEN)))) {
-                    media_tap_count = 0;
-                    media_tap_deadline = 0;
-                } else if (delta_x >= MEDIA_SWIPE_THRESHOLD &&
+                if (delta_x >= MEDIA_SWIPE_THRESHOLD &&
                     abs(delta_x) > abs(delta_y)) {
                     media_tap_count = 0;
                     media_tap_deadline = 0;
                     toggleMediaCatMode();
-                } else if (touch_started_in_media_seek) {
-                    int seek_seconds = mediaSeekDelta(delta_x, delta_y);
-                    if (seek_seconds || touch_media_seek_moved || touch_media_seek_cancelled) {
-                        // Match existing swipe cancellation of pending 1/2/3
-                        // media taps. A seek gesture sends only one command.
-                        media_tap_count = 0;
-                        media_tap_deadline = 0;
-                        if (seek_seconds && !touch_media_seek_cancelled && media_seek_context_id)
-                            Serial.printf("MEDIA_CMD:SEEK:%s:%lu\n", seek_seconds > 0 ? "+15" : "-15",
-                                          static_cast<unsigned long>(media_seek_context_id));
-                    } else {
-                        queueMediaTap(current_time);
-                    }
                 } else if (abs(delta_y) >= MEDIA_SWIPE_THRESHOLD &&
                            abs(delta_y) >= abs(delta_x)) {
                     media_tap_count = 0;
@@ -3422,10 +3610,6 @@ void handleTouchFeature(uint32_t current_time) {
         touch_started_in_menu = false;
         touch_started_in_focus_status = false;
         touch_focus_status_cancelled = false;
-        touch_started_in_media_seek = false;
-        touch_media_seek_cancelled = false;
-        touch_media_seek_context_cancelled = false;
-        touch_media_seek_moved = false;
         touch_button_cancelled = false;
     }
 
@@ -3454,6 +3638,7 @@ void loop() {
     serviceFocusTimer(current_time);
     serviceMediaTaps(current_time);
     updateMediaProgressClock(current_time);
+    updateMediaRecordFlip(current_time);
     updateMediaVinyl(current_time);
     updateMediaCat(current_time);
     

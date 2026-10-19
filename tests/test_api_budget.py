@@ -93,11 +93,11 @@ class BudgetTests(unittest.TestCase):
 
     def test_grants_reserve_future_cost_and_release_or_expire(self):
         budget,clock,_=self.memory()
-        grants=[budget.begin_operation("seek") for _ in range(6)]
+        grants=[budget.begin_operation("control") for _ in range(8)]
         with self.assertRaises(BudgetWait):budget.admit()
         self.assertEqual(budget.view()["reserved"],24)
         budget.finish_operation(grants[0]);budget.admit()
-        self.assertEqual(budget.view()["reserved"],20)
+        self.assertEqual(budget.view()["reserved"],21)
         clock.advance(11)
         self.assertEqual(budget.view()["reserved"],0)
         with self.assertRaises(BudgetWait):budget.admit(operation=grants[1])
@@ -106,11 +106,11 @@ class BudgetTests(unittest.TestCase):
         budget,clock,store=self.memory({"api_budget_day_playing_seconds":0.5})
         for _ in range(18):budget.admit();clock.advance(0.5)
         with self.assertRaises(BudgetWait):budget.admit()
-        grant=budget.begin_operation("seek")
-        for _ in range(4):budget.admit(operation=grant);clock.advance(0.5)
+        grant=budget.begin_operation("control")
+        for _ in range(3):budget.admit(operation=grant);clock.advance(0.5)
         budget.finish_operation(grant)
-        self.assertEqual(len(store.state["short"]),22)
-        clock.advance(19)
+        self.assertEqual(len(store.state["short"]),21)
+        clock.advance(19.5)
         budget.admit()
         self.assertLessEqual(budget.view()["short_auto_used"],18)
 
@@ -192,11 +192,11 @@ class BudgetTests(unittest.TestCase):
         budget,clock,path=self.file()
         others=[ApiBudget(path,wall=clock.wall,monotonic=clock.mono) for _ in range(10)]
         def reserve(client):
-            try:return client.begin_operation("seek")
+            try:return client.begin_operation("control")
             except BudgetWait:return None
         with concurrent.futures.ThreadPoolExecutor(max_workers=10) as pool:
             grants=list(pool.map(reserve,others))
-        self.assertEqual(sum(g is not None for g in grants),6)
+        self.assertEqual(sum(g is not None for g in grants),8)
         self.assertEqual(budget.view()["reserved"],24)
         self.assertEqual(budget.view()["long_used"],0)
 

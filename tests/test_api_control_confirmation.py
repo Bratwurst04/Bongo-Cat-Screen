@@ -43,10 +43,8 @@ def frozen_client():
     path = ROOT / 'build/api-budget-2026-10-14/source-frozen/companion/spotify_api.py'
     # Compile from bytes so inspecting the frozen source creates no pycache
     # or other files in its protected snapshot directory.
-    module = types.ModuleType('control_fix_frozen_client')
-    module.__file__ = str(path)
-    exec(compile(path.read_bytes(), str(path), 'exec'), module.__dict__)
-    return module.SpotifyApiBridge
+    from frozen_source import load_module
+    return load_module('control_fix_frozen_client', path, optional_archive=True).SpotifyApiBridge
 
 
 class ControlConfirmationTests(unittest.TestCase):
@@ -86,9 +84,6 @@ class ControlConfirmationTests(unittest.TestCase):
                 if request.full_url.endswith('/next'): data['item']['id'] = 'next'
                 if request.full_url.endswith('/pause'): data['is_playing'] = False
                 if request.full_url.endswith('/play'): data['is_playing'] = True
-                if '/seek?' in request.full_url:
-                    data['progress_ms']=int(urllib.parse.parse_qs(
-                        urllib.parse.urlsplit(request.full_url).query)['position_ms'][0])
                 return Response(payload,status,headers if headers is not None else {'Content-Type':'application/json'})
             get_sequence+=1
             if control_times:
@@ -183,16 +178,6 @@ class ControlConfirmationTests(unittest.TestCase):
                 times=[c[2] for c in result['calls']]
                 self.assertTrue(all(b-a>=.5 for a,b in zip(times,times[1:])))
 
-    def test_seek_success_keeps_fresh_preparation_and_reserved_confirmation(self):
-        for gate in (.5,1.0):
-            result=self.worker(actions=('SEEK:+15',),payload=b'accepted',status=202,gate=gate)
-            self.assertEqual([c[0] for c in result['calls']],['GET','GET','PUT','GET'])
-            self.assertLess(result['confirm_times'][0]-result['control_times'][0],2)
-            self.assertGreaterEqual(result['snapshots'][-1].position_seconds,45)
-            self.assertEqual(result['view']['long_used'],4)
-            self.assertEqual(result['view']['long_auto_used'],1)
-            self.assertEqual(result['view']['reserved'],0)
-            self.assertFalse(result['bridge']._seek_requests)
 
     def test_get_metadata_keeps_strict_json_parsing(self):
         with tempfile.TemporaryDirectory(dir=ROOT) as folder:

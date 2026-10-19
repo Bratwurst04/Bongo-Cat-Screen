@@ -126,7 +126,7 @@ class ConfigManager:
             
             # Validate connection settings
             connection = config["connection"]
-            if connection.get("baudrate", 0) not in (9600, 19200, 38400, 57600, 115200, 230400):
+            if connection.get("baudrate", 0) not in (9600, 19200, 38400, 57600, 115200, 230400, 460800, 921600):
                 print("❌ Invalid baudrate")
                 return False
             if not (1 <= connection.get("timeout_seconds", 0) <= 30):

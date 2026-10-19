@@ -1,6 +1,83 @@
 # Windows companion
 
-## Current development state (2026-10-15)
+## Current development source (2026-10-19)
+
+The installed development pair is **companion 94145746 / firmware EBB334A9
+at 921600 baud**. Current source supports compact artwork followed by detail
+from the same cache, selective cropping of the recognized Windows Spotify
+wrapper, record flip/paw/tonearm animation and Swedish åäö. Seek is removed;
+ordinary media taps and swipes remain.
+
+The user qualitatively accepted quick artwork/sharpening without another
+jump and Whoopty without the Spotify footer. Comparison with already correct
+covers remains uncertain. Transport acknowledgements are not LCD timings
+or a universal subsecond guarantee. See the latest
+[crop runtime evidence](../docs/artwork-crop-runtime-2026-10-19.md) and
+[progressive-artwork runtime evidence](../docs/artwork-refinement-runtime-2026-10-19.md).
+
+This update publishes **development source only**, without a version bump,
+new tag or release. **App-v1.3 remains the latest published release** and its
+existing downloads/files are retained. All older dated sections below are
+historical; normal defaults and released pair instructions remain there.
+
+Focused tests use public [fixtures](../tests/fixtures/README.md) from an
+ordinary checkout. Native checks require an existing MSVC toolchain, with
+Python/Pillow for image tests. Only explicitly historical archive comparisons
+and the uncommitted photo reference may skip when their inputs are absent;
+current behavior checks and corrupt public fixtures must still fail visibly.
+
+
+## Kompakt utvecklingskandidat 2026-10-18
+
+Separat par **356A5EC0 / C6EBAE4B** är byggt men inte installerat/flashat.
+Installerat är **445D72A0 / 860896DB vid 921600**, med underkänt fartprov.
+Äldre daterade bygguppgifter nedan är historiska föreflashnoteringar.
+
+Ny ren packhjälpare samplar befintligt 112×112 RGB888 till 80×80 RGB565_BE
+utan att blanda den exakta gröna transparensfärgen. Bildcache/API behålls.
+Färsk `CAPS:MEDIA_ART2_RGB56580:<challenge>:921600` från explicit profil
+`esp32-024r-spotify-compact80` krävs för `MEDIA_ART2_BEGIN565`; gamla FAST
+räcker inte. Kompaktprofilen annonserar inte gamla FAST till äldre companion.
+ART2-chunks/CRC/id/ACK/abort återanvänds. Retry behåller kompakt format med
+en chunk/15 ms; första försöket kan använda åtta chunks utan extra sleep.
+Äldre ART2/raw och default 230400/flash 115200 bevaras.
+
+Efter CRC expanderar mottagaren i befintlig 112-slot; UI-storlek och
+animationstider ändras inte. **En sekund är fortfarande ett oprövat mål för
+detta nya par.** Se [bildjämförelse, hashar och provgränser](../docs/artwork-compact80-2026-10-18.md).
+
+## Experiment 2026-10-18: omslag vid explicit 921600
+
+Separat utvecklingspar **445D72A0 / 860896DB**, ännu inte installerat eller
+flashat. Ordinarie default/profil är kvar på 230400. Inställningen kan nu
+bevara 460800/921600; ett senare godkänt 921600-prov kräver den matchande
+firmwareprofilen `esp32-024r-spotify-artfast921600` och samma baud i companion.
+Flashhastigheten är fortsatt 115200.
+
+Samma 112×112 RGB888, 128-byte-chunks, CRC och ACK används. Ny firmware
+svarar med en extra `CAPS:MEDIA_ART2_FAST:<challenge>:921600` endast när
+core-0-RX är igång. Första försöket kan då skriva åtta hela rader per batch
+utan extra sleep, med befintlig write/flush och metadata/abort mellan batcher.
+Övriga par behåller tidigare takt; retry använder en chunk och 15 ms paus.
+Ingen automatisk baudväxling, bildnedskalning eller ny codec införs.
+
+**En sekund från ART_READY till kvitterad commit är ännu inte uppmätt.**
+Ren wiretid är cirka 0,64 s; Windows flush-pollning kan göra den längre.
+API:s befintliga femsekunderspollning och skydd är oförändrade. Se
+[kostnads-/köanalys, exakta hashar och provgränser](../docs/artwork-fast921600-2026-10-18.md).
+Installerat är fortsatt 68721143/627E6B93. Tidigare status nedan är historik.
+
+## Current source decision (2026-10-16)
+
+The user cancelled relative seek. Current source supports PLAY_PAUSE,
+NEXT and PREVIOUS; no Spotify or Windows seek path remains. Neutral
+`MEDIA_TRACK_CONTEXT` preserves record identity, including same-title tracks.
+Manual waiting refresh, playback diagnostics, 5 s active-day cadence and
+budget/Retry guards remain. Installed development runtime is still
+**26A0FAF0 / C7E594B4** pending deployment of the new pair. See the
+[removal report](../docs/seek-removal-2026-10-16.md).
+
+## Historical development state (2026-10-15)
 
 The installed development companion is **17466EBF**, paired with firmware
 **F406C485** on the display. Known active API playback during the day uses a

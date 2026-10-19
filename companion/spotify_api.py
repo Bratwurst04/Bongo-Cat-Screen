@@ -18,7 +18,6 @@ from collections import deque
 import urllib.error
 import urllib.parse
 import urllib.request
-from media_seek import SpotifySeekContext, clamp_seek
 import webbrowser
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
@@ -75,10 +74,9 @@ class SpotifyApiBridge:
             self.token_path.with_name("spotify_api_budget.json"), pacing_settings or {})
         self._budget_log_after = 0.0
         self._last_art_key = ""
+        self._primary_available_revision = 0
         self._last_is_playing = False
         self.last_control_http_status = None
-        self.playback_device_id = ""
-        self._playback_track_key = ""
         self._lock = threading.Lock()
         self._request_times = deque()
         self._request_times_15m = deque()
@@ -274,6 +272,11 @@ class SpotifyApiBridge:
         self._set_tokens(payload)
         return True
 
+    @property
+    def primary_playback_revision(self) -> int:
+        """Content-free serial for available A responses, including background art reads."""
+        return self._primary_available_revision
+
     def get_playback(self, urgent: bool = False,
                      artwork_fallback: bool = False, operation=None,
                      start_guard=None, retry_guard=None) -> Tuple[Optional[dict], Optional[str]]:
@@ -299,8 +302,6 @@ class SpotifyApiBridge:
             **({"retry_guard": retry_guard} if retry_guard is not None else {}),
         )
         if not data or not data.get("item"):
-            self.playback_device_id = ""
-            self._playback_track_key = ""
             self._last_is_playing = False
             return None, None
 
@@ -329,8 +330,6 @@ class SpotifyApiBridge:
             "track_key": f"spotify:{track_key}",
         }
         self._last_is_playing = playback["playing"]
-        self.playback_device_id = (data.get("device") or {}).get("id") or ""
-        self._playback_track_key = playback["track_key"]
 
         # Return the current URL on every metadata response. The bridge owns
         # the bounded retry policy, so a temporary thumbnail failure cannot
@@ -342,59 +341,50 @@ class SpotifyApiBridge:
     def download_artwork(self, url: str) -> bytes:
         return self._download(url) if url else b""
 
-    def get_seek_context(self, track_key: str, device_id: str, operation=None) -> Optional[SpotifySeekContext]:
-        """Fresh, paced playback read before a relative seek, including raw ms."""
-        if not self.is_ready or not track_key or not device_id:
-            return None
-        data = self._api_request("GET", "/me/player?additional_types=track%2Cepisode",
-                                 urgent=True, request_kind="playback_urgent", operation=operation)
-        if not data or not data.get("item"):
-            return None
-        item, device = data["item"], data.get("device") or {}
-        key = f"spotify:{item.get('id') or item.get('uri') or item.get('name') or 'Unknown track'}"
-        if (key != track_key or device.get("id") != device_id or
-                device.get("is_restricted") or
-                (data.get("actions") or {}).get("disallows", {}).get("seeking")):
-            return None
-        duration = max(0, int(item.get("duration_ms") or 0))
-        if duration == 0:
-            return None
-        return SpotifySeekContext(key, device_id, max(0, int(data.get("progress_ms") or 0)),
-                                  duration, bool(data.get("is_playing")), time.monotonic(), operation)
-
-    def seek_relative(self, delta_seconds: int, context: SpotifySeekContext) -> bool:
-        """One paced PUT; keep the confirming regular snapshot authoritative."""
-        if (not self.is_ready or delta_seconds not in (-15, 15) or
-                context.track_key != self._playback_track_key or
-                context.device_id != self.playback_device_id):
-            return False
-        age = max(0.0, time.monotonic() - context.received_at)
-        if age >= 5.0:
-            return False
-        position = context.position_ms + (int(age * 1000) if context.playing else 0)
-        # Spotify can advance to NEXT at/after the end. Stay strictly within
-        # the actual millisecond duration, including subsecond track lengths.
-        target = clamp_seek(position, delta_seconds * 1000, 0, context.duration_ms - 1)
-        if target is None:
-            return False
+    def diagnose_devices(self, start_guard) -> bool:
+        """Use one automatic slot, with no HTTP retry or playback-state mutation."""
         def endpoint_at_start():
-            actual_age=max(0,time.monotonic()-context.received_at)
-            if (actual_age>=5 or context.track_key!=self._playback_track_key or
-                    context.device_id!=self.playback_device_id):
-                raise SpotifyBudgetError(0.05,'operation_expired')
-            actual_position=context.position_ms+(int(actual_age*1000) if context.playing else 0)
-            actual_target=clamp_seek(actual_position,delta_seconds*1000,0,context.duration_ms-1)
-            query=urllib.parse.urlencode({'position_ms':actual_target,'device_id':context.device_id})
-            return '/me/player/seek?'+query
-        operation = context.operation or self.begin_operation("seek")
+            if not start_guard():
+                raise SpotifyBudgetError(0.05, "operation_expired")
+            return "/me/player/devices"
         try:
-            self._api_request("PUT", endpoint_at_start, empty_ok=True, urgent=True,
-                              operation=operation)
-        except Exception:
-            if context.operation is None:
-                self.finish_operation(operation)
+            if not self.is_ready:
+                raise SpotifyApiError("Spotify unavailable")
+            data = self._api_request("GET", endpoint_at_start, request_kind="playback_poll",
+                                     retry_guard=lambda: False)
+            return self._devices_summary(data) is not None
+        except SpotifyPacingError:
             raise
-        return True
+        except Exception as exc:
+            # HTTP status is already logged; shared 429/ledger guards remain active.
+            # A diagnostic error must not clear or republish the primary snapshot.
+            diagnostics.event("SPOTIFY_DEVICES_DIAGNOSTIC", source="spotify_api",
+                              endpoint="available_devices", result="failure",
+                              error_type=type(exc))
+            return False
+
+    @staticmethod
+    def _devices_summary(data):
+        if type(data) is not dict or type(data.get("devices")) is not list:
+            return None
+        counts = dict(devices_total=0, devices_active=0, devices_smartphones=0,
+                      devices_active_smartphones=0, devices_private=0, devices_restricted=0)
+        for device in data["devices"]:
+            if (type(device) is not dict or type(device.get("type")) is not str or
+                    any(type(device.get(key)) is not bool
+                        for key in ("is_active", "is_private_session", "is_restricted"))):
+                return None
+            active = device["is_active"]
+            smartphone = device["type"].casefold() == "smartphone"
+            counts["devices_total"] += 1
+            counts["devices_active"] += int(active)
+            counts["devices_smartphones"] += int(smartphone)
+            counts["devices_active_smartphones"] += int(active and smartphone)
+            counts["devices_private"] += int(device["is_private_session"])
+            counts["devices_restricted"] += int(device["is_restricted"])
+        return counts
+
+
 
     def control(self, action: str, operation=None):
         if not self.is_ready:
@@ -454,6 +444,8 @@ class SpotifyApiBridge:
         self, method: str, endpoint: str, empty_ok: bool, retry: bool, urgent: bool = False,
         request_kind: str = "control", operation=None, retry_guard=None,
     ):
+        playback_read = method == "GET" and request_kind in (
+            "playback_poll", "playback_urgent", "artwork_fallback")
         now = time.time()
         local = self._budget.view(idle=not self._last_is_playing)
         retry_remaining = max(0, math.ceil(self._rate_limit_until() - now),
@@ -483,6 +475,10 @@ class SpotifyApiBridge:
         token = self._access_token()
 
         resolved_endpoint=None
+        def endpoint_label():
+            return "available_devices" if resolved_endpoint == "/me/player/devices" else "playback_state"
+        def http_event():
+            return "SPOTIFY_DEVICES_HTTP" if endpoint_label() == "available_devices" else "SPOTIFY_PLAYBACK_HTTP"
         def start_check():
             nonlocal resolved_endpoint
             actual_now=time.time()
@@ -505,10 +501,16 @@ class SpotifyApiBridge:
             self._tokens['adaptive_request_total']=int(self._tokens.get('adaptive_request_total',0))+1
             try:
                 with urllib.request.urlopen(request,timeout=8) as response:
+                    if playback_read:
+                        status = getattr(response, "status", None)
+                        diagnostics.event(http_event(), source="spotify_api",
+                                          request_kind=request_kind, result="success",
+                                          endpoint=endpoint_label(),
+                                          http_status=status if type(status) is int else None)
                     if request_kind == "control":
                         status = getattr(response, "status", None)
                         self.last_control_http_status = status if type(status) is int else None
-                    # Control/seek endpoints acknowledge success without JSON.
+                    # Control endpoints acknowledge success without JSON.
                     # A body (even whitespace/non-JSON) is not a playback
                     # snapshot and must not turn an accepted action into a
                     # retry or discard its reserved confirmation.
@@ -516,6 +518,11 @@ class SpotifyApiBridge:
                         return None
                     return response.read()
             except urllib.error.HTTPError as error:
+                if playback_read:
+                    diagnostics.event(http_event(), source="spotify_api",
+                                      request_kind=request_kind, result="failure",
+                                      endpoint=endpoint_label(),
+                                      http_status=error.code)
                 if request_kind == "control":
                     self.last_control_http_status = error.code
                 if error.code==429:
@@ -538,7 +545,52 @@ class SpotifyApiBridge:
                 # an acknowledged control. Durable budget/Retry guards remain.
                 diagnostics.event("SPOTIFY_API_STATE", result="failure", reason="history_io",
                                   error_type=type(exc), http_status=self.last_control_http_status)
-            return json.loads(payload.decode('utf-8')) if payload else None
+            try:
+                data = json.loads(payload.decode('utf-8')) if payload else None
+            except RecursionError:
+                if playback_read and endpoint_label() == "available_devices":
+                    diagnostics.event("SPOTIFY_DEVICES_BODY", source="spotify_api",
+                                      endpoint="available_devices", devices_body="invalid")
+                raise
+            except (json.JSONDecodeError, UnicodeDecodeError):
+                if playback_read and endpoint_label() == "available_devices":
+                    diagnostics.event("SPOTIFY_DEVICES_BODY", source="spotify_api",
+                                      endpoint="available_devices", devices_body="invalid")
+                elif playback_read:
+                    diagnostics.event("SPOTIFY_PLAYBACK_SHAPE", source="spotify_api",
+                                      request_kind=request_kind, outcome="invalid",
+                                      endpoint=endpoint_label(),
+                                      body_shape="invalid")
+                raise
+            if playback_read and endpoint_label() == "available_devices":
+                counts = self._devices_summary(data)
+                diagnostics.event("SPOTIFY_DEVICES_BODY", source="spotify_api",
+                                  endpoint="available_devices",
+                                  devices_body="valid" if counts is not None else "invalid",
+                                  **(counts or {}))
+            elif playback_read:
+                # Fixed enums only: never pass through response text, IDs or metadata.
+                shape = "empty" if data is None else "object" if isinstance(data, dict) else "other"
+                item = data.get("item") if isinstance(data, dict) else None
+                item_state = ("missing" if not isinstance(data, dict) or "item" not in data else
+                              "null" if item is None else
+                              "present" if isinstance(item, dict) else "other")
+                kind = data.get("currently_playing_type") if isinstance(data, dict) else None
+                if kind is None and isinstance(item, dict):
+                    kind = item.get("type")
+                playback_type = ("missing" if kind is None else kind
+                                 if kind in ("track", "episode", "ad", "unknown") else "unknown")
+                outcome = ("empty" if not data or isinstance(data, dict) and not item else
+                           "available" if isinstance(item, dict) else "invalid")
+                if endpoint_label() == "playback_state" and outcome == "available":
+                    # Still inside the existing client lock: a late Windows
+                    # artwork response can invalidate a pending B as well.
+                    self._primary_available_revision += 1
+                diagnostics.event("SPOTIFY_PLAYBACK_SHAPE", source="spotify_api",
+                                  request_kind=request_kind, outcome=outcome, body_shape=shape,
+                                  endpoint=endpoint_label(),
+                                  item_state=item_state, playback_type=playback_type)
+            return data
         except BudgetWait as exc:
             self._log_budget_wait(exc)
             raise SpotifyBudgetError(exc.wait_seconds,exc.reason) from None

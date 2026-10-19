@@ -1,5 +1,248 @@
 # Bongo Cat – Architecture Decisions
 
+## 2026-10-19 – Crop app installed; bounded physical acceptance
+
+- Lead installed user-approved 94145746 with unchanged EBB334A9 and 921600.
+  Record [runtime separately](docs/artwork-crop-runtime-2026-10-19.md);
+  preserve prior status tails, 195 frozen sources/manifests and previews.
+- User accepted Whoopty wrapper removal and sharpening without a jump.
+  Normal-cover comparison remains uncertain, separate from automated byte
+  preservation. Do not extend this to general visual or latency acceptance.
+- Startup compact capability preceded READY; READY→ACK 1410 ms, sender 235 ms.
+  Refine followed ACK/one-shot CAPS resend, with no SLOT/full in that baseline.
+  Later anonymous change: compact 444 ms and SLOT→full-ACK 4748 ms, first attempts.
+  Infer neither startup root cause, title mapping nor actual LCD times.
+- Auth fields were unchanged during deployment/start. Later access-token/
+  expiry renewal with identical refresh-token is consistent with normal app
+  refresh; Lead did not modify credentials. Stable-expired-token guard was
+  deployment control only. Code changes documents; no new tests or runtime.
+
+
+## 2026-10-19 – Selective transparent Windows Spotify wrapper crop
+
+- Keep installed 59FC2E33/EBB334A9 at 921600. Build app-only 94145746 for review;
+  do not run/install it or rebuild/flash firmware. Exact EBB is reused.
+- Opt in only from the existing WindowsSpotify thumbnail path, before RGB.
+  Require known scaled alpha geometry, square opaque album, transparent
+  pads/gap and near-white footer with 97% normalized logo-alpha IoU.
+  Match crops the evidenced 234 square without a second 6% inset. Unknown,
+  flattened/JPEG, API, other Windows sources and nonmatches keep legacy
+  output. No title/artist matching, OCR, extra fetch or protocol change.
+- Both transport tiers use the same existing 112 cache. Eight focused and 165
+  relevant tests pass; independent footer-only/synthetic fixtures keep 7
+  tests runnable without the uncommitted photo. Only its real reference
+  test skips. Source/native evidence is separate from pending physical crop
+  acceptance; package 13 modules/four resources is not runtime proof.
+- Preserve old status tails, candidates, reports and previews. Keep photo
+  and derived previews in ignored build. See
+  [crop evidence](docs/artwork-crop-2026-10-19.md). Lead obtains a new exact
+  apphash approval after review; no expanded Spotify or sleep claim.
+
+
+## 2026-10-19 – Installed progressive pair; bounded physical acceptance
+
+- Lead installed the user-approved59FC2E33/EBB334A9 at921600 with verified
+  C6 readback/app write and preserved config/auth/Run/shortcuts. Record the
+  result [separately](docs/artwork-refinement-runtime-2026-10-19.md); preserve
+  frozen build evidence, old sections and handoff unchanged.
+- User accepted the asked quick-image/later-sharpening/no-new-flip-or-jump/
+  old-face-until-edge sequence. Two first-attempt compact READY→ACK626/616ms
+  and three selected-slot→full-ACK4749/4797/4700ms are transport/slot evidence,
+  not LCD or mobile-action latency. Startup legacy9276ms and retry9553ms
+  prevent a universal subsecond claim. An ACK-before-SENT legacy case has
+  event times only, without a fabricated measurement pair.
+- One-shot capability resend ran and fresh base/compact/refine followed.
+  Source permits pre-capability legacy and ignores CAPS during the dark
+  probe; exact lost-query/ACK cause remains unproven. No product change or
+  new tests in this documentation step. Rapid skips/Focus/DJ/sleep/long run
+  remain outside this limited physical acceptance; no release or Spotify fix.
+
+## 2026-10-19 – Optional full112 refinement after acknowledged, pinned compact
+
+- Preserve installed FD9D811B/C6EBAE4B and frozen unflashed 5556B647. Build
+  a separate 59FC2E33/EBB334A9 pair for review; no distribution from Code.
+- ACK in 5556 confirms staging, so immediate second BEGIN could overwrite
+  compact before its hidden handoff. Add fresh REFINE capability and one
+  challenge/id-bound SHOWN when the compact slot is selected/pinned. This
+  is not a measured LCD timestamp. Either ACK/SHOWN order is retained; both
+  are required. New nonce retires RX/notice only, preserving disc/motion.
+  Same-nonce one-shot fallback preserves staging. Skip that query only with
+  base+compact+refine confirmed; no new query loop.
+- Reuse full112 ART2, original full cache, conservative2frames/15ms and the
+  one sender. Never repack the optional job to compact or fall back/requeue
+  it as raw/coarse. One optional attempt; a new normal image wins. Bind job
+  to original cache object, compact payload, connection, epoch and nonce;
+  interrupt chunks and ACK wait for newer work or stop.
+- Use atomic detail replacement at identical geometry. Preserve the exact
+  coarse opacity mask: wherever either version quantizes to RGB565 chroma,
+  retain coarse pixels. Interior detail remains from the original112cache.
+  This fixes the native preview's contour change and near-key holes without
+  a second fade, extra MCU pixels, API reads or changes to normal encoders.
+- Source-driven r4 and timing assumption4.68s-full imply approximately4.72s
+  after selected slot, not physical acceptance. Keep all earlier previews,
+  source copies and intermediate apps. Lead/UI approve r4 as host evidence
+  only. Freeze this pair, then obtain separate distribution approval and
+  measure real time/quality, rapid skips, gestures and sleep on hardware.
+
+## 2026-10-18 – Pin the old face until a rendered hidden boundary
+
+- Installed C3 is FD9D811B/C6EBAE4B at 921600. Three first-attempt compact
+  ACKs took 1164/374/351 ms from READY; two observed changes passed one second.
+  User accepted speed/image quality. No resend event occurred, so physical
+  fallback execution or causality is not proven. Preserve frozen build/C2
+  evidence; record the later result [separately](docs/capability-startup-runtime-2026-10-18.md).
+- DEFAULT only prepares. Keep the displayed RGB565 slot pinned through
+  clear/grip/lift and the first flip half. The other existing slot receives
+  and CRC-validates the latest target. ACK confirms staging immediately;
+  display commits at 870 ms, or at the fully offscreen 1070 ms for exchange.
+- A new BEGIN replaces staging, never displayed pixels. Retargets before
+  the boundary replace the target; after it, one replaceable latest identity
+  waits for the current motion to finish, then reaches a new hidden point.
+  Do not count abandoned identities as stable completed changes. No image
+  list, extra large buffer, serial traffic or changed ordinary phase times.
+- First rendered sample across the boundary is thin/offscreen even after a
+  long frame gap. It does not block RX/ACK or restart the animation clock.
+  Hidden panels settle to the latest face; late art keeps the 180 ms reveal.
+- Firmware 5556B647 is built only, not flashed. Companion source/app FD9D811B,
+  codecs/protocols/baud/API/auth/config/touch/Focus stay unchanged. Lead/UI
+  approve the [source-driven preview](docs/turntable-face-2026-10-18.md) as
+  host evidence only; frame-gap steps do not prove smooth TFT animation.
+  Physical acceptance waits until a separately approved flash.
+
+## 2026-10-18 – App-only, one-shot capability recovery after readiness
+
+- Installed C2 is 356A5EC0/C6EBAE4B at 921600. Its startup snapshot shows
+  connection but no capability/artwork events yet. A separate later reset
+  recovered base ART2 only; two full-format transfers took 4682/4680 ms.
+  No compact speed result or proven cause of the missing compact line exists.
+  The dark firmware probe ignores CAPS, so an immediate post-reader query
+  alone is not sufficient proof of readiness.
+- Arm one fallback context with initial sync: captured connection, epoch and
+  challenge. Capture that immutable context before readline and accept only
+  a valid current ESP32_STATUS. Recheck handle/generation and consume once
+  under the serial lock, outside data/media locks. Reuse the same challenge;
+  do not reset media/epoch/cache or add threads, polling or API reads.
+- Skip only when base ART2 and compact capability are both confirmed for
+  the current 921600 generation. Retired contexts cannot target a new handle;
+  partial writes retire the old handle through existing recovery after unlock.
+  Resync/reconnect rearm via their existing initial-sync path.
+- C3 app FD9D811B is built only, paired with exact unchanged C6EBAE4B.
+  No firmware build/flash or runtime/profile/UI/codec/API change. No general
+  startup gate is added, so an already-started first cover may use fallback.
+  C3 is not proven to recover C2's missing compact line after the extra reset.
+  See [C3 evidence](docs/capability-startup-2026-10-18.md) and the preserved
+  [startup-only C2 runtime](docs/artwork-compact80-runtime-2026-10-18.md).
+
+## 2026-10-18 – Compact 80px RGB565 after failed full-payload speed trial
+
+- Preserve the recorded failed C runtime before a new product revision. Choose
+  80×80 RGB565_BE: 12800 bytes/exactly 100 chunks, versus 294 RGB888 chunks.
+  Keep the original 112 RGB888 cache/API path. Use centre-nearest sampling so
+  the exact green key is never blended. Existing LV_COLOR_16_SWAP=1 already
+  expects these byte pairs; verify with the actual LVGL colour macro.
+- Negotiate a distinct fresh RGB56580 capability and BEGIN565 header only in
+  a separate compact80 profile at 921600. Do not advertise old FAST there.
+  Reuse ART2 chunk/order/CRC/id/ACK/abort, retain old ART2/raw and defaults.
+  A compact retry keeps its codec with conservative pacing. Check late ERROR
+  before END so an already rejected last batch is not logged as ART_SENT.
+- Receive into the first 6400 words of the inactive 112px slot; validate CRC
+  and expand in reverse before activation/ACK. SourceIndex <= destinationIndex
+  protects unread input. No extra image buffer or enlarged queue is required.
+- Built pair 356A5EC0/C6EBAE4B is not installed or flashed. Installed C remains
+  445D72A0/860896DB with a failed speed target. Keep its runtime report and all
+  frozen C/B/627 evidence unchanged. UI approval covers still-image quality only;
+  larger-paint models are assumptions, not proof of one-second hardware delivery.
+  See [compact evidence](docs/artwork-compact80-2026-10-18.md).
+
+## 2026-10-18 – 921600 pair installed; physical speed target failed
+
+- Try unchanged 112×112 RGB888/ART2 before reducing resolution or adding a
+  codec. Add a separate 921600 firmware environment; keep default 230400 and
+  upload 115200. Configuration/GUI may represent 460800/921600 without changing
+  existing values. UI owns only the GUI baud list.
+- Enable 8 chunks/write and no additional sleep only for the current challenge,
+  921600 and the new receiver capability, advertised only with live core-0 RX.
+  Preserve write/flush, metadata/abort slots, CRC/order/ACK ownership, old peers
+  and one-chunk/15 ms retries. Do not grow queues or alter the serial IO layer.
+- Windows Python 3.10 sleep(5 ms) was observed near 16 ms by Lead. Pure wire
+  time is approximately 0.64 s; existing Win32 flush can poll at 50 ms. Neither
+  a model nor that wire floor proves ART_READY-to-commit within one second.
+- Following the user's exact approval, Lead installed 445D72A0/860896DB and
+  changed only profile baud 230400→921600. Canonical app/Run/shortcuts and NVS
+  were preserved; the previous 627E6B93 app was read back and verified.
+- Physical result failed the one-second ART_READY→ACK goal: fast sends took
+  703 ms, one success took 1652 ms, two attempts had art2_decode/art2_line and
+  one conservative retry completed after 12344 ms. The user reported about
+  eleven seconds for one cover. Receiver backlog/paint and byte loss are
+  hypotheses; no root cause is proven. The earlier optimistic model is not
+  hardware evidence. Preserve C/B/627 frozen build evidence as historical.
+- Record this runtime result before choosing a separate smaller-payload or
+  bounded receiver revision. Keep animation/touch/identity and API/auth/budgets
+  intact; do not increase queues blindly or change live runtime from Code.
+  See [runtime evidence](docs/artwork-fast921600-runtime-2026-10-18.md) and
+  [historical build evidence](docs/artwork-fast921600-2026-10-18.md).
+
+## 2026-10-18 – Attached paw/tempo flashed; limited physical confirmation
+
+- The user declined flashing 3606F2E0: the paw must attach to a cat arm and
+  lift/lower more slowly. Extend a white pixel forearm past the left clip edge,
+  open the old black wrist seam, and omit the whole layer once the paw leaves
+  the screen. Reject inverted rectangles at negative coordinates.
+- Keep a 120 ms grip pause, distinct smooth 260 ms lift and 320 ms lower,
+  5 native pixels of lift and a one-pixel settle. Total normal/full routines
+  are 1880/2380 ms. Bind host tests/previews to exported C++ timing constants.
+- Preserve existing identity/coalescing, tonearm/play state, late art reveal,
+  transport buffer ownership and all companion/protocol behavior. Use separate
+  build/preview/freeze areas and redirect test fixtures before discovery.
+- After the user's hash-specific flash approval, Lead wrote app 627E6B93 at
+  0x10000, verified the write and backed up the previous 55669C87 app exactly.
+  Installed pair is now 68721143/627E6B93. Companion binary/profile/autostart
+  were preserved; restart required a second serial attempt before resync/art2.
+- The user qualitatively confirmed connected white forearm, lift/lower and
+  tonearm pause/play, then requested a slightly thicker white forearm. Treat
+  that refinement as a separate candidate: 9961C753 is built, not flashed.
+  Increase only forearm thickness and keep its taper joint outside the left
+  clip edge during entry. Preserve paw, tonearm and all accepted timings.
+  See [width build evidence](docs/turntable-arm-width-2026-10-18.md).
+  Rare full exchange/Focus/all touch,
+  long running stability, measured TFT rate and stack remain unconfirmed.
+  Initial API 204/empty and later successful art2 transfers are observations,
+  not a Waiting fix or renewed Spotify investigation. Keep both preflash reports and all frozen evidence
+  unchanged, including their historical status snapshots/manifests.
+  See [runtime evidence](docs/turntable-arm-tempo-runtime-2026-10-18.md) and
+  [historical build evidence](docs/turntable-arm-tempo-2026-10-18.md).
+
+## 2026-10-18 – Local turntable arm and Bongo paw
+
+- Keep all animation local on core 1. Share pure integer state/projection and
+  overlay primitives with host tests/previews; add no API/serial polling.
+- Treat DEFAULT as preparation and TRACK_CONTEXT as identity. Coalesce rapid
+  changes in the running routine; preserve the last nonzero identity across
+  NONE/resync. Late artwork receives only a 180 ms surface reveal.
+- Use screen-child disc/transparent non-interactive arm/paw layers so complete
+  withdrawal escapes circular clipping. Reuse the existing projection buffer;
+  never retain old art pointers or write to RX/committed transport slots.
+- Match generic radius to existing album diameter at unchanged 172/144 viewports.
+  Select a full withdrawal on every fifth completed stable change; settle on
+  menu/DJ/panel/Focus interruption without replay. Unknown duration holds the
+  same track's last known groove target; Q16 smoothing avoids integer stalls.
+- Candidate 3606F2E0 is built only. Installed 68721143/55669C87 and all historical
+  frozen evidence remain unchanged. Physical timing/visual/memory acceptance
+  and any hash-specific flash approval belong to a later step.
+  See [dated evidence](docs/turntable-paw-2026-10-18.md).
+
+## 2026-10-16 – Remove relative seek at the user's request
+
+- Remove timeline seek gestures, wire commands, queues, helper types and
+  Spotify/Windows position-changing paths from current product source.
+  Keep three ordinary media actions, manual waiting refresh and API guards.
+- Keep artwork identity independent of visible titles with neutral
+  `MEDIA_TRACK_CONTEXT`; preserve same-track resync and art2 cancellation.
+- Preserve all frozen candidates, snapshots, previews and historical evidence.
+  Installed 26A0FAF0/C7E594B4 remains distinct from the newly built removal pair.
+  Lead handles deployment and physical acceptance. See the dated
+  [removal report](docs/seek-removal-2026-10-16.md).
+
 ## 2026-10-15 – Keep 5 s active day cadence and distinguish installed/build evidence
 
 - Current installed development pair is companion **17466EBF / firmware F406C485**. Known playing API music during the day uses a **5 s base cadence**, subject to pressure/tail, higher learned pacing and authoritative Retry-After. Night/idle remain conservative. The separate 0.5 s request minimum does not mean automatic day polling at 0.5 s; the 11 October entries below are history.

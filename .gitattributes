@@ -1,0 +1,3 @@
+# Raw SHA-pinned test data must survive Windows core.autocrlf checkouts.
+/tests/fixtures/*.inc text eol=lf
+/tests/fixtures/*.json text eol=lf

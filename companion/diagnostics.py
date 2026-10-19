@@ -30,7 +30,7 @@ _ENUMS = {
         "api_error", "pacing", "startup_error",
         "no_artwork_url", "no_thumbnail",
         "device_error", "track_mismatch", "no_playback",
-        "seek_unsupported", "seek_expired", "source_mismatch",
+        "source_mismatch", "pending_work",
         "command_expired", "operation_expired", "operation_capacity", "short_budget", "long_budget",
         "history_corrupt", "history_io", "clock_guard", "profile", "start_spacing", "server_retry",
         "art2_line", "art2_decode", "art2_offset", "art2_crc",
@@ -43,10 +43,19 @@ _ENUMS = {
               "thumbnail_read", "api_fallback", "export"},
     "request_kind": {"playback_poll", "playback_urgent", "artwork_fallback",
                      "control", "other"},
-    "action": {"PLAY_PAUSE", "NEXT", "PREVIOUS", "SEEK:+15", "SEEK:-15"},
+    "action": {"PLAY_PAUSE", "NEXT", "PREVIOUS"},
     "origin": {"http_response", "saved_cooldown"},
     "protocol": {"legacy", "art2"},
     "profile": {"day", "night", "guarded"},
+    "phase": {"accepted", "coalesced", "suppressed", "guarded", "started", "completed",
+              "expired", "cancelled"},
+    "outcome": {"available", "empty", "invalid", "discarded"},
+    "read_origin": {"manual", "automatic", "confirmation"},
+    "body_shape": {"empty", "object", "other", "invalid"},
+    "item_state": {"present", "null", "missing", "other"},
+    "playback_type": {"track", "episode", "ad", "unknown", "missing"},
+    "endpoint": {"playback_state", "available_devices"},
+    "devices_body": {"valid", "invalid"},
 }
 _NUMBER_FIELDS = {"attempt", "bytes", "track_seq", "wait_seconds", "retry_limit",
                   "window_seconds", "interval_ms", "next_interval_ms",
@@ -67,6 +76,8 @@ _ERROR_TYPES = {
     "JSONDecodeError", "UnicodeDecodeError",
     "HTTPError", "URLError", "COMError", "UnidentifiedImageError",
 }
+_DEVICE_COUNT_FIELDS = {"devices_total", "devices_active", "devices_smartphones",
+                        "devices_active_smartphones", "devices_private", "devices_restricted"}
 
 
 class Diagnostics:
@@ -97,13 +108,18 @@ class Diagnostics:
             pass
 
     def event(self, name: str, **fields) -> None:
-        if not self._handler or not isinstance(name, str) or not _NAME.fullmatch(name):
+        if not self._handler or type(name) is not str or not _NAME.fullmatch(name):
             return
         safe = []
         for key, value in fields.items():
-            if key in _NUMBER_FIELDS and type(value) in (int, float):
+            if type(key) is not str:
+                continue
+            if key in _DEVICE_COUNT_FIELDS:
+                if type(value) is int and value >= 0:
+                    safe.append(f"{key}={value}")
+            elif key in _NUMBER_FIELDS and type(value) in (int, float):
                 safe.append(f"{key}={value}")
-            elif key in _ENUMS and isinstance(value, str) and value in _ENUMS[key]:
+            elif key in _ENUMS and type(value) is str and value in _ENUMS[key]:
                 safe.append(f"{key}={value}")
             elif key == "error_type" and isinstance(value, type) and issubclass(value, BaseException):
                 safe.append(f"error_type={value.__name__ if value.__name__ in _ERROR_TYPES else 'OtherError'}")

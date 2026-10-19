@@ -416,9 +416,9 @@ class ApiBudget:
         return max(waits, key=lambda item:item[0])
 
     def begin_operation(self, kind):
-        if kind not in ("control", "seek"):
+        if kind != "control":
             raise ValueError("Unknown explicit operation")
-        cost = 4 if kind == "seek" else 3  # Include one real 401 retry.
+        cost = 3  # Include one real 401 retry.
         def reserve(state):
             now = self._advance(state)
             wait, reason = self._wait(state, False, True)
@@ -430,7 +430,7 @@ class ApiBudget:
             if len(state["grants"]) >= 8 or short+reserved+cost > limits[0] or total+reserved+cost > limits[2]:
                 raise BudgetWait(max(0.05, wait), "operation_capacity")
             number = int(state["next_grant"]); state["next_grant"] += 1
-            state["grants"].append([number, now+10, cost, 2 if kind == "seek" else 1])
+            state["grants"].append([number, now+10, cost, 1])
             return number
         number = self.store.update(self._factory, reserve)
         self._owned.add(number)

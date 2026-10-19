@@ -1,4 +1,5 @@
 #include "../src/focus_countdown_layout.h"
+#include "../src/media_record_flip.h"
 #include <cstring>
 #include <cstdio>
 #include <initializer_list>
@@ -104,6 +105,10 @@ uint8_t media_art_active_buffer = 0;
 int media_vinyl_angle = 0, media_ui_refreshes = 0;
 int media_cat_last_frame = 0, media_cat_left_note = 0, media_cat_right_note = 0, media_cat_effect = 0;
 bool media_art_valid = false, media_cat_mode = false;
+MediaRecordFlip media_record_flip;
+bool media_record_dirty = false;
+uint32_t millis() { return 0; }
+bool mediaRecordVisible() { return false; }
 void refreshMediaUi() { ++media_ui_refreshes; }
 struct SerialRecorder { int writes = 0; void println(const char *) { ++writes; } } Serial;
 FocusCountdownCache focus_countdown;

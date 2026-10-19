@@ -1,5 +1,4 @@
 #include "../src/focus_status_touch.h"
-#include "../src/media_seek_touch.h"
 #include <algorithm>
 #include <cstdio>
 #include <cstdarg>
@@ -29,30 +28,7 @@ static_assert(!focusStatusDragCancelled(false, PanelId::Player, rawX(34), rawY(1
               focusStatusDragCancelled(false, PanelId::Player, rawX(34), rawY(120), rawX(50), rawY(120), 180) &&
               focusStatusDragCancelled(true, PanelId::Player, rawX(34), rawY(120), rawX(34), rawY(120), 180),
               "Movement cancels once, including return to start");
-static_assert(mediaSeekStartHit(PanelId::Player, false, true, 180, rawX(262), rawY(16)) &&
-              mediaSeekStartHit(PanelId::Player, false, true, 180, rawX(292), rawY(225)) &&
-              !mediaSeekStartHit(PanelId::Player, false, true, 180, rawX(261), rawY(16)) &&
-              !mediaSeekStartHit(PanelId::Player, false, true, 180, rawX(293), rawY(225)) &&
-              !mediaSeekStartHit(PanelId::Player, false, true, 180, rawX(262), rawY(15)) &&
-              !mediaSeekStartHit(PanelId::Player, false, true, 180, rawX(292), rawY(226)), "Seek half-open bounds");
-static_assert(!mediaSeekStartHit(PanelId::Bongo, false, true, 180, rawX(278), rawY(120)) &&
-              !mediaSeekStartHit(PanelId::Player, true, true, 180, rawX(278), rawY(120)) &&
-              !mediaSeekStartHit(PanelId::Player, false, false, 180, rawX(278), rawY(120)) &&
-              !mediaSeekStartHit(PanelId::Player, false, true, 0, rawX(278), rawY(120)), "Seek requires Player/track/no menu");
-static_assert(mediaSeekDelta(0, -420) == 15 && mediaSeekDelta(0, 420) == -15 &&
-              mediaSeekDelta(210, -420) == 15 && mediaSeekDelta(211, -420) == 0 &&
-              mediaSeekDelta(0, 419) == 0 && mediaSeekDelta(421, 420) == 0, "Physical right is rawY decreasing; threshold/dominance");
-static_assert(!mediaSeekSampleCancelled(false, rawX(278), rawX(280)) &&
-              !mediaSeekSampleCancelled(false, rawX(264), rawX(261)) &&
-              !mediaSeekSampleCancelled(false, 3253, 3253 + 180) &&
-              mediaSeekSampleCancelled(false, 3253, 3253 + 181) &&
-              mediaSeekSampleCancelled(false, rawX(278), rawX(261)) &&
-              mediaSeekSampleCancelled(true, rawX(278), rawX(278)), "Vertical exit cancellation latches");
-static_assert(parseMediaSeekContext("0", 1).valid && parseMediaSeekContext("0", 1).value == 0 &&
-              parseMediaSeekContext("4294967295", 10).valid && parseMediaSeekContext("4294967295", 10).value == UINT32_MAX &&
-              !parseMediaSeekContext("4294967296", 10).valid && !parseMediaSeekContext("123:", 4).valid &&
-              !parseMediaSeekContext("0123", 4).valid && !parseMediaSeekContext("", 0).valid,
-              "Actual firmware context parser validates uint32/canonical framing, including overflow");
+
 
 // Actual firmware handler/dispatch/timer functions are extracted by Python.
 // TFT input and UI/serial side effects are recorded here, not reimplemented.
@@ -65,10 +41,7 @@ void lv_obj_move_foreground(lv_obj_t *) {}
 lv_obj_t *feature_overlay = &menu, *feature_overlay_backdrop = &backdrop;
 bool touch_is_down = false, touch_long_press_fired = false, touch_started_in_menu = false;
 bool touch_started_in_focus_status = false, touch_focus_status_cancelled = false;
-bool touch_started_in_media_seek = false, touch_media_seek_cancelled = false;
-bool touch_media_seek_context_cancelled = false, touch_media_seek_moved = false;
 bool media_has_track = true;
-uint32_t media_duration_seconds = 180, media_context_revision = 1, touch_media_seek_start_revision = 0, media_seek_context_id = 123;
 bool touch_button_cancelled = false, touch_start_times_open = false, focus_settings_open = false;
 bool touch_bonk_active = false;
 uint32_t touch_down_time = 0, overlay_hide_time = 0, touch_bonk_until = 0;
@@ -122,8 +95,6 @@ int checks = 0;
 void reset(PanelId panel, FocusPhase phase = FocusPhase::Focus, FocusMode mode = FocusMode::Running) {
     active_panel = panel;
     touch_is_down = touch_long_press_fired = touch_started_in_menu = false;
-    touch_started_in_media_seek = touch_media_seek_cancelled = touch_media_seek_context_cancelled = touch_media_seek_moved = false;
-    media_has_track = true; media_duration_seconds = 180; media_context_revision = 1; media_seek_context_id = 123;
     touch_started_in_focus_status = touch_focus_status_cancelled = touch_button_cancelled = false;
     touch_feedback_button = nullptr;
     touch_bonk_active = false;
@@ -210,58 +181,15 @@ int main() {
     CHECK(active_panel == PanelId::Player && focus_state.phase == FocusPhase::Break && focus_state.mode == FocusMode::Paused && Serial.count == 0);
     test_now = 0xfffffff0u; reset(PanelId::Player); tap(120, 34);
     CHECK(focus_state.mode == FocusMode::Paused && Serial.count == 0 && active_panel == PanelId::Player);
-    for (int end_x : {60, 180}) {
-        for (int group = 0; group <= 3; ++group) {
-            reset(PanelId::Player);
-            for (int i = 0; i < group; ++i) tap(120, 180);
-            tick(true, 120, 278); tick(true, end_x, 278, 60); tick(true, end_x, 278, 60);
-            CHECK(Serial.count == 0);
-            tick(false, end_x, 278); finishMedia();
-            CHECK(Serial.count == 1 && media_tap_count == 0 && focus_state.mode == FocusMode::Running && dj_switches == 0);
-            CHECK(std::strcmp(Serial.commands[0], end_x == 180 ? "MEDIA_CMD:SEEK:+15:123\n" : "MEDIA_CMD:SEEK:-15:123\n") == 0);
-            tick(false, end_x, 278, 60); CHECK(Serial.count == 1);
-            tap(120, 180); finishMedia(); CHECK(Serial.count == 2);
-            CHECK(std::strcmp(Serial.commands[1], "MEDIA_CMD:PLAY_PAUSE") == 0);
-        }
-    }
-    for (int start_x : {16, 225}) {
-        reset(PanelId::Player); tick(true, start_x, 278);
-        tick(true, start_x == 16 ? 80 : 160, 278, 60); tick(false, start_x, 278);
-        CHECK(Serial.count == 1);
-    }
-    reset(PanelId::Player); tick(true, 190, 278); tick(true, 235, 278, 60); tick(false, 235, 278);
-    CHECK(Serial.count == 1 && std::strcmp(Serial.commands[0], "MEDIA_CMD:SEEK:+15:123\n") == 0);
-    reset(PanelId::Player); tick(true, 48, 278); tick(true, 3, 278, 60); tick(false, 3, 278);
-    CHECK(Serial.count == 1 && std::strcmp(Serial.commands[0], "MEDIA_CMD:SEEK:-15:123\n") == 0);
-    reset(PanelId::Player); tick(true, 120, 264); tick(true, 180, 261, 60); tick(false, 180, 261);
-    CHECK(Serial.count == 1 && std::strcmp(Serial.commands[0], "MEDIA_CMD:SEEK:+15:123\n") == 0);
-    for (int y : {261, 293}) {
+    // The complete lower time region uses ordinary media gestures again.
+    for (int y : {261, 278, 293}) {
+        reset(PanelId::Player); tap(120, y); finishMedia();
+        CHECK(Serial.count == 1 && std::strcmp(Serial.commands[0], "MEDIA_CMD:PLAY_PAUSE") == 0);
         reset(PanelId::Player); tick(true, 120, y); tick(true, 180, y, 60); tick(false, 180, y);
         CHECK(Serial.count == 1 && std::strcmp(Serial.commands[0], "MEDIA_CMD:PREVIOUS") == 0);
+        reset(PanelId::Player); tick(true, 120, y); tick(true, 60, y, 60); tick(false, 60, y);
+        CHECK(Serial.count == 1 && std::strcmp(Serial.commands[0], "MEDIA_CMD:NEXT") == 0);
     }
-    reset(PanelId::Player); tick(true, 120, 278); tick(true, 122, 279, 60); tick(false, 122, 279); finishMedia();
-    CHECK(Serial.count == 1 && std::strcmp(Serial.commands[0], "MEDIA_CMD:PLAY_PAUSE") == 0);
-    reset(PanelId::Player); tick(true, 120, 278); tick(true, 180, 260, 60); tick(true, 180, 278); tick(false, 180, 278); finishMedia();
-    CHECK(Serial.count == 0 && dj_switches == 0);
-    reset(PanelId::Player); tick(true, 120, 278); tick(true, 160, 278, 60); tick(true, 120, 278); tick(false, 120, 278); finishMedia();
-    CHECK(Serial.count == 0);
-    reset(PanelId::Player); tick(true, 120, 278); tick(true, 180, 278, 60); ++media_context_revision; tick(false, 180, 278);
-    CHECK(Serial.count == 0);
-    reset(PanelId::Player); tick(true, 120, 278); active_panel = PanelId::Bongo; tick(true, 180, 278, 60); active_panel = PanelId::Player; tick(false, 180, 278);
-    CHECK(Serial.count == 0);
-    reset(PanelId::Player); tick(true, 120, 278); menu.flags = 0; tick(true, 180, 278, 60); menu.flags = LV_OBJ_FLAG_HIDDEN; tick(false, 180, 278);
-    CHECK(Serial.count == 0);
-    reset(PanelId::Player); tick(true, 120, 266); tick(true, 120, 310, 60); tick(false, 120, 310);
-    CHECK(Serial.count == 0 && dj_switches == 1);
-    reset(PanelId::Player); tap(120, 180); tick(true, 120, 278); tick(true, 120, 278, 650); tick(false, 120, 278);
-    CHECK(Serial.count == 0 && !lv_obj_has_flag(feature_overlay, LV_OBJ_FLAG_HIDDEN) && media_tap_count == 0);
-    reset(PanelId::Player); media_seek_context_id = 0; tick(true, 120, 278); tick(true, 180, 278, 60); tick(false, 180, 278);
-    CHECK(Serial.count == 0 && media_tap_count == 0);
-    reset(PanelId::Player); tap(120, 180); tick(true, 120, 278); active_panel = PanelId::Bongo; tick(false, 180, 278, 60); finishMedia();
-    CHECK(Serial.count == 0 && media_tap_count == 0);
-    reset(PanelId::Player); tick(true, 120, 278); tick(true, 180, 278, 60); tick(false, 180, 278);
-    tick(true, 120, 278); tick(true, 60, 278, 60); tick(false, 60, 278);
-    CHECK(Serial.count == 2 && std::strcmp(Serial.commands[1], "MEDIA_CMD:SEEK:-15:123\n") == 0);
     std::printf("PASS: %d actual central-handler/dispatch/timer checks\n", checks);
     return 0;
 }

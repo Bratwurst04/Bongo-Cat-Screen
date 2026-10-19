@@ -238,6 +238,15 @@ def compose(names: list[str], white_background: bool = False) -> Image.Image:
 def lvgl_ascii_font(name: str) -> dict:
     """Read actual uncompressed LVGL glyphs for the narrow header rows."""
     path = ROOT / ".pio/libdeps/esp32-024r-spotify-fastserial/lvgl/src/font" / f"lv_font_{name}.c"
+    if not path.exists():
+        # Exact ASCII bitmap/metrics/kerning from pinned LVGL8.3.11; no
+        # replacement font. Provenance/license live beside this test data.
+        fixture=ROOT/'tests/fixtures/lvgl8311-ascii-fonts.json'
+        data=fixture.read_bytes()
+        if hashlib.sha256(data).hexdigest().upper()!='80C7776BC4512617C670ECD18B380484A644D7AABC085E0E986B7A43E36A31A2':
+            raise ValueError('Portable LVGL font fixture hash mismatch')
+        face=json.loads(data)[name]
+        return dict(face,path=fixture)
     source = re.sub(r"/\*.*?\*/", "", path.read_text(encoding="utf-8"), flags=re.S)
     def array(key: str) -> list[int]:
         body = re.search(rf"{key}\[\]\s*=\s*\{{(.*?)\}};", source, re.S)[1]

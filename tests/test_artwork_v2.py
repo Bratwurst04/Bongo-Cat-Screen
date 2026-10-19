@@ -183,7 +183,7 @@ class ArtworkV2Tests(unittest.TestCase):
         self.assertEqual(len(time_packets), 1)
         self.assertIn(b"MEDIA_TIME:0:120\n", time_packets[0])
 
-    def test_fresh_seek_repeat_track_and_pause_still_update_time(self):
+    def test_fresh_position_repeat_track_and_pause_still_update_time(self):
         engine = self.make_engine()
         song = MediaSnapshot(available=True, source="SPOTIFY API", title="Song",
                              artist="Artist", playing=True, position_seconds=38,

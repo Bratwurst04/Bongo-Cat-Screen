@@ -54,8 +54,6 @@ class IntegrationTests(unittest.TestCase):
         if self.next_error:
             error=self.next_error;self.next_error=None;raise error
         if request.method=='GET':return Response(json.dumps(self.data).encode())
-        if '/seek?' in request.full_url:
-            self.data['progress_ms']=int(urllib.parse.parse_qs(urllib.parse.urlsplit(request.full_url).query)['position_ms'][0])
         return Response(b'')
 
     def bridge(self):
@@ -81,34 +79,14 @@ class IntegrationTests(unittest.TestCase):
             except SpotifyPacingError as exc:self.clock.advance(exc.wait_seconds)
         self.fail('Confirmation did not settle')
 
-    def test_free_urgent_and_public_seek_preparation_do_not_bypass_auto_profile(self):
+    def test_free_urgent_does_not_bypass_auto_profile(self):
         self.clock.advance(0.5)
-        for call in (lambda:self.api.get_playback(urgent=True),
-                     lambda:self.api.get_seek_context('spotify:same','device')):
+        for call in (lambda:self.api.get_playback(urgent=True),):
             with self.assertRaises(SpotifyBudgetError):call()
         self.assertEqual(len(self.calls),1)
         self.assertEqual(self.budget.view(True)['long_auto_used'],1)
 
-    def test_two_fast_seeks_add_or_reverse_with_real_grants(self):
-        for second,expected in [('SEEK:+15',60000),('SEEK:-15',30000)]:
-            self.data['progress_ms']=30000
-            bridge=self.bridge();self.assertTrue(bridge.control('SEEK:+15'));self.assertTrue(bridge.control(second))
-            self.assertTrue(self.pump(bridge));self.confirm(bridge)
-            self.assertTrue(self.pump(bridge));self.confirm(bridge)
-            self.assertEqual(self.data['progress_ms'],expected)
-            self.assertFalse(bridge._seek_requests)
-            self.assertEqual(self.budget.view()['reserved'],0)
-        self.assertTrue(all(b[2]-a[2]>=0.499999 for a,b in zip(self.calls,self.calls[1:])))
 
-    def test_four_seek_slots_and_more_than_six_explicit_requests(self):
-        bridge=self.bridge()
-        self.assertEqual([bridge.control('SEEK:+15') for _ in range(5)],[True]*4+[False])
-        for _ in range(3):self.assertTrue(self.pump(bridge));self.confirm(bridge)
-        self.assertFalse(self.pump(bridge)) # fourth queued swipe expired after five seconds
-        self.assertFalse(bridge._seek_requests)
-        self.assertEqual(self.budget.view()['long_used'],10)
-        self.assertEqual(self.budget.view()['long_auto_used'],1)
-        self.assertEqual(self.budget.view()['reserved'],0)
 
     def test_real_401_retry_has_reserved_cost_and_is_charged_before_http(self):
         self.clock.advance(0.5)
@@ -259,8 +237,7 @@ class IntegrationTests(unittest.TestCase):
         self.api.notify_local_activity();self.api.configure_pacing({'api_reset_safety_requested_at':self.clock.now+1})
         other=SpotifyApiBridge('fixture',self.path/'tokens.json')
         for api in (self.api,other):
-            for call in (lambda:api.get_playback(urgent=True),lambda:api.control('NEXT'),
-                         lambda:api.get_seek_context('spotify:same','device')):
+            for call in (lambda:api.get_playback(urgent=True),lambda:api.control('NEXT')):
                 with self.assertRaises(SpotifyRateLimitError):call()
             self.assertEqual(api.status()['state'],'rate_limited')
         self.assertEqual(len(self.calls),count)
@@ -268,23 +245,22 @@ class IntegrationTests(unittest.TestCase):
         self.assertTrue(self.api.status()['local_budget']['quota_recovery'])
         self.assertGreaterEqual(self.api.poll_interval_seconds(),60)
 
-    def test_cooldown_queue_clear_releases_all_seek_and_control_slots(self):
+    def test_cooldown_queue_clear_releases_all_control_slots(self):
         bridge=self.bridge()
-        for _ in range(4):self.assertTrue(bridge.control('SEEK:+15'))
         for _ in range(8):self.assertTrue(bridge.control('NEXT'))
         self.assertFalse(bridge.control('NEXT'))
         bridge._publish_no_windows_status()
-        self.assertFalse(bridge._seek_requests);self.assertFalse(bridge._control_requests)
+        self.assertFalse(bridge._control_requests)
         self.assertTrue(bridge._commands.empty())
         bridge._current_source='spotify_api';bridge._last_snapshot=MediaSnapshot(available=True,**self.snapshot)
-        self.assertTrue(bridge.control('SEEK:-15'))
+        self.assertTrue(bridge.control('NEXT'))
         self.assertEqual(len(self.calls),1)
 
-    def test_expired_normal_and_seek_commands_never_replay(self):
-        bridge=self.bridge();bridge.control('NEXT');bridge.control('SEEK:+15')
+    def test_expired_normal_commands_never_replay(self):
+        bridge=self.bridge();bridge.control('NEXT')
         self.clock.advance(6)
         self.assertFalse(self.pump(bridge));self.assertEqual(len(self.calls),1)
-        self.assertFalse(bridge._control_requests);self.assertFalse(bridge._seek_requests)
+        self.assertFalse(bridge._control_requests)
 
     def test_atomic_write_failure_starts_no_http_and_does_not_clear_history(self):
         self.clock.advance(60);before=self.budget.store.path.read_bytes()

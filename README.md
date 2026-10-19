@@ -1,5 +1,61 @@
 # Bongo Cat för ESP32-024R
 
+## Utvecklingskälla 2026-10-19 – aktuellt installerat par
+
+Installerat utvecklingspar är **companion 94145746 / firmware EBB334A9 vid
+921600 baud**. Källan har kompakt omslag följt av mer detalj ur samma cache,
+selektiv beskärning av den kända Windows Spotify-ramen, skivflip med tass och
+rörlig tonarm samt åäö. Seek är borttaget; vanliga medietryck/svep kvarstår.
+
+Användaren har kvalitativt godkänt snabbild/skärpning utan extra hopp och
+Whoopty utan Spotify-remsa. Jämförelse med redan korrekta omslag är osäker.
+Transportkvittens är ingen LCD-tid eller garanti för alla omslag under en
+sekund. Se [senaste beskärningsprov](docs/artwork-crop-runtime-2026-10-19.md)
+och [progressivt omslag i drift](docs/artwork-refinement-runtime-2026-10-19.md).
+
+Denna uppdatering publicerar **utvecklingskälla**, utan versionshöjning,
+ny tagg eller release. **App-v1.3 är fortsatt senast publicerad release**;
+dess nedladdningar och filer behålls. Äldre daterade avsnitt nedan är historik.
+
+Riktade tester använder publika [testfixtures](tests/fixtures/README.md) i en
+vanlig checkout. Nativeprov kräver befintlig MSVC-byggare; Python/Pillow
+behövs för bildproven. Saknade uttryckliga historiska byggarkiv och det
+opublicerade fotoreferensprovet markeras SKIP. Aktuella beteendeprov och
+korrupta publika fixtures får inte döljas av dessa undantag.
+
+
+## Utvecklingskandidat 2026-10-18 – kompakt omslag
+
+Nytt separat par **356A5EC0 / C6EBAE4B** använder 80×80 RGB565 och visar
+fortsatt 112×112-vinyl. Det är byggt och isolerat testat, **inte installerat
+eller flashat**. UI har godkänt stillbildsjämförelsen med väntad detaljförlust.
+Ensekundsmålet väntar på hårdvaruprov. Profil `esp32-024r-spotify-compact80`
+kräver matchat par vid 921600; standarden är fortsatt 230400, flash 115200.
+Installerat är **445D72A0 / 860896DB**, vars tidigare fartprov underkändes.
+Se [kompaktrapporten](docs/artwork-compact80-2026-10-18.md) och
+[driftresultatet](docs/artwork-fast921600-runtime-2026-10-18.md).
+Äldre daterade utvecklingsuppgifter nedan är historik.
+
+## Experiment 2026-10-18 – snabbare omslagsöverföring, ännu inte installerat
+
+Ett separat par **companion 445D72A0 / firmware 860896DB** är byggt för
+`esp32-024r-spotify-artfast921600`. Samma bildkvalitet och ART2 används;
+en sekund till kvitterat omslag är ett oprövat mål. Vid ett senare godkänt
+prov används matchande firmware och companion inställda på 921600 baud.
+Ordinarie standard är fortsatt 230400, flashning 115200. Installerat par
+är **68721143 / 627E6B93** och är orört. CH340-stöd, faktisk hastighet och
+stabilitet behöver provas på enheten. Se
+[experimentrapporten](docs/artwork-fast921600-2026-10-18.md).
+Äldre daterade utvecklingsuppgifter nedan är historik.
+
+## Utvecklingsstatus 2026-10-16
+
+Seek är avbrutet på användarens begäran och borttaget ur arbetskällan.
+Spelarens tidsyta använder åter vanliga tryck och mediesvep. Skivflip,
+åäö och övriga funktioner bevaras. Installerat par är ännu
+**26A0FAF0 / C7E594B4**; se [nytt par och provgränser](docs/seek-removal-2026-10-16.md).
+Detta ändrar inte publicerad app-v1.3. Äldre daterad status är historik.
+
 Firmware för en ESP32-024R med 240×320 ILI9341-pekskärm och en Windows
 companion som skickar tid, systemvärden, mediastatus och albumomslag via serial.
 ESP32 visar Bongo-animationer, en gemensam panelmeny och en mediasida med
