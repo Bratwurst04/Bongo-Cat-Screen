@@ -1,6 +1,17 @@
 # Produktgranskning och första förbättringspaketet – 2026-10-20
 
-## Status och avgränsning
+## Senaste status 2026-10-20 – återställd drift, nya kandidater endast byggda
+
+Lead har tillfälligt mätt **D7DA9953** och därefter återställt exakt verifierad
+EBB-appsektorbackup. **C42112AD/EBB334A9 vid 921600** är åter i drift.
+Nya viewportkandidater **61BE3B63/1252EBAC** är endast byggda, inte flashade.
+Fysisk acceptans av rullningen är fortfarande öppen. Se
+[senare mätresultat, återställning och nya kandidater](render-viewport-2026-10-20.md).
+
+Äldre statusavsnitt nedan bevaras som historik från respektive skede;
+frysta bygg- och testbevis skrivs inte om.
+
+## Historik – tidigare status och avgränsning
 
 Baslinje: `2b579b329ba491e352a01f1dad6a81381eb0246c`, därefter grenen
 `codex/product-hardening`. Appen är uppdaterad; installerad firmware **EBB334A9**

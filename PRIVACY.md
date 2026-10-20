@@ -45,8 +45,11 @@ and histograms in RAM and sends sparse numeric `DIAG_RENDER` summaries over USB
 at 15-second intervals. They describe render gaps/durations and playing/transfer
 flags, without text, URLs or credentials. The firmware does not persist or upload
 these measurements; a receiving tool on the PC may save its input. Measurement
-hooks are disabled in ordinary firmware profiles. The candidate is built only,
-and requires separate approval before flashing.
+hooks are disabled in ordinary firmware profiles. After the earlier temporary
+D7DA measurement, Lead restored the exact original EBB app-sector backup;
+C421/EBB is running again. The new viewport candidates 61BE3B63/1252EBAC are
+built only. Any new flashing requires separate approval; see the
+[measurement, restoration and candidate evidence](docs/render-viewport-2026-10-20.md).
 
 ## Stop access and remove local data
 

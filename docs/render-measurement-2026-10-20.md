@@ -1,5 +1,10 @@
 # Separata firmwaremätkandidater – 2026-10-20
 
+**Historiskt byggunderlag före mätprovet.** Lead provade senare D7DA9953 med
+syntetiskt innehåll och återställde därefter verifierad EBB/C421-drift.
+Se [senare timing, återställning och ny endast byggd viewportkandidat](render-viewport-2026-10-20.md).
+Ursprungliga föreflashuppgifter och kvitton nedan bevaras.
+
 **Endast byggda och statiskt granskade, inte flashade.** Installerat är fortsatt
 **C42112AD/EBB334A9 vid 921600**. Användaren accepterade rättad PLAY/PAUSE-status
 men rullningen rycker under uppspelning, även efter färdigt omslag, och är jämn

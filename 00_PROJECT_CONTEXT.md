@@ -1,5 +1,17 @@
 # Bongo Cat – Project Context
 
+## Senaste underlag 2026-10-20 – EBB återställd, viewport endast byggd
+
+Lead har efter syntetisk D7DA-mätning återställt verifierad EBB-appsektorbackup.
+**C42112AD/EBB334A9/921600** är åter i drift med profiler och genvägar bevarade;
+färsk kontakt/resync/ACK är loggad. Ny fysisk acceptans väntar. Nya normala
+**61BE3B63** och diagnostiska **1252EBAC** viewportkandidater är byggda,
+**inte flashade**. Rullningsfelet är fortsatt öppet. Riktig LVGL-raster och
+[mätunderlag, byggningar och provgränser](docs/render-viewport-2026-10-20.md)
+hålls skilda från fysisk jämnhet. Äldre daterade byggstatusar nedan är historik.
+Ny ren svit: **388 funna/379 PASS/nio klassade SKIP/noll fel eller blockerade
+operationer**, inklusive sex nya riktiga LVGL-hostprov.
+
 ## Aktuellt 2026-10-20 – C421 installerad; spelstatus rätt, rullning utreds
 
 Lead installerade **C42112AD/EBB334A9 vid 921600** med verifierade backuper och

@@ -3,6 +3,8 @@
 Usage: python -B tools/check_clean_checkout.py [--output-root NEW_PARENT]
 Use --include-file tests/new_test.py for a reviewed new source/test before commit.
 Needs the companion requirements and an existing MSVC compiler on Windows.
+For raster tests, first fetch verified LVGL with fetch_lvgl_test_dependency.py,
+then pass --testdeps-root build/testdeps/lvgl. The worker stays offline.
 Each run retains a new output directory, source hashes, log and JSON summary.
 These guards prevent accidental runtime I/O; they are not an OS security sandbox.
 """
@@ -74,6 +76,21 @@ def source_path(name):
     return path
 
 
+def worker_test_dependency(output):
+    manifest_path = output / 'test-dependency-manifest.json'
+    expected = json.loads(manifest_path.read_text(encoding='utf-8')) if manifest_path.exists() else {}
+    if not expected:
+        os.environ.pop('BONGO_TEST_LVGL_ROOT', None)
+        return {}
+    from fetch_lvgl_test_dependency import verify_dependency
+    root = output / 'testdeps/lvgl'
+    _, _, actual = verify_dependency(root)
+    if actual != expected:
+        raise ValueError('Snapshot LVGL dependency differs from its frozen manifest')
+    os.environ['BONGO_TEST_LVGL_ROOT'] = str(root.resolve())
+    return actual
+
+
 def worker(output):
     snapshot = output / 'source'
     profile = output / 'profile'
@@ -93,6 +110,7 @@ def worker(output):
     sys.dont_write_bytecode = True
     sys.path[:0] = [str(snapshot / name) for name in ('companion', 'tests', 'tools')]
     os.chdir(snapshot)
+    test_dependency = worker_test_dependency(output)
     blocked = []
 
     def deny(operation):
@@ -188,10 +206,15 @@ def worker(output):
             artwork_fast_host.BUILD = native / 'rx'
             record_flip_host.BUILD = native / 'record'
             turntable_paw_host.BUILD = native / 'paw'
+            if (snapshot / 'tests/lvgl_viewport_host.py').is_file():
+                import lvgl_viewport_host
+                lvgl_viewport_host.BUILD = native / 'lvgl'
             suite = unittest.defaultTestLoader.discover(str(snapshot / 'tests'), pattern='test_*.py')
             with (output / 'tests.log').open('w', encoding='utf-8') as log, \
                  contextlib.redirect_stdout(log), contextlib.redirect_stderr(log):
                 result = unittest.TextTestRunner(stream=log, verbosity=2).run(suite)
+    if worker_test_dependency(output) != test_dependency:
+        raise ValueError('LVGL dependency changed during the offline tests')
     skips = [dict(test=t.id(), reason=r, category=classify_skip(t, r)) for t, r in result.skipped]
     summary = dict(classification='Offline source checks; no app runtime, firmware build or hardware acceptance',
                    python=sys.version, tests=result.testsRun,
@@ -200,6 +223,7 @@ def worker(output):
                    errors=[dict(test=t.id(), detail=tb) for t, tb in result.errors],
                    failures=[dict(test=t.id(), detail=tb) for t, tb in result.failures],
                    skips=skips, blocked_operations=blocked, seconds=round(time.monotonic()-started, 3),
+                   test_dependencies=test_dependency,
                    dependencies={d: importlib.metadata.version(d) for d in
                                  ('Pillow', 'psutil', 'pynput', 'pyserial', 'pystray', 'winrt-runtime', 'pyinstaller', 'tzdata')})
     summary['success'] = bool(result.testsRun and result.wasSuccessful() and not blocked and
@@ -222,6 +246,8 @@ def main():
     parser.add_argument('--output-root', type=Path, default=ROOT / 'build/clean-checkout')
     parser.add_argument('--include-file', action='append', default=[], metavar='PATH',
                         help='Also snapshot a reviewed new source/test file before commit')
+    parser.add_argument('--testdeps-root', type=Path, default=os.environ.get('BONGO_TEST_LVGL_ROOT'),
+                        help='Verified fetch_lvgl_test_dependency.py output; copied into this check')
     parser.add_argument('--worker', type=Path, help=argparse.SUPPRESS)
     args = parser.parse_args()
     if args.worker:
@@ -237,7 +263,7 @@ def main():
             path = source_path(name)
         except ValueError as error:
             parser.error(str(error))
-        if path.relative_to(ROOT).parts[0] not in ('companion', 'src', 'tests', 'tools') or path.suffix not in ('.py', '.cpp', '.h', '.inc', '.ps1'):
+        if path.relative_to(ROOT).parts[0] not in ('companion', 'src', 'tests', 'tools') or path.suffix not in ('.py', '.c', '.cpp', '.h', '.inc', '.ps1'):
             parser.error('--include-file is limited to source/test files in companion, src, tests or tools')
         ignored = subprocess.run(['git', 'check-ignore', '--quiet', '--', name], cwd=ROOT)
         if ignored.returncode != 1:
@@ -256,11 +282,23 @@ def main():
         shutil.copyfile(path, destination)
         manifest[name] = hashlib.sha256(destination.read_bytes()).hexdigest()
     (output / 'source-manifest.json').write_text(json.dumps(manifest, indent=2) + '\n', encoding='utf-8')
+    dependency = {}
+    if args.testdeps_root:
+        if 'tools/fetch_lvgl_test_dependency.py' not in manifest:
+            parser.error('Review and --include-file tools/fetch_lvgl_test_dependency.py before using test dependencies')
+        from fetch_lvgl_test_dependency import copy_verified_dependency
+        try:
+            dependency = copy_verified_dependency(args.testdeps_root, output / 'testdeps/lvgl')
+        except (OSError, ValueError) as error:
+            parser.error('LVGL test dependency rejected: ' + str(error))
+    dependency_path = output / 'test-dependency-manifest.json'
+    dependency_path.write_text(json.dumps(dependency, indent=2) + '\n', encoding='utf-8')
     inputs = dict(explicit_includes=sorted(set(included)), source_files=len(manifest),
                   omitted_prebuilt_extensions=['.exe', '.bin'],
+                  test_dependency_manifest_sha256=hashlib.sha256(dependency_path.read_bytes()).hexdigest(),
                   runner_sha256=hashlib.sha256(Path(__file__).read_bytes()).hexdigest())
     (output / 'inputs.json').write_text(json.dumps(inputs, indent=2) + '\n', encoding='utf-8')
-    command = [sys.executable, '-B', str(Path(__file__).resolve()), '--worker', str(output)]
+    command = [sys.executable, '-B', str(source / 'tools/check_clean_checkout.py'), '--worker', str(output)]
     try:
         return subprocess.run(command, cwd=source, timeout=600).returncode
     except subprocess.TimeoutExpired:

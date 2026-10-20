@@ -1,5 +1,31 @@
 # Bongo Cat – Current State
 
+## Senaste underlag 2026-10-20 – återställd drift och separat viewportkandidat
+
+- Drift: **C42112AD/EBB334A9 vid 921600**, efter Leads verifierade återställning
+  av exakt appsektorbackup från det tillfälliga syntetiska D7DA-provet.
+  Profiler/auth/budget, Run och två genvägar bevarades. Senaste säkra kvittot
+  14:56:25,996 visar färsk ansluten ESP, aktiv Windows Spotify och API `ready`.
+  Ny fysisk återställningsacceptans väntar; rullningsproblemet är fortfarande öppet.
+- D7DA gav 347/373 handleranrop över 66 ms under stabil uppspelning. Paus hade
+  färre långa anrop; separat paussupplement behövdes, inget komplett trefas-PASS.
+  Det är instrumenterade anropstider, ingen EBB-baslinje eller panel-FPS.
+- **61BE3B63**, 937 600 byte, och matchande mätbinär **1252EBAC**, 938 400 byte:
+  båda byggda, **inte flashade**. Permanent transparent bildviewport klipper
+  stadig rotation och släpper ut skivan under förändring. Gammal bildyta
+  invalidieras före klipp-/layoutbyte. Full art-box-invalidering bevaras.
+- Verklig LVGL-raster skiljs från hårdvara. Tidigare faktiska GitHub-körningar
+  på 5a5db844: 368 funna/361 PASS/sju klassade SKIP/noll fel; de gäller före
+  viewporten. Se [alla resultat, hashar och fysisk provplan](docs/render-viewport-2026-10-20.md).
+  Äldre bygg-/runtimeuppgifter nedan bevaras som daterad historik.
+- Ny ren slutsvit: **388 funna/379 PASS/nio klassade SKIP/noll fel eller
+  blockerade operationer**. Sex nya hostprov använder riktig arkivverifierad
+  LVGL, inklusive 2930 bitexakta inkrementell/full-jämförelser och en upptäckt
+  negativ avvikelse när hela 112×112-bildslotten fylls vit utan invalidiering;
+  enpixelskänslighet provas inte. Avbrottsframen jämförs med ny full omritning,
+  medan legacy-jämförelsen sker på returframen. Liten separat
+  gammal/ny samplingdifferens redovisas; fysisk TFT-jämnhet är fortfarande oprövad.
+
 ## Aktuellt 2026-10-20 – C421 installerad/PLAY-status accepterad, rullning öppen
 
 - Lead installerade **C42112AD/EBB334A9/921600**, verifierad B701-/profilbackup,

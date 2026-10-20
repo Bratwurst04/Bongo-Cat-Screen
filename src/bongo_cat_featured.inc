@@ -168,6 +168,7 @@ bool touch_start_times_open = false;
 // convert through LVGL itself without any controller-specific byte ordering.
 lv_obj_t * media_screen = NULL;
 lv_obj_t * media_art_box = NULL;
+lv_obj_t * media_art_viewport = NULL;
 lv_obj_t * media_art_image = NULL;
 lv_obj_t * media_source_label = NULL;
 lv_obj_t * media_brand_label = NULL;
@@ -845,6 +846,42 @@ bool mediaRecordVisible() {
            !(feature_overlay && !lv_obj_has_flag(feature_overlay, LV_OBJ_FLAG_HIDDEN));
 }
 
+static void createMediaArtViewport() {
+    const FocusMediaLayout layout = focusMediaLayout(media_focus_layout_active);
+    media_art_viewport = lv_obj_create(media_screen);
+    lv_obj_remove_style_all(media_art_viewport);
+    lv_obj_set_pos(media_art_viewport, layout.x, layout.y);
+    lv_obj_set_size(media_art_viewport, layout.size, layout.size);
+    lv_obj_clear_flag(media_art_viewport, LV_OBJ_FLAG_CLICKABLE |
+                      LV_OBJ_FLAG_SCROLLABLE | LV_OBJ_FLAG_OVERFLOW_VISIBLE);
+    media_art_image = lv_img_create(media_art_viewport);
+    lv_obj_clear_flag(media_art_image, LV_OBJ_FLAG_CLICKABLE);
+}
+
+static void syncMediaArtViewport(bool changing) {
+    if (!media_art_viewport) return;
+    const FocusMediaLayout layout = focusMediaLayout(media_focus_layout_active);
+    const bool moved = lv_obj_get_x(media_art_viewport) != layout.x ||
+        lv_obj_get_y(media_art_viewport) != layout.y ||
+        lv_obj_get_width(media_art_viewport) != layout.size ||
+        lv_obj_get_height(media_art_viewport) != layout.size;
+    const bool overflow_changed =
+        lv_obj_has_flag(media_art_viewport, LV_OBJ_FLAG_OVERFLOW_VISIBLE) != changing;
+    if (!moved && !overflow_changed) return;
+
+    // Queue the OLD transformed bounds under the OLD parent clip first. This
+    // also erases a withdrawn disc before clipping or moving the viewport.
+    if (media_art_image) lv_obj_invalidate(media_art_image);
+    lv_obj_invalidate(media_art_viewport);
+    if (moved) {
+        lv_obj_set_pos(media_art_viewport, layout.x, layout.y);
+        lv_obj_set_size(media_art_viewport, layout.size, layout.size);
+    }
+    if (changing) lv_obj_add_flag(media_art_viewport, LV_OBJ_FLAG_OVERFLOW_VISIBLE);
+    else lv_obj_clear_flag(media_art_viewport, LV_OBJ_FLAG_OVERFLOW_VISIBLE);
+    lv_obj_invalidate(media_art_viewport);
+}
+
 void drawMediaTurntableLayer(lv_event_t *event) {
     const bool paw = lv_event_get_target(event) == media_paw_layer;
     TurntablePrimitive primitives[64];
@@ -948,6 +985,7 @@ void updateMediaRecordFlip(uint32_t now) {
         media_record_dirty = true;
     }
     media_turntable_frame = frame;
+    syncMediaArtViewport(frame.changing);
     updateMediaTurntableLayers(visible && media_record_pixels && media_art_valid);
     if (!visible) {
         // Selected/pinned for this identity, not a measured physical LCD event.
@@ -991,9 +1029,10 @@ void updateMediaRecordFlip(uint32_t now) {
     lv_img_set_zoom(media_art_image, layout.art_zoom * (image->header.w == RECORD_PIXELS / 2 ? 2 : 1));
     lv_img_set_antialias(media_art_image, false);
     lv_img_set_angle(media_art_image, frame.changing ? 0 : media_vinyl_angle);
-    // Image is a screen child, so the complete disc can leave the round artbox.
-    lv_obj_set_pos(media_art_image, layout.x + layout.size/2 - image->header.w/2 + frame.dx*layout.art_zoom/256,
-                   layout.y + layout.size/2 - image->header.h/2 + frame.dy*layout.art_zoom/256);
+    // Local coordinates preserve the old screen position. Only changing frames
+    // can overflow the rectangular viewport, keeping complete disc withdrawal.
+    lv_obj_set_pos(media_art_image, layout.size/2 - image->header.w/2 + frame.dx*layout.art_zoom/256,
+                   layout.size/2 - image->header.h/2 + frame.dy*layout.art_zoom/256);
     lv_obj_invalidate(media_art_image);
     if (frame.changing) media_vinyl_last_frame = now;
     media_record_last_frame = frame;
@@ -2349,13 +2388,14 @@ void refreshFocusMediaLayout(bool visible) {
     media_record_dirty = true;
     media_focus_layout_active = visible;
     const FocusMediaLayout layout = focusMediaLayout(visible);
+    syncMediaArtViewport(false);  // frame(..., false) above cancelled withdrawal.
     lv_obj_set_pos(media_art_box, layout.x, layout.y);
     lv_obj_set_size(media_art_box, layout.size, layout.size);
     lv_obj_set_style_radius(media_art_box, layout.radius, 0);
     lv_img_set_zoom(media_art_image, layout.art_zoom);
     lv_img_set_zoom(media_cat_canvas, layout.cat_zoom);
-    lv_obj_set_pos(media_art_image, layout.x + layout.size/2 - lv_obj_get_width(media_art_image)/2,
-                   layout.y + layout.size/2 - lv_obj_get_height(media_art_image)/2);
+    lv_obj_set_pos(media_art_image, layout.size/2 - lv_obj_get_width(media_art_image)/2,
+                   layout.size/2 - lv_obj_get_height(media_art_image)/2);
     if (media_arm_layer) lv_obj_add_flag(media_arm_layer, LV_OBJ_FLAG_HIDDEN);
     if (media_paw_layer) lv_obj_add_flag(media_paw_layer, LV_OBJ_FLAG_HIDDEN);
     lv_obj_center(media_cat_canvas);
@@ -2670,8 +2710,7 @@ void createMediaScreen() {
     lv_obj_set_style_text_align(media_state_label, LV_TEXT_ALIGN_CENTER, 0);
     lv_obj_center(media_state_label);
 
-    media_art_image = lv_img_create(media_screen);
-    lv_obj_clear_flag(media_art_image, LV_OBJ_FLAG_CLICKABLE);
+    createMediaArtViewport();
     // Independent, non-interactive layers, outside the artbox's round clipping.
     media_arm_layer = lv_obj_create(media_screen);
     media_paw_layer = lv_obj_create(media_screen);

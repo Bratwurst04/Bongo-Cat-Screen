@@ -198,7 +198,10 @@ class TurntableTests(unittest.TestCase):
                 self.assertGreater(n,0);self.assertLess(n,64)
                 self.assertTrue(all(min(out[i*7+2],out[i*7+4])>=50 and max(out[i*7+2],out[i*7+4])<205 for i in range(n)))
         source=(ROOT/'src/bongo_cat_featured.inc').read_text(encoding='utf-8')
-        self.assertIn('media_art_image = lv_img_create(media_screen)',source)
+        self.assertIn('media_art_image = lv_img_create(media_art_viewport)',source)
+        self.assertIn('media_art_viewport = lv_obj_create(media_screen)',source)
+        self.assertIn('media_arm_layer = lv_obj_create(media_screen)',source)
+        self.assertIn('media_paw_layer = lv_obj_create(media_screen)',source)
         self.assertIn('LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_SCROLLABLE',source)
         self.assertNotIn('lv_line_set_points',source)
 

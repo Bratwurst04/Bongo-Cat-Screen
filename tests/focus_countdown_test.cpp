@@ -56,6 +56,7 @@ using lv_text_align_t = int;
 using lv_font_t = int;
 constexpr int LV_TEXT_ALIGN_RIGHT = 1, LV_TEXT_ALIGN_CENTER = 2, LV_LABEL_LONG_CLIP = 1;
 constexpr int LV_OBJ_FLAG_CLICKABLE = 1, LV_OBJ_FLAG_SCROLLABLE = 2, LV_OBJ_FLAG_HIDDEN = 4;
+constexpr int LV_OBJ_FLAG_OVERFLOW_VISIBLE = 8;
 constexpr lv_font_t font16 = 16, font14 = 14;
 struct lv_obj_t {
     int flags = LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_SCROLLABLE;
@@ -66,7 +67,7 @@ struct lv_obj_t {
     const char *text = nullptr;
 };
 lv_obj_t recorded_labels[4], recorded_bars[4];
-lv_obj_t card, art_box, art_image, cat_canvas, state_label, arm_layer, paw_layer;
+lv_obj_t card, art_box, art_viewport, art_image, cat_canvas, state_label, arm_layer, paw_layer;
 int labels_created = 0;
 lv_obj_t *lv_label_create(lv_obj_t *) { return &recorded_labels[labels_created++]; }
 void lv_label_set_text_static(lv_obj_t *obj, const char *text) { obj->text = text; ++obj->writes; }
@@ -74,6 +75,9 @@ void lv_label_set_long_mode(lv_obj_t *, int) {}
 void lv_obj_set_size(lv_obj_t *obj, int w, int h) { obj->width = w; obj->height = h; }
 int lv_obj_get_width(lv_obj_t *obj) { return obj->width; }
 int lv_obj_get_height(lv_obj_t *obj) { return obj->height; }
+int lv_obj_get_x(lv_obj_t *obj) { return obj->x; }
+int lv_obj_get_y(lv_obj_t *obj) { return obj->y; }
+void lv_obj_invalidate(lv_obj_t *) {}
 void lv_obj_set_style_text_font(lv_obj_t *, const lv_font_t *, int) {}
 uint32_t lv_color_hex(uint32_t color) { return color; }
 void lv_obj_set_style_text_color(lv_obj_t *obj, uint32_t color, int) { obj->text_color = color; }
@@ -128,6 +132,7 @@ lv_obj_t *media_focus_pause_bars[2] = {&recorded_bars[0], &recorded_bars[1]};
 lv_obj_t *bongo_focus_pause_bars[2] = {&recorded_bars[2], &recorded_bars[3]};
 lv_obj_t *media_focus_card = &card;
 lv_obj_t *media_art_box = &art_box, *media_art_image = &art_image;
+lv_obj_t *media_art_viewport = &art_viewport;
 lv_obj_t *media_arm_layer = &arm_layer, *media_paw_layer = &paw_layer;
 lv_obj_t *media_cat_canvas = &cat_canvas, *media_state_label = &state_label;
 bool bongo_focus_compact_cue = false, media_focus_layout_active = false;
@@ -202,7 +207,9 @@ int main() {
     CHECK(recorded_labels[0].writes == 2 && recorded_labels[3].writes == 2);
     CHECK(art_box.width == 144 && art_box.x == 48 && art_box.y == 54 && art_box.radius == 72);
     CHECK(art_image.zoom == 320 && cat_canvas.zoom == 560 && art_box.pos_changes == 1);
-    CHECK(art_image.x == 64 && art_image.y == 70 && art_image.pos_changes == 1);
+    CHECK(art_image.x == 16 && art_image.y == 16 && art_image.pos_changes == 1);
+    CHECK(art_viewport.x + art_image.x == 64 && art_viewport.y + art_image.y == 70);
+    CHECK(art_viewport.width == 144 && art_viewport.height == 144);
     CHECK(lv_obj_has_flag(media_arm_layer, LV_OBJ_FLAG_HIDDEN) &&
           lv_obj_has_flag(media_paw_layer, LV_OBJ_FLAG_HIDDEN));
     CHECK(recorded_labels[1].text == recorded_labels[3].text && recorded_labels[1].text == focus_countdown.timeText());
@@ -260,7 +267,9 @@ int main() {
     CHECK(recorded_labels[0].writes == 2 && recorded_labels[3].writes == 3);
     CHECK(art_box.width == 172 && art_box.x == 34 && art_box.y == 26 && art_box.radius == 86);
     CHECK(art_image.zoom == 384 && cat_canvas.zoom == 672 && art_box.pos_changes == 2);
-    CHECK(art_image.x == 64 && art_image.y == 56 && art_image.pos_changes == 2);
+    CHECK(art_image.x == 30 && art_image.y == 30 && art_image.pos_changes == 2);
+    CHECK(art_viewport.x + art_image.x == 64 && art_viewport.y + art_image.y == 56);
+    CHECK(art_viewport.width == 172 && art_viewport.height == 172);
     activateMediaArtwork(0, false);
     CHECK(media_art_active_buffer == 0 && media_art_descriptor.data == mock_art[0] && image_invalidations == 2);
     toggleMediaCatMode();

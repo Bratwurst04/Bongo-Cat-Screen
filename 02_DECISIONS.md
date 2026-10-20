@@ -1,5 +1,21 @@
 # Bongo Cat – Architecture Decisions
 
+## 2026-10-20 – Bounded artwork viewport; measured and physical evidence separate
+
+- After synthetic D7DA timing, Lead restored the verified original EBB app-sector
+  backup. C421/EBB/921600 runs with profiles/shortcuts retained and fresh contact,
+  resync and ACK; new physical acceptance is pending. Preserve all old freezes.
+- Permanently parent only artwork to a transparent rectangular viewport. Enable
+  overflow only while the frame changes; preserve screen-sibling arm/paw order,
+  absolute image geometry, full art-box invalidation, timing, RX and companion.
+- Invalidate old transformed bounds before changing parent clip/layout, including
+  hidden/interrupted paths. Real LVGL incremental flush reconstruction must match
+  full redraw bit for bit. Legacy steady sampling has separately measured small
+  one-pixel edge differences, never an excuse for stale-pixel mismatches.
+- New normal 61BE3B63 and diagnostic 1252EBAC are built only. No smoother-scroll,
+  FPS, TFT quality or hardware acceptance claim; new flashing needs separate
+  concrete approval. See [evidence and limits](docs/render-viewport-2026-10-20.md).
+
 ## 2026-10-20 – Installed C421; playback accepted, separate render measurements
 
 - Lead installed exact C42112AD/EBB334A9/921600 with verified backups and current

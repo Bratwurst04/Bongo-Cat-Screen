@@ -1,5 +1,16 @@
 # Bongo Cat för ESP32-024R
 
+## Senaste renderunderlag 2026-10-20
+
+**C42112AD/EBB334A9 vid 921600** är åter i drift efter Leads tillfälliga
+syntetiska mätprov och verifierade återställning. Profiler och genvägar bevarades.
+Nya viewportkandidater **61BE3B63/1252EBAC är endast byggda**, inte flashade.
+Ryckig rullning under uppspelning är fortfarande öppen; riktig LVGL-raster är
+ingen fysisk jämnhetsacceptans. Se [mätresultat, nya byggen och fysisk provplan](docs/render-viewport-2026-10-20.md).
+Äldre daterade uppgifter nedan beskriver respektive tidigare bygg-/driftläge.
+Ny ren kontroll: **379 PASS, nio klassade undantag, noll fel**. Alla nya
+LVGL-rasterprov kördes; fysisk provning av dessa binärer återstår.
+
 ## Produktförbättringar 2026-10-20 – C421 installerad, spelstatus rättad
 
 **092E4E7D underkändes fysiskt**: pausstatus trots uppspelning. Lead återställde

@@ -51,7 +51,7 @@ class CountdownTests(unittest.TestCase):
 
     def test_cpp_state_cache_and_ui_calls(self):
         self._run_cpp_case("focus_countdown_test", ("createFocusCountdownLabel", "setFocusCountdownVisible",
-            "refreshFocusMediaLayout", "refreshFocusCountdownTheme", "syncMediaArtworkDescriptor",
+            "syncMediaArtViewport", "refreshFocusMediaLayout", "refreshFocusCountdownTheme", "syncMediaArtworkDescriptor",
             "activateMediaArtwork", "toggleMediaCatMode",
             "refreshFocusCountdownPresentation", "refreshFocusCountdown"))
 
@@ -120,23 +120,43 @@ class CountdownTests(unittest.TestCase):
             actual = actual.replace('lv_font_media_swedish_', 'lv_font_montserrat_')
             if function == 'createMediaScreen':
                 actual = actual.replace('    allocateMediaRecordPixels();\n', '')
-                # Approved turntable sprites are screen children so a full
-                # withdrawal escapes the circular viewport. Keep all existing
-                # labels/cards/canvas/layout identical after excluding that block.
-                start = actual.index('    media_art_image = lv_img_create(media_screen);')
+                # The permanent rectangular viewport carries only the image;
+                # arm/paw remain screen siblings. Raster tests check old/new
+                # absolute geometry and full withdrawal, not this text adapter.
+                start = actual.index('    createMediaArtViewport();')
                 end = actual.index('    lv_obj_add_flag(media_art_image, LV_OBJ_FLAG_HIDDEN);', start)
                 layers = actual[start:end]
                 self.assertIn('LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_SCROLLABLE', layers)
                 self.assertIn('drawMediaTurntableLayer, LV_EVENT_DRAW_MAIN', layers)
                 actual = actual[:start] + '    media_art_image = lv_img_create(media_art_box);\n' + actual[end:]
             if function == 'refreshFocusMediaLayout':
-                start = actual.index('    lv_obj_set_pos(media_art_image, layout.x')
+                actual = actual.replace('    syncMediaArtViewport(false);  // frame(..., false) above cancelled withdrawal.\n', '')
+                start = actual.index('    lv_obj_set_pos(media_art_image, layout.size/2')
                 end = actual.index('    lv_obj_center(media_cat_canvas);', start)
-                self.assertIn('layout.y + layout.size/2', actual[start:end])
+                self.assertIn('layout.size/2 - lv_obj_get_height', actual[start:end])
                 self.assertIn('lv_obj_add_flag(media_paw_layer, LV_OBJ_FLAG_HIDDEN)', actual[start:end])
                 actual = actual[:start] + '    lv_obj_center(media_art_image);\n' + actual[end:]
             actual = actual.replace('    media_record_flip.frame(millis(), false);\n    media_record_dirty = true;\n', '')
             actual = actual.replace('    media_record_dirty = true;  // Also restores generic after sharing the OOM scratch.\n', '')
+            if function == 'refreshMediaUi':
+                # Approved label-only optimization is tested against actual
+                # setters separately. Normalize its exact guarded color block,
+                # retaining the old colors, content, order and all other code.
+                actual = actual.replace('setMediaLabelTextIfChanged(', 'lv_label_set_text(')
+                actual = re.sub(r'(?m)^ {34}(?=media_is_playing|\(media_has_track)', ' ' * 26, actual)
+                colors = (
+                    '    const lv_color_t background = media_cat_mode ? lv_color_white() : lv_color_hex(0x080A0C);\n'
+                    '    const lv_color_t border = media_cat_mode ? lv_color_white() : lv_color_hex(0x252A30);\n'
+                    '    if (lv_obj_get_style_bg_color(media_art_box, 0).full != background.full) {\n'
+                    '        lv_obj_set_style_bg_color(media_art_box, background, 0);\n    }\n'
+                    '    if (lv_obj_get_style_border_color(media_art_box, 0).full != border.full) {\n'
+                    '        lv_obj_set_style_border_color(media_art_box, border, 0);\n    }\n')
+                self.assertIn(colors, actual)
+                actual = actual.replace(colors,
+                    '    lv_obj_set_style_bg_color(media_art_box,\n'
+                    '                              media_cat_mode ? lv_color_white() : lv_color_hex(0x080A0C), 0);\n'
+                    '    lv_obj_set_style_border_color(media_art_box,\n'
+                    '                                  media_cat_mode ? lv_color_white() : lv_color_hex(0x252A30), 0);\n')
             actual = actual.replace('        renderMediaCat();\n        lv_obj_clear_flag(media_cat_canvas, LV_OBJ_FLAG_HIDDEN);',
                                     '        lv_obj_clear_flag(media_cat_canvas, LV_OBJ_FLAG_HIDDEN);\n        renderMediaCat();')
             self.assertEqual(actual, visuals.section(saved, function), function)

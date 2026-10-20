@@ -1,5 +1,14 @@
 # Windows companion
 
+## Latest render work (2026-10-20)
+
+Installed companion remains **C42112AD**, with **EBB334A9/921600** restored by
+Lead after a temporary synthetic firmware measurement. Current profiles and
+shortcuts were preserved; fresh contact/resync/ACK passed. New viewport firmware
+**61BE3B63/1252EBAC is built only**, not flashed. The companion is unchanged and
+scrolling remains an open physical issue. See [measurements and limits](../docs/render-viewport-2026-10-20.md).
+Earlier dated build/runtime entries below are retained as history.
+
 ## Installed WinRT playback fix (2026-10-20)
 
 The user rejected **092E4E7D**: the display stayed paused during playback.
