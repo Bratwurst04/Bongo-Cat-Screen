@@ -1,5 +1,5 @@
 #include "../src/focus_countdown_layout.h"
-#include "../src/media_record_flip.h"
+#include "../src/media_turntable.h"
 #include <cstring>
 #include <cstdio>
 #include <initializer_list>
@@ -66,12 +66,14 @@ struct lv_obj_t {
     const char *text = nullptr;
 };
 lv_obj_t recorded_labels[4], recorded_bars[4];
-lv_obj_t card, art_box, art_image, cat_canvas, state_label;
+lv_obj_t card, art_box, art_image, cat_canvas, state_label, arm_layer, paw_layer;
 int labels_created = 0;
 lv_obj_t *lv_label_create(lv_obj_t *) { return &recorded_labels[labels_created++]; }
 void lv_label_set_text_static(lv_obj_t *obj, const char *text) { obj->text = text; ++obj->writes; }
 void lv_label_set_long_mode(lv_obj_t *, int) {}
 void lv_obj_set_size(lv_obj_t *obj, int w, int h) { obj->width = w; obj->height = h; }
+int lv_obj_get_width(lv_obj_t *obj) { return obj->width; }
+int lv_obj_get_height(lv_obj_t *obj) { return obj->height; }
 void lv_obj_set_style_text_font(lv_obj_t *, const lv_font_t *, int) {}
 uint32_t lv_color_hex(uint32_t color) { return color; }
 void lv_obj_set_style_text_color(lv_obj_t *obj, uint32_t color, int) { obj->text_color = color; }
@@ -91,7 +93,9 @@ void lv_obj_set_style_border_color(lv_obj_t *obj, uint32_t color, int) { obj->bo
 void lv_obj_set_style_radius(lv_obj_t *obj, int radius, int) { obj->radius = radius; }
 void lv_img_set_zoom(lv_obj_t *obj, int zoom) { obj->zoom = zoom; ++obj->zoom_changes; }
 void lv_obj_center(lv_obj_t *obj) { ++obj->centers; }
-void lv_img_cache_invalidate_src(const void *) {}
+const void *invalidated_image = nullptr;
+int image_invalidations = 0;
+void lv_img_cache_invalidate_src(const void *image) { invalidated_image = image; ++image_invalidations; }
 void lv_img_set_src(lv_obj_t *, const void *) {}
 void lv_img_set_pivot(lv_obj_t *, int, int) {}
 void lv_img_set_angle(lv_obj_t *, int) {}
@@ -105,12 +109,17 @@ uint8_t media_art_active_buffer = 0;
 int media_vinyl_angle = 0, media_ui_refreshes = 0;
 int media_cat_last_frame = 0, media_cat_left_note = 0, media_cat_right_note = 0, media_cat_effect = 0;
 bool media_art_valid = false, media_cat_mode = false;
-MediaRecordFlip media_record_flip;
+MediaTurntable media_record_flip;
+uint32_t media_track_context_id = 0;
 bool media_record_dirty = false;
 uint32_t millis() { return 0; }
 bool mediaRecordVisible() { return false; }
 void refreshMediaUi() { ++media_ui_refreshes; }
-struct SerialRecorder { int writes = 0; void println(const char *) { ++writes; } } Serial;
+struct SerialRecorder {
+    int writes = 0;
+    const char *last_line = nullptr;
+    void println(const char *line) { last_line = line; ++writes; }
+} Serial;
 FocusCountdownCache focus_countdown;
 FocusState focus_state = focusInitial();
 lv_obj_t *bongo_focus_phase_label = nullptr, *bongo_focus_time_label = nullptr;
@@ -119,6 +128,7 @@ lv_obj_t *media_focus_pause_bars[2] = {&recorded_bars[0], &recorded_bars[1]};
 lv_obj_t *bongo_focus_pause_bars[2] = {&recorded_bars[2], &recorded_bars[3]};
 lv_obj_t *media_focus_card = &card;
 lv_obj_t *media_art_box = &art_box, *media_art_image = &art_image;
+lv_obj_t *media_arm_layer = &arm_layer, *media_paw_layer = &paw_layer;
 lv_obj_t *media_cat_canvas = &cat_canvas, *media_state_label = &state_label;
 bool bongo_focus_compact_cue = false, media_focus_layout_active = false;
 bool media_focus_compact_cue = false, focus_banner_visible = false, focus_banner_compact = false;
@@ -183,6 +193,7 @@ int main() {
     media_focus_time_label = createFocusCountdownLabel(nullptr, &font16, 56, 18, LV_TEXT_ALIGN_CENTER, 0, focus_countdown.timeText());
     for (lv_obj_t &bar : recorded_bars) bar.flags = LV_OBJ_FLAG_HIDDEN;
     card.flags = LV_OBJ_FLAG_HIDDEN;
+    lv_obj_set_size(media_art_image, MEDIA_ART_SIZE, MEDIA_ART_SIZE);
     CHECK(labels_created == 4 && recorded_labels[1].width == 96 && recorded_labels[3].height == 18);
     refreshFocusCountdown();
     CHECK(recorded_labels[0].writes == 1 && recorded_labels[3].writes == 1);
@@ -191,6 +202,9 @@ int main() {
     CHECK(recorded_labels[0].writes == 2 && recorded_labels[3].writes == 2);
     CHECK(art_box.width == 144 && art_box.x == 48 && art_box.y == 54 && art_box.radius == 72);
     CHECK(art_image.zoom == 320 && cat_canvas.zoom == 560 && art_box.pos_changes == 1);
+    CHECK(art_image.x == 64 && art_image.y == 70 && art_image.pos_changes == 1);
+    CHECK(lv_obj_has_flag(media_arm_layer, LV_OBJ_FLAG_HIDDEN) &&
+          lv_obj_has_flag(media_paw_layer, LV_OBJ_FLAG_HIDDEN));
     CHECK(recorded_labels[1].text == recorded_labels[3].text && recorded_labels[1].text == focus_countdown.timeText());
     for (int i = 0; i < 999; ++i) {
         focus_state = focusAdvance(focus_state, 101 + i, {5, 1});
@@ -212,6 +226,10 @@ int main() {
     activateMediaArtwork(1, true);
     CHECK(art_image.zoom == 320 && art_box.width == 144 && media_art_active_buffer == 1 && media_art_valid);
     CHECK(media_art_descriptor.header.w == 112 && media_art_descriptor.header.h == 112 && Serial.writes == 1);
+    CHECK(media_art_descriptor.header.cf == LV_IMG_CF_TRUE_COLOR_CHROMA_KEYED &&
+          media_art_descriptor.data_size == MEDIA_ART_LV_BYTES && media_art_descriptor.data == mock_art[1]);
+    CHECK(image_invalidations == 1 && invalidated_image == &media_art_descriptor && media_record_dirty);
+    CHECK(media_ui_refreshes == 1 && std::strcmp(Serial.last_line, "MEDIA_ART_OK") == 0);
     toggleMediaCatMode();
     CHECK(media_cat_mode && cat_canvas.zoom == 560 && art_box.width == 144 && art_box.pos_changes == 1);
     toggleMediaCatMode();
@@ -242,7 +260,9 @@ int main() {
     CHECK(recorded_labels[0].writes == 2 && recorded_labels[3].writes == 3);
     CHECK(art_box.width == 172 && art_box.x == 34 && art_box.y == 26 && art_box.radius == 86);
     CHECK(art_image.zoom == 384 && cat_canvas.zoom == 672 && art_box.pos_changes == 2);
+    CHECK(art_image.x == 64 && art_image.y == 56 && art_image.pos_changes == 2);
     activateMediaArtwork(0, false);
+    CHECK(media_art_active_buffer == 0 && media_art_descriptor.data == mock_art[0] && image_invalidations == 2);
     toggleMediaCatMode();
     CHECK(art_image.zoom == 384 && cat_canvas.zoom == 672 && art_box.pos_changes == 2 && Serial.writes == 1);
     focus_state = {FocusPhase::Break, FocusMode::Running, 1000, 0, 60000};

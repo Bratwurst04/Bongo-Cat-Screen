@@ -51,7 +51,8 @@ class CountdownTests(unittest.TestCase):
 
     def test_cpp_state_cache_and_ui_calls(self):
         self._run_cpp_case("focus_countdown_test", ("createFocusCountdownLabel", "setFocusCountdownVisible",
-            "refreshFocusMediaLayout", "refreshFocusCountdownTheme", "activateMediaArtwork", "toggleMediaCatMode",
+            "refreshFocusMediaLayout", "refreshFocusCountdownTheme", "syncMediaArtworkDescriptor",
+            "activateMediaArtwork", "toggleMediaCatMode",
             "refreshFocusCountdownPresentation", "refreshFocusCountdown"))
 
     def test_cpp_actual_touch_handler_and_media_dispatch(self):
