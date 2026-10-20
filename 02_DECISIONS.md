@@ -1,5 +1,63 @@
 # Bongo Cat – Architecture Decisions
 
+## 2026-10-20 – Installed B7019579; explicit CAPS and bounded physical acceptance
+
+- Lead installed the user-approved B7019579 with unchanged EBB334A9/921600
+  and verified backups/config/auth/budget/Run/shortcuts. Actual Windows
+  Start-menu shortcut launch reached the canonical EXE with the correct hash.
+  Record [runtime separately](docs/capability-partial-runtime-2026-10-20.md);
+  preserve all older status sections, source freezes and manifests.
+- Startup received explicit base/compact/refine before READY: compact 789 ms,
+  selected-slot→full-ACK 4749 ms. Later six compact ACK 431–475 ms and five
+  full ACK 4682–4795 ms are content-free transport measures, not LCD times.
+- User accepted two track changes with quick image/later sharpness and no
+  extra flip/jump. No inference event occurred; partial-cap recovery remains
+  host-tested only. Missing-row cause, sleep/resume, long run and universal
+  subsecond behavior are not established by this normal-handshake trial.
+- The standing app-deployment instruction below applies to future completed
+  normal app updates. Firmware/flash retains separate applicable consent.
+  Code changes documentation only; no new tests, build, runtime or release.
+
+
+## 2026-10-20 – Standing authorization for normal companion deployments
+
+- The user instructed that every completed companion update we perform must
+  replace the canonical installed app, so their usual Windows Start-menu app
+  always launches the latest installed version. This standing authorization
+  covers normal reviewed/built/tested app updates within the requested work,
+  including new hashes; do not repeat the same app-install approval question.
+- Lead deploys to `%LOCALAPPDATA%\BongoDesk\BongoDeskSpotify.exe`, with a
+  hash-verified previous-EXE backup and matching installed-candidate hash.
+  Preserve config/auth/autostart/connection settings. Verify or repair Start
+  menu/desktop shortcut targets and normal launch of that canonical EXE.
+- Follow the [standing deployment routine](CHAT_ROLES.md). Record installation
+  only from completed Lead runtime evidence. Preserve old status sections,
+  candidate source freezes and manifests as historical evidence.
+- This is an active-task workflow, not a background downloader/updater or
+  release mechanism. Firmware/flash retains separate applicable user consent.
+  No new installation status is asserted by this workflow decision.
+
+
+## 2026-10-20 – Fresh base plus REFINE proves compact-profile support
+
+- Keep installed 94145746/EBB334A9 at 921600. Build app-only B7019579 for
+  review; do not run/install it or rebuild/flash firmware. No new release.
+- Replayed base+REFINE without COMPACT strands the old app in full format
+  after its single retry. Firmware emits REFINE only in its compact-profile
+  branch. Recover from that existing contract with independently fresh base
+  proof and REFINE for current conn/epoch/nonce, 921600 and active app.
+  Preserve direct-COMPACT peers without REFINE, FAST and legacy fallback.
+- Captured-generation tags reject stale capability reads. No periodic query,
+  new burst, sender/cache/metadata/refine-priority change or firmware protocol
+  extension. The cause of the missing physical row remains unproven.
+- Twelve new checks pass; relevant 121 found/120 pass/one private-photo skip.
+  Native CRC/slots show coarse then detail from unchanged cache; host evidence
+  is separate from pending physical recovery/LCD timing. Preserve all old
+  sources, freezes, reports and previews. See [evidence](docs/capability-partial-2026-10-20.md).
+  Root independently reviewed the exact package without execution. A new
+  exact app approval remains required before runtime deployment.
+
+
 ## 2026-10-19 – Crop app installed; bounded physical acceptance
 
 - Lead installed user-approved 94145746 with unchanged EBB334A9 and 921600.

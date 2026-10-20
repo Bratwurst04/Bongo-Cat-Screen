@@ -1,5 +1,46 @@
 # Bongo Cat – Current State
 
+## Aktuellt 2026-10-20 – B7019579/EBB334A9 installerat och snävt skärmprovat
+
+- Lead installerade **B7019579**, 19 664 148 byte, på kanonisk plats efter
+  verifierade backuper. Config/auth/budget vid byte samt Run/genvägar bevarades.
+  **EBB334A9 vid 921600** är oförändrad; ingen firmware skrevs.
+- Faktisk start via befintliga **Start Menu/Bongo Cat.lnk** genom Explorer
+  gav rätt hash och två normala processer. Två observationer visar ansluten
+  ESP32, Windows Spotify och oförändrade apphash/config/authfält/Run/genvägar.
+- Explicit bas+COMPACT+REFINE kom före READY. Uppstart kompakt READY→ACK
+  **789 ms** (sender 250 ms); SLOT→full-ACK **4 749 ms**. Senare sex kompakta
+  ACK **431–475 ms**, fem senare full-ACK **4 682–4 795 ms**, första försök.
+  Måtten är inte titelbundna eller faktisk LCD-tid.
+- Användaren accepterade två låtbyten, snabb bild/senare skärpning utan extra
+  flip/hopp: **”Ja, det fungerar”**. Ingen ART_COMPACT_INFERRED observerades;
+  fysisk partial-återhämtning, tidigare radbortfallsorsak, sleep/resume och
+  universell ensekundsgaranti är fortfarande obevisade. Se
+  [driftrapporten](docs/capability-partial-runtime-2026-10-20.md).
+- [Stående appinstruktion](CHAT_ROLES.md) gäller framtida färdiga normala
+  companionuppdateringar till samma Windows-app, med backup/hash/genvägskontroll.
+  Ingen ny kod/test/byggning/runtime från Code i dokumentsteget; äldre bevis bevaras.
+
+
+## Aktuellt 2026-10-20 – partial-CAPS-rättning endast i separat byggd app
+
+- Installerat **94145746/EBB334A9 vid 921600** är oförändrat. Ny companion
+  **B7019579**, 19 664 148 byte, är byggd och paketkontrollerad,
+  **inte körd/installerad**. Exakt EBB återanvänds utan firmwarebyggning/flash.
+- Två färska bas+REFINE-par men ingen COMPACT efter uppstart gav fullformat
+  hela sessionen; 24 sändningar var 37 632 byte. Reader/sender-replay reproducerar
+  appens partiella cap-låsning. Orsaken till saknad rad är fortfarande obevisad.
+- Källan bekräftar kompakt från kontraktsbundna färska bas+REFINE för samma
+  connection/epoch/nonce vid 921600 och aktiv app. Direkt COMPACT/FAST/äldre
+  peers och befintlig enda retry bevaras; ingen ny query-loop eller burst.
+  Sender/crop/metadata/refineprioritet/animationer/API/auth/config ändras inte.
+- 12 nya PASS; regression **121 upptäckta/120 PASS/ett avsiktligt foto-SKIP**,
+  noll fel/externa nätförsök. Native CRC/slot/coarse→full använder samma cache;
+  13 paketmoduler/fyra resurser matchar källan, separat granskat av Root.
+  Nytt exakt appgodkännande och fysiskt prov väntar; ingen LCD-/ensekundsgaranti.
+  Se [rapport](docs/capability-partial-2026-10-20.md). Äldre avsnitt och bevis bevaras.
+
+
 ## Aktuellt 2026-10-19 – 94145746/EBB334A9 installerat och snävt accepterat
 
 - Lead installerade exakt godkänd companion **94145746**, 19 664 430 byte,

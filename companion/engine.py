@@ -108,6 +108,7 @@ class BongoCatEngine:
         self._artwork_ack = threading.Event()
         self._artwork_v2_supported = False
         self._artwork_v2_challenge = ""
+        self._artwork_v2_base_challenge = ""
         self._artwork_v2_fast_challenge = ""
         self._artwork_v2_compact_challenge = ""
         self._artwork_v2_refine_challenge = ""
@@ -442,6 +443,7 @@ class BongoCatEngine:
             # Initial capability query; at most one readiness-triggered resend.
             # Older firmware ignores it, keeping raw RGB as the safe fallback.
             self._artwork_v2_fast_challenge = ""
+            self._artwork_v2_base_challenge = ""
             self._artwork_v2_compact_challenge = ""
             self._artwork_v2_refine_challenge = ""
             self._artwork_refinement = None
@@ -1134,6 +1136,29 @@ class BongoCatEngine:
             )
             self._on_media_update(snapshot, artwork)
 
+    def _confirm_compact_from_refine(self, conn, generation):
+        """EBB's fresh REFINE contract also proves its compact80 receiver.
+
+        Firmware emits both in the same compact-profile branch. Require
+        independently received base and REFINE for this exact generation;
+        a missing individual compact line must not strand the session.
+        """
+        with self._media_lock:
+            challenge = generation[1]
+            if (not self.running or self._stop_requested.is_set() or
+                    self.serial_conn is not conn or not conn.is_open or
+                    generation != (self._artwork_v2_epoch, self._artwork_v2_challenge) or
+                    self.baudrate != 921600 or not challenge or
+                    not self._artwork_v2_supported or
+                    getattr(self, "_artwork_v2_base_challenge", "") != challenge or
+                    getattr(self, "_artwork_v2_refine_challenge", "") != challenge or
+                    getattr(self, "_artwork_v2_compact_challenge", "") == challenge):
+                return
+            self._artwork_v2_compact_challenge = challenge
+        diagnostics.event("ART_COMPACT_CAPABILITY", result="success", protocol="art2",
+                          bytes=COMPACT_EDGE * COMPACT_EDGE * 2)
+        diagnostics.event("ART_COMPACT_INFERRED", result="success", protocol="art2")
+
     def _retry_capability_after_status(self, conn, context, values):
         """One query after normal firmware readiness; never reset media/epoch."""
         if context is None:
@@ -1188,25 +1213,30 @@ class BongoCatEngine:
                 line = raw.decode("utf-8", "ignore").strip()
                 if line:
                     self._last_device_reply_at = time.time()
-                if (self._artwork_v2_challenge and
+                capability_current = bool(self._artwork_v2_challenge and
+                    refinement_generation == (self._artwork_v2_epoch, self._artwork_v2_challenge))
+                if (capability_current and
                         line == f"CAPS:MEDIA_ART2:{self._artwork_v2_challenge}"):
                     self._artwork_v2_supported = True
+                    self._artwork_v2_base_challenge = refinement_generation[1]
                     diagnostics.event("ART_CAPABILITY", result="success", protocol="art2")
-                elif (self.baudrate == 921600 and self._artwork_v2_challenge and
+                    self._confirm_compact_from_refine(conn, refinement_generation)
+                elif (capability_current and self.baudrate == 921600 and
                       line == f"CAPS:MEDIA_ART2_FAST:{self._artwork_v2_challenge}:921600"):
-                    self._artwork_v2_fast_challenge = self._artwork_v2_challenge
+                    self._artwork_v2_fast_challenge = refinement_generation[1]
                     diagnostics.event("ART_FAST_CAPABILITY", result="success", protocol="art2",
                                       frames_per_write=ARTWORK_V2_921600_BATCH_FRAMES,
                                       interval_ms=int(ARTWORK_V2_921600_PAUSE_SECONDS * 1000))
-                elif (self.baudrate == 921600 and self._artwork_v2_challenge and
+                elif (capability_current and self.baudrate == 921600 and
                       line == f"CAPS:MEDIA_ART2_RGB56580:{self._artwork_v2_challenge}:921600"):
-                    self._artwork_v2_compact_challenge = self._artwork_v2_challenge
+                    self._artwork_v2_compact_challenge = refinement_generation[1]
                     diagnostics.event("ART_COMPACT_CAPABILITY", result="success", protocol="art2",
                                       bytes=COMPACT_EDGE * COMPACT_EDGE * 2)
-                elif (self.baudrate == 921600 and self._artwork_v2_challenge and
+                elif (capability_current and self.baudrate == 921600 and
                       line == f"CAPS:MEDIA_ART2_REFINE:{self._artwork_v2_challenge}:921600"):
-                    self._artwork_v2_refine_challenge = self._artwork_v2_challenge
+                    self._artwork_v2_refine_challenge = refinement_generation[1]
                     diagnostics.event("ART_REFINE_CAPABILITY", result="success", protocol="art2")
+                    self._confirm_compact_from_refine(conn, refinement_generation)
                 elif line.startswith("MEDIA_ART2_SHOWN:"):
                     fields = line.split(":")
                     if (len(fields) == 3 and fields[1].isascii() and fields[1].isdecimal()

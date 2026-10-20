@@ -1,5 +1,32 @@
 # Bongo Cat – Project Context
 
+## Aktuellt 2026-10-20 – B7019579 installerad via Startmenyn och snävt accepterad
+
+Installerat är nu **B7019579/EBB334A9 vid 921600**, efter användarens
+appgodkännande och Leads verifierade appbyte. Den befintliga Startmeny-
+genvägen startade rätt kanonisk EXE. Firmware skrevs inte. Användaren
+bekräftade snabb bild och senare skärpning utan extra flip/hopp: **”Ja, det fungerar”**.
+Uppstart kompakt READY→ACK 789 ms; senare sex 431–475 ms. Full SLOT→ACK
+var 4 682–4 795 ms. Det är transport/slotmått, inga titel- eller LCD-tider.
+Alla explicita caps kom; fysisk partial-inference och sleep/resume är
+fortfarande oprövade. Se [separat driftrapport](docs/capability-partial-runtime-2026-10-20.md).
+Den stående rutinen i [CHAT_ROLES](CHAT_ROLES.md) håller samma Windows-app
+uppdaterad vid våra färdiga appuppgifter. Äldre avsnitt och frysta bevis bevaras.
+
+
+## Aktuellt 2026-10-20 – separat app återhämtar partiella cap-svar
+
+Installerat är fortsatt **94145746/EBB334A9 vid 921600**. Ny companion
+**B7019579**, 19 664 148 byte, är byggd/paketkontrollerad, **inte körd eller
+installerad**. Appens fullformatslåsning har reproducerats med bas+REFINE
+utan COMPACT. Färska bas+REFINE för samma connection/epoch/nonce kan nu
+bekräfta firmwarekontraktets kompaktstöd. Fysiska radbortfallet är obevisat.
+12 nya PASS; 120 relevanta PASS/ett avsiktligt foto-SKIP. Inga nya frågor,
+ny burst, firmwareändring eller release. Fysisk återhämtning väntar; ingen
+LCD-/ensekundsgaranti. Se [underlag och provgränser](docs/capability-partial-2026-10-20.md).
+Äldre statusavsnitt och frysta bevis bevaras som historik.
+
+
 ## Aktuellt 2026-10-19 – beskärningsapp installerad och snävt skärmprovad
 
 Installerat är **94145746/EBB334A9 vid 921600**, efter exakt appgodkännande
