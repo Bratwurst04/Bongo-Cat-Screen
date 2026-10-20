@@ -38,7 +38,7 @@ class ActiveRecoveryTests(unittest.TestCase):
             data={'item':{'id':'fixture','name':'fixture','duration_ms':180000},
                   'is_playing':playing,'progress_ms':30000,'device':{'id':'fixture'}}
             return Response(json.dumps(data).encode())
-        p=patch('urllib.request.urlopen',new=http);p.start();self.addCleanup(p.stop)
+        p=patch('spotify_api._spotify_urlopen',new=http);p.start();self.addCleanup(p.stop)
         return api,budget,clock,calls
 
     def test_active_day_uses_five_seconds_in_all_local_recovery_phases(self):

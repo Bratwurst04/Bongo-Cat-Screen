@@ -103,7 +103,7 @@ class EndpointDiagnosticTests(unittest.TestCase):
             await real_sleep(0)
 
         with patch('time.time', new=lambda: clock.now), patch('time.monotonic', new=lambda: clock.mono), \
-             patch('urllib.request.urlopen', new=http), patch('media_bridge.asyncio.sleep', new=sleep), \
+             patch('spotify_api._spotify_urlopen', new=http), patch('media_bridge.asyncio.sleep', new=sleep), \
              patch('diagnostics.diagnostics.event') as event, \
              patch('media_bridge.GlobalSystemMediaTransportControlsSessionManager.request_async',
                    new_callable=AsyncMock, return_value=Mock(get_sessions=lambda: [session] if windows else [])):
@@ -255,7 +255,7 @@ class EndpointDiagnosticTests(unittest.TestCase):
                         if block == 'retry':state['retry_until'] = now + 60
                         if block == 'clock':state['clock_guard'] = now + 60
                     budget.store.update(budget._factory, guard)
-                    with patch('urllib.request.urlopen') as http:
+                    with patch('spotify_api._spotify_urlopen') as http:
                         if block == 'io':
                             with patch.object(budget.store, 'save', side_effect=BudgetWait(60, 'history_io')):
                                 with self.assertRaises(SpotifyPacingError):
@@ -275,7 +275,7 @@ class EndpointDiagnosticTests(unittest.TestCase):
             with patch('time.time', new=lambda: clock.now), patch('time.monotonic', new=lambda: clock.mono):
                 api = SpotifyApiBridge('fixture', Path(folder) / 'tokens.json')
                 api._tokens.update(access_token='fixture', refresh_token='fixture', expires_at=clock.now + 86400)
-                with patch('urllib.request.urlopen', return_value=Response(b'', 204)) as http:
+                with patch('spotify_api._spotify_urlopen', return_value=Response(b'', 204)) as http:
                     self.assertEqual(api.get_playback(artwork_fallback=True), (None, None))
                 self.assertEqual(http.call_args.args[0].full_url, 'https://api.spotify.com/v1/me/player?additional_types=track%2Cepisode')
 
@@ -290,7 +290,7 @@ class EndpointDiagnosticTests(unittest.TestCase):
                 bridge._source_mode = 'spotify_api'
                 bridge._source_epoch = 1
                 payload = b'{"item":{"id":"fixture","name":"fixture","duration_ms":180000},"is_playing":true}'
-                with patch('urllib.request.urlopen', side_effect=[Response(b'', 204), Response(payload)]) as http:
+                with patch('spotify_api._spotify_urlopen', side_effect=[Response(b'', 204), Response(payload)]) as http:
                     self.assertEqual(api.get_playback(), (None, None))
                     bridge._observe_primary_playback(None, automatic=True)
                     self.assertTrue(bridge._endpoint_probe_pending())

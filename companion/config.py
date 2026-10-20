@@ -7,10 +7,10 @@ Handles JSON-based settings persistence and validation
 import json
 from api_budget import DEFAULTS as API_BUDGET_DEFAULTS, settings as validate_api_budget_settings
 import os
-import shutil
 import copy
 from pathlib import Path
 from typing import Dict, Any, Callable, List
+from atomic_file import atomic_write
 
 class ConfigManager:
     """Manages application configuration with JSON persistence and validation"""
@@ -173,43 +173,54 @@ class ConfigManager:
             return False
     
     def load_config(self) -> bool:
-        """Load configuration from file"""
-        try:
-            if self.config_file.exists():
-                with open(self.config_file, 'r') as f:
-                    loaded_config = json.load(f)
-                
-                if self.validate_config(loaded_config):
-                    self.config = self._merge_defaults(loaded_config)
-                    self._remember_config_mtime()
-                    print(f"📂 Configuration loaded from {self.config_file}")
-                    return True
-                else:
-                    print("⚠️ Invalid configuration file, using defaults")
-                    self.reset_to_defaults()
-                    return False
-            else:
-                print("📝 No configuration file found, creating default")
-                self.reset_to_defaults()
-                self.save_config()
-                return True
-                
-        except Exception as e:
-            print(f"❌ Error loading config: {e}")
-            print("🔄 Using default configuration")
-            self.reset_to_defaults()
-            return False
+        """Prefer the active file, then a validated backup; never rewrite damage."""
+        for path in (self.config_file, self.backup_file):
+            try:
+                raw = path.read_bytes()
+                loaded = json.loads(raw.decode("utf-8-sig"))
+                if not isinstance(loaded, dict) or not self.validate_config(loaded):
+                    continue
+            except (OSError, UnicodeError, ValueError, RecursionError):
+                continue
+            self.config = self._merge_defaults(loaded)
+            if path == self.backup_file:
+                try:
+                    atomic_write(self.config_file, raw)
+                except OSError as exc:
+                    # Still use the validated backup in memory. Do not erase it
+                    # if disk/permissions also prevent repairing the active file.
+                    print(f"Config backup loaded; active file repair failed: {type(exc).__name__}")
+            self._remember_config_mtime()
+            print(f"📂 Configuration loaded from {path}")
+            return True
+        if not self.config_file.exists() and not self.backup_file.exists():
+            print("📝 No configuration file found, creating default")
+            return self.save_config()
+        # On a live reload keep the last working settings, rather than silently
+        # replacing them (and later their backup) with defaults.
+        print("Invalid configuration and backup; retaining current settings")
+        return False
     
     def save_config(self) -> bool:
         """Save current configuration to file"""
         try:
-            # Create backup of existing config
-            if self.config_file.exists():
-                shutil.copy2(self.config_file, self.backup_file)
-            
-            # Save current configuration
-            with open(self.config_file, 'w') as f:
-                json.dump(self.config, f, indent=2)
+            if not self.validate_config(self.config):
+                return False
+            payload = json.dumps(self.config, indent=2, ensure_ascii=False,
+                                 allow_nan=False).encode("utf-8")
+            previous = None
+            try:
+                raw = self.config_file.read_bytes()
+                loaded = json.loads(raw.decode("utf-8-sig"))
+                if isinstance(loaded, dict) and self.validate_config(loaded):
+                    previous = raw
+            except (OSError, UnicodeError, ValueError, RecursionError):
+                pass
+            # An invalid active file must never replace a known good backup.
+            # If backup creation fails, leave the active file untouched too.
+            if previous is not None:
+                atomic_write(self.backup_file, previous)
+            atomic_write(self.config_file, payload)
             self._remember_config_mtime()
             
             print(f"💾 Configuration saved to {self.config_file}")

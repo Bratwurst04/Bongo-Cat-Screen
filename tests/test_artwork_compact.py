@@ -4,6 +4,7 @@ import configparser
 import ctypes
 import io
 from pathlib import Path
+import tempfile
 import unittest
 from unittest.mock import Mock,patch
 import zlib
@@ -11,6 +12,7 @@ from PIL import Image
 
 import test_artwork_v2 as legacy
 import artwork_fast_host as queue_host
+import compact_art_host
 from compact_art_host import BUILD,ROOT,Pixels,load_host,snapshot
 from artwork_codec import COMPACT_BYTES,pack_compact_rgb565
 from engine import ARTWORK_V2_FRAME_BYTES
@@ -52,6 +54,21 @@ class CompactModel(queue_host.WireModel):
 
 class ArtworkCompactTests(unittest.TestCase):
     def setUp(self):self.h=load_host();self.h.ca_reset()
+
+    def test_native_host_build_redirect_creates_its_own_fixtures(self):
+        # Reproduce compact tests followed by the face adapter selecting a
+        # different build folder in the same Python process. DLLs stay in the
+        # isolated build output because Windows keeps loaded DLL files open.
+        folder=Path(tempfile.mkdtemp(prefix='cache-context-',dir=BUILD))
+        hosts=[]
+        for name in ('first','second'):
+            target=folder/name
+            with patch.object(compact_art_host,'BUILD',target):
+                host=compact_art_host.load_host();host.ca_reset();hosts.append(host)
+            self.assertTrue((target/'compact-host/compact_parser_fixture.inc').is_file())
+            self.assertTrue((target/'compact-host/compact_art.dll').is_file())
+            self.assertEqual(host.ca_receiving(),0)
+        self.assertIsNot(hosts[0],hosts[1])
 
     def engine(self,baud=921600,cap=True):
         e=legacy.ArtworkV2Tests().make_engine();e.baudrate=baud;e._artwork_v2_supported=True

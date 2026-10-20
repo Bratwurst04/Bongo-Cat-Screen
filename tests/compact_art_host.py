@@ -12,9 +12,15 @@ BUILD=ROOT/'build/artwork-compact80-2026-10-18'
 Pixels=ctypes.c_ushort*(112*112)
 
 
-@lru_cache(maxsize=2)
 def load_host(compact=True):
-    folder=BUILD/('compact-host' if compact else 'legacy-host');folder.mkdir(parents=True,exist_ok=True)
+    # Other native adapters select their own output directory. A cached DLL
+    # from a previous directory cannot provide that directory's fixture files.
+    return _load_host(compact, str(BUILD.resolve()))
+
+
+@lru_cache(maxsize=8)
+def _load_host(compact, build_directory):
+    folder=Path(build_directory)/('compact-host' if compact else 'legacy-host');folder.mkdir(parents=True,exist_ok=True)
     header=(ROOT/'src/media_art_v2.h').read_text(encoding='utf-8')
     types=re.sub(r'^#(?:include[^\n]*|pragma once)\n','',header,flags=re.M)
     color=(ROOT/'tests/fixtures/lvgl8311-color16.inc').read_bytes()

@@ -285,8 +285,8 @@ class BongoCatEngine:
         
         print("✅ Configuration applied to Arduino")
 
-    def find_esp32_port(self, interactive=True):
-        """Auto-detect ESP32 COM port - EXACT ORIGINAL IMPLEMENTATION"""
+    def find_esp32_port(self, interactive=False):
+        """Return one unambiguous device; tray/windowed startup never prompts."""
         print("🔍 Scanning for ESP32...")
         
         ports = serial.tools.list_ports.comports()
@@ -329,31 +329,22 @@ class BongoCatEngine:
             for i, port in enumerate(esp32_ports):
                 print(f"   {i+1}: {port.device} - {port.description}")
             
-            if not interactive:
-                return esp32_ports[0].device
-            try:
-                choice = input("Enter number (or press Enter for first): ").strip()
-                if not choice:
-                    selected_port = esp32_ports[0].device
-                else:
-                    index = int(choice) - 1
-                    selected_port = esp32_ports[index].device
-                
-                print(f"✅ Selected: {selected_port}")
-                return selected_port
-            except (ValueError, IndexError):
-                print("❌ Invalid selection, using first device")
-                return esp32_ports[0].device
+            # Keep the argument for existing callers, but never read stdin or
+            # guess which screen to open, even when a console happens to exist.
+            print("Select an explicit COM port in Settings and restart the app.")
+            return None
 
     def connect_serial(self, retries=3):
         """Connect to ESP32 via serial with retry logic - EXACT ORIGINAL IMPLEMENTATION"""
-        if self.port == 'AUTO' or not self.port:
-            detected_port = self.find_esp32_port()
+        if self._auto_port:
+            detected_port = self.find_esp32_port(interactive=False)
             if detected_port:
                 self.port = detected_port
             else:
                 print("❌ Could not auto-detect ESP32. Please specify port manually.")
                 diagnostics.event("SERIAL_CONNECT", result="failure", reason="no_port")
+                if self.tray:
+                    self.tray.update_connection_status("disconnected")
                 return False
         
         for attempt in range(retries):
@@ -536,11 +527,11 @@ class BongoCatEngine:
         self._reconnect_attempts = getattr(self, "_reconnect_attempts", 0) + 1
         if self._reconnect_attempts == 1 or self._reconnect_attempts % 12 == 0:
             diagnostics.event("SERIAL_RECONNECT_ATTEMPT", attempt=self._reconnect_attempts)
-        ports = [self.port] if self.port and self.port != 'AUTO' else []
         if self._auto_port:
             detected = self.find_esp32_port(interactive=False)
-            if detected and detected not in ports:
-                ports.append(detected)
+            ports = [detected] if detected else []
+        else:
+            ports = [self.port] if self.port and self.port != 'AUTO' else []
         for port in ports:
             try:
                 reopened = serial.Serial(
@@ -1899,13 +1890,16 @@ class BongoCatEngine:
                     self.disconnect_serial()
                 return True
             if not connected:
-                return False
+                # Keep tray/settings and the existing workers alive. The update
+                # loop owns reconnection; startup must not add another loop.
+                self._next_reconnect_at = time.monotonic() + 5.0
+                print("Screen unavailable; app remains active and will reconnect.")
             self.running = True
             # Start real-time system monitoring thread
             self.start_system_monitor()
         
         # CRITICAL FIX: Apply config synchronously to prevent thread conflicts  
-        if self.config:
+        if connected and self.config:
             print("⏳ Applying configuration synchronously...")
             if self._stop_requested.wait(2.0):
                 return True
@@ -1918,7 +1912,7 @@ class BongoCatEngine:
             with self._lifecycle_lock:
                 if self._stop_requested.is_set():
                     return True
-                # Start full-duplex media support after the initial handshake.
+                # These same workers also wait for a screen connected later.
                 self.serial_reader_thread = threading.Thread(
                     target=self._serial_reader_loop,
                     name="BongoDeskSerialReader",

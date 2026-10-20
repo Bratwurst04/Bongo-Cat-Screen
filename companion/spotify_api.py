@@ -14,6 +14,7 @@ import secrets
 import threading
 import time
 import math
+import socket
 from collections import deque
 import urllib.error
 import urllib.parse
@@ -22,6 +23,7 @@ import webbrowser
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 from typing import Optional, Tuple
+from atomic_file import atomic_write
 
 from diagnostics import diagnostics
 from api_budget import ApiBudget, BudgetWait, OperationGrant
@@ -35,6 +37,70 @@ API_USAGE_WINDOW_SECONDS = 15 * 60
 QUOTA_RECOVERY_SECONDS = 24 * 60 * 60
 QUOTA_POLL_FLOOR_SECONDS = 60.0
 API_REQUEST_KINDS = ("playback_poll", "playback_urgent", "artwork_fallback", "control")
+MAX_JSON_BYTES = 2 * 1024 * 1024
+MAX_ARTWORK_BYTES = 8 * 1024 * 1024
+
+
+class _NoRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, request, fp, code, message, headers, newurl):
+        raise urllib.error.HTTPError(request.full_url, code, "Redirect refused", headers, None)
+
+
+def _spotify_urlopen(request, *, timeout):
+    """Credentials are sent only to fixed HTTPS origins, never through redirects."""
+    target = urllib.parse.urlsplit(request.full_url)
+    if target.scheme != "https" or target.netloc not in ("api.spotify.com", "accounts.spotify.com"):
+        raise SpotifyApiError("Invalid Spotify endpoint")
+    return urllib.request.build_opener(_NoRedirect()).open(request, timeout=timeout)
+
+
+def _read_limited(response, limit=MAX_JSON_BYTES):
+    payload = response.read(limit + 1)
+    if len(payload) > limit:
+        raise SpotifyApiError("Spotify response exceeded size limit")
+    return payload
+
+
+def _validate_token_json(value):
+    # Interpreter JSON recursion limits differ. Bound structure explicitly so
+    # the same damaged file is rejected on both old and supported build bases.
+    pending = [(value, 0)]
+    remaining = 50000
+    while pending:
+        item, depth = pending.pop()
+        remaining -= 1
+        if depth > 32 or remaining < 0:
+            raise SpotifyApiError("Invalid Spotify token data")
+        if isinstance(item, dict):
+            if any(not isinstance(key, str) for key in item):
+                raise SpotifyApiError("Invalid Spotify token data")
+            pending.extend((child, depth + 1) for child in item.values())
+        elif isinstance(item, list):
+            pending.extend((child, depth + 1) for child in item)
+        elif type(item) not in (str, int, float, bool, type(None)) or (
+                isinstance(item, float) and not math.isfinite(item)):
+            raise SpotifyApiError("Invalid Spotify token response")
+
+
+class _CallbackSocket(socket.socket):
+    """Enforce the flow deadline on every read, including slowly sent headers."""
+    def __init__(self, connection, deadline):
+        super().__init__(connection.family, connection.type, connection.proto,
+                         fileno=connection.detach())
+        self.deadline = deadline
+
+    def recv_into(self, *args, **kwargs):
+        remaining = self.deadline - time.monotonic()
+        if remaining <= 0:
+            raise TimeoutError("Authorization deadline reached")
+        self.settimeout(min(2.0, remaining))
+        return super().recv_into(*args, **kwargs)
+
+
+class _CallbackServer(HTTPServer):
+    def get_request(self):
+        connection, address = super().get_request()
+        return _CallbackSocket(connection, self.deadline), address
 
 
 class SpotifyApiError(RuntimeError):
@@ -211,18 +277,36 @@ class SpotifyApiBridge:
         ).rstrip(b"=").decode("ascii")
         state = secrets.token_urlsafe(24)
         result = {}
+        deadline = time.monotonic() + max(0, float(timeout_seconds))
+        redirect = urllib.parse.urlsplit(REDIRECT_URI)
 
         class CallbackHandler(BaseHTTPRequestHandler):
+            def setup(self):
+                # HTTPServer.timeout only bounds accept(); also bound an accepted
+                # client that sends partial headers or never finishes a request.
+                self.request.settimeout(max(0.001, min(2.0, deadline - time.monotonic())))
+                super().setup()
+
             def do_GET(self):
-                query = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
-                result["code"] = query.get("code", [""])[0]
-                result["state"] = query.get("state", [""])[0]
-                result["error"] = query.get("error", [""])[0]
-                ok = bool(result["code"] and result["state"] == state)
+                target = urllib.parse.urlsplit(self.path)
+                try:
+                    query = urllib.parse.parse_qs(target.query, keep_blank_values=True,
+                                                  max_num_fields=16)
+                except ValueError:
+                    query = {}
+                ok = (time.monotonic() < deadline and
+                      not target.scheme and not target.netloc and not target.fragment and
+                      target.path == redirect.path and
+                      self.headers.get_all("Host", []) == [redirect.netloc] and
+                      all(len(values) == 1 for values in query.values()) and
+                      query.get("state") == [state] and
+                      bool(query.get("code", [""])[0]) != bool(query.get("error", [""])[0]))
+                if ok:
+                    result.update({key: query.get(key, [""])[0] for key in ("code", "error")})
                 body = (
                     "<html><body style='font-family:sans-serif;background:#101214;color:#fff;"
-                    "text-align:center;padding:60px'><h1>Spotify anslutet</h1>"
-                    "<p>Du kan stanga den har fliken och aterga till BongoDesk.</p></body></html>"
+                    "text-align:center;padding:60px'><h1>Svaret mottaget</h1>"
+                    "<p>Aterga till Bongo Cat for att se anslutningsresultatet.</p></body></html>"
                     if ok else
                     "<html><body><h1>Spotify-kopplingen misslyckades</h1>"
                     "<p>Stang fliken och forsok igen.</p></body></html>"
@@ -231,14 +315,15 @@ class SpotifyApiBridge:
                 self.send_response(200 if ok else 400)
                 self.send_header("Content-Type", "text/html; charset=utf-8")
                 self.send_header("Content-Length", str(len(payload)))
+                self.send_header("Cache-Control", "no-store")
                 self.end_headers()
                 self.wfile.write(payload)
 
             def log_message(self, *args):
                 return
 
-        server = HTTPServer(("127.0.0.1", 43821), CallbackHandler)
-        server.timeout = timeout_seconds
+        server = _CallbackServer(("127.0.0.1", 43821), CallbackHandler)
+        server.deadline = deadline
         auth_query = urllib.parse.urlencode(
             {
                 "client_id": self.client_id,
@@ -250,14 +335,19 @@ class SpotifyApiBridge:
                 "state": state,
             }
         )
-        webbrowser.open(f"{ACCOUNTS_URL}/authorize?{auth_query}")
-        server.handle_request()
-        server.server_close()
+        try:
+            if not webbrowser.open(f"{ACCOUNTS_URL}/authorize?{auth_query}"):
+                raise SpotifyApiError("Could not open the authorization browser")
+            while not result and time.monotonic() < deadline:
+                server.timeout = max(0.001, deadline - time.monotonic())
+                server.handle_request()
+        finally:
+            server.server_close()
 
         if result.get("error"):
-            raise SpotifyApiError(f"Spotify authorization denied: {result['error']}")
-        if not result.get("code") or result.get("state") != state:
-            raise SpotifyApiError("Spotify authorization timed out or state did not match")
+            raise SpotifyApiError("Spotify authorization denied")
+        if not result.get("code"):
+            raise SpotifyApiError("Spotify authorization timed out")
 
         payload = self._form_request(
             f"{ACCOUNTS_URL}/api/token",
@@ -425,7 +515,7 @@ class SpotifyApiBridge:
                 "refresh_token": refresh_token,
             },
         )
-        if "refresh_token" not in payload:
+        if isinstance(payload, dict) and "refresh_token" not in payload:
             payload["refresh_token"] = refresh_token
         self._set_tokens(payload)
 
@@ -500,7 +590,7 @@ class SpotifyApiBridge:
             self._tokens['adaptive_next_allowed_at']=actual_now+self._current_interval()
             self._tokens['adaptive_request_total']=int(self._tokens.get('adaptive_request_total',0))+1
             try:
-                with urllib.request.urlopen(request,timeout=8) as response:
+                with _spotify_urlopen(request,timeout=8) as response:
                     if playback_read:
                         status = getattr(response, "status", None)
                         diagnostics.event(http_event(), source="spotify_api",
@@ -516,7 +606,7 @@ class SpotifyApiBridge:
                     # retry or discard its reserved confirmation.
                     if empty_ok:
                         return None
-                    return response.read()
+                    return _read_limited(response)
             except urllib.error.HTTPError as error:
                 if playback_read:
                     diagnostics.event(http_event(), source="spotify_api",
@@ -632,8 +722,7 @@ class SpotifyApiBridge:
                     **self._api_usage_counts,
                 )
                 raise SpotifyRateLimitError(retry_after, reason, request_kind) from exc
-            detail = exc.read().decode("utf-8", "replace")[:300]
-            raise SpotifyApiError(f"Spotify API {exc.code}: {detail}") from exc
+            raise SpotifyApiError(f"Spotify API request failed (HTTP {exc.code})") from exc
         except urllib.error.URLError as exc:
             raise SpotifyApiError("Spotify API connection failed") from exc
 
@@ -667,9 +756,14 @@ class SpotifyApiBridge:
 
     @staticmethod
     def _download(url: str) -> bytes:
+        target = urllib.parse.urlsplit(url)
+        if target.scheme != "https" or not target.hostname or target.username or target.password:
+            raise SpotifyApiError("Invalid artwork URL")
         request = urllib.request.Request(url, headers={"User-Agent": "BongoDeskSpotify/3"})
-        with urllib.request.urlopen(request, timeout=10) as response:
-            return response.read(8 * 1024 * 1024)
+        # Artwork carries no Authorization header. Reject redirects here too,
+        # keeping HTTP/file redirects outside the image decoder's input path.
+        with urllib.request.build_opener(_NoRedirect()).open(request, timeout=10) as response:
+            return _read_limited(response, MAX_ARTWORK_BYTES)
 
     @staticmethod
     def _form_request(url: str, values: dict) -> dict:
@@ -680,33 +774,76 @@ class SpotifyApiBridge:
             headers={"Content-Type": "application/x-www-form-urlencoded"},
         )
         try:
-            with urllib.request.urlopen(request, timeout=10) as response:
-                return json.loads(response.read().decode("utf-8"))
+            with _spotify_urlopen(request, timeout=10) as response:
+                return json.loads(_read_limited(response).decode("utf-8"))
         except urllib.error.HTTPError as exc:
-            detail = exc.read().decode("utf-8", "replace")[:300]
-            raise SpotifyApiError(f"Spotify token error {exc.code}: {detail}") from exc
+            raise SpotifyApiError(f"Spotify token request failed (HTTP {exc.code})") from exc
+        except (urllib.error.URLError, UnicodeError, ValueError, RecursionError) as exc:
+            raise SpotifyApiError("Spotify token response failed") from exc
 
     def _load_tokens(self) -> dict:
         try:
             if self.token_path.exists():
-                return json.loads(self.token_path.read_text(encoding="utf-8"))
-        except Exception:
-            pass
+                with self.token_path.open("rb") as stream:
+                    tokens = json.loads(_read_limited(stream).decode("utf-8"))
+                if not isinstance(tokens, dict):
+                    raise ValueError("Token store must be an object")
+                _validate_token_json(tokens)
+                for key in ("access_token", "refresh_token"):
+                    if key in tokens and (not isinstance(tokens[key], str) or
+                                          not tokens[key] or len(tokens[key]) > 16384 or
+                                          any(ord(c) < 32 or ord(c) > 126 for c in tokens[key])):
+                        raise ValueError("Invalid stored credential")
+                for key, value in tokens.items():
+                    numeric = (key in ("expires_at", "expires_in", "rate_limit_until") or
+                               key.startswith("adaptive_") and
+                               (key.endswith(("_at", "_seconds", "_until")) or
+                                key in ("adaptive_request_total", "adaptive_total_429",
+                                        "adaptive_total_429_since", "adaptive_total_429_legacy_events")))
+                    if numeric and (type(value) not in (int, float) or
+                                    not 0 <= value <= 1e15 or not math.isfinite(value)):
+                        raise ValueError("Invalid stored token metadata")
+                json.dumps(tokens, allow_nan=False)
+                return tokens
+        except (OSError, UnicodeError, ValueError, RecursionError) as exc:
+            # Do not silently re-save an empty store over existing credentials.
+            raise SpotifyApiError("Spotify token file could not be loaded; retained unchanged") from exc
         return {}
 
     def _set_tokens(self, payload: dict) -> None:
+        if not isinstance(payload, dict):
+            raise SpotifyApiError("Invalid Spotify token response")
+        _validate_token_json(payload)
+        for key in ("access_token", "refresh_token"):
+            value = payload.get(key)
+            if (not isinstance(value, str) or not value or len(value) > 16384 or
+                    any(ord(c) < 32 or ord(c) > 126 for c in value)):
+                raise SpotifyApiError("Invalid Spotify token response")
+        expires = payload.get("expires_in")
+        if (type(expires) not in (int, float) or not 0 < expires <= 86400 or
+                not math.isfinite(expires) or
+                str(payload.get("token_type", "Bearer")).lower() != "bearer"):
+            raise SpotifyApiError("Invalid Spotify token response")
         rate_limit_until = self._rate_limit_until()
         pacing_state = {
             key: value for key, value in self._tokens.items()
             if key.startswith("adaptive_")
         }
         tokens = dict(payload)
-        tokens["expires_at"] = time.time() + int(tokens.get("expires_in", 3600))
+        tokens["expires_at"] = time.time() + expires
         if rate_limit_until > time.time():
             tokens["rate_limit_until"] = rate_limit_until
         tokens.update(pacing_state)
+        previous = self._tokens
         self._tokens = tokens
-        self._save_tokens()
+        try:
+            self._save_tokens()
+        except OSError:
+            self._tokens = previous
+            raise
+        except (ValueError, TypeError, RecursionError) as exc:
+            self._tokens = previous
+            raise SpotifyApiError("Invalid Spotify token response") from exc
 
     def _configure_pacing_locked(self, settings: dict, reset_if_missing: bool) -> None:
         initial = float(settings.get("api_initial_interval_seconds", 1.0))
@@ -942,7 +1079,5 @@ class SpotifyApiBridge:
             return 0.0
 
     def _save_tokens(self) -> None:
-        self.token_path.parent.mkdir(parents=True, exist_ok=True)
-        temporary = self.token_path.with_name(self.token_path.name + ".tmp")
-        temporary.write_text(json.dumps(self._tokens, indent=2), encoding="utf-8")
-        temporary.replace(self.token_path)
+        payload = json.dumps(self._tokens, indent=2, allow_nan=False).encode("utf-8")
+        atomic_write(self.token_path, payload)

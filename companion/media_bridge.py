@@ -29,6 +29,7 @@ from spotify_api import (
 )
 from winrt.windows.media.control import (
     GlobalSystemMediaTransportControlsSessionManager,
+    GlobalSystemMediaTransportControlsSessionPlaybackStatus as PlaybackStatus,
 )
 from winrt.windows.storage.streams import DataReader
 
@@ -121,10 +122,17 @@ class WindowsMediaBridge:
         self._api_artwork_complete_key = ""
         self._api_artwork_missing_reported = False
         self._spotify = None
+        self._spotify_load_error = False
         if spotify_client_id and spotify_token_path:
-            self._spotify = SpotifyApiBridge(
-                spotify_client_id, spotify_token_path, self._spotify_settings
-            )
+            try:
+                self._spotify = SpotifyApiBridge(
+                    spotify_client_id, spotify_token_path, self._spotify_settings
+                )
+            except SpotifyApiError:
+                # Keep tray, settings and local media available, while leaving
+                # unreadable credentials untouched for deliberate recovery.
+                self._on_error("Spotify token file could not be loaded; retained unchanged")
+                self._spotify_load_error = True
 
     def start(self) -> None:
         if self._thread and self._thread.is_alive():
@@ -350,7 +358,8 @@ class WindowsMediaBridge:
     def status(self) -> dict:
         """Return diagnostic state only; this never polls Spotify."""
         if self._spotify is None:
-            spotify = {"state": "not_configured"}
+            spotify = ({"state": "error", "message": "Spotify token file could not be loaded; retained unchanged"}
+                       if self._spotify_load_error else {"state": "not_configured"})
         else:
             spotify = self._spotify.status()
         effective = None
@@ -745,7 +754,7 @@ class WindowsMediaBridge:
         other_media_playing = False
         for session in sessions:
             try:
-                if str(session.get_playback_info().playback_status).endswith("PLAYING"):
+                if session.get_playback_info().playback_status == PlaybackStatus.PLAYING:
                     other_media_playing = True
                     break
             except Exception:
@@ -948,7 +957,7 @@ class WindowsMediaBridge:
         source = self._friendly_source(source_id)
         title = props.title or "Unknown track"
         artist = props.artist or props.album_artist or "Unknown artist"
-        playing = str(playback.playback_status).endswith("PLAYING")
+        playing = playback.playback_status == PlaybackStatus.PLAYING
 
         position = max(0, int(timeline.position.total_seconds()))
         duration = max(0, int(timeline.end_time.total_seconds()))
@@ -1073,7 +1082,14 @@ class WindowsMediaBridge:
         conversion with LVGL's own colour helper, avoiding controller-specific
         RGB565 byte-order differences.
         """
-        with Image.open(io.BytesIO(image_bytes)) as source:
+        if not image_bytes or len(image_bytes) > 8 * 1024 * 1024:
+            raise ValueError("Artwork exceeds byte limit")
+        # Restrict decoder selection before opening untrusted SMTC/API input.
+        with Image.open(io.BytesIO(image_bytes), formats=("JPEG", "PNG")) as source:
+            if (source.width <= 0 or source.height <= 0 or
+                    max(source.size) > 4096 or source.width * source.height > 16 * 1024 * 1024 or
+                    getattr(source, "is_animated", False)):
+                raise ValueError("Unsupported artwork dimensions or animation")
             album_box = spotify_smtc_album_box(source) if windows_spotify_thumbnail else None
             source_rgb = (source.crop(album_box) if album_box is not None else source).convert("RGB")
             # Spotify's Windows thumbnail can include a tiny source badge at

@@ -10,12 +10,13 @@ import sys
 from types import SimpleNamespace as NS
 import unittest
 from unittest.mock import AsyncMock, Mock, patch
-from PIL import Image, ImageDraw
+from PIL import Image, ImageDraw, UnidentifiedImageError
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path[:0] = [str(ROOT/'companion'), str(ROOT/'tests')]
 from artwork_crop import spotify_smtc_album_box
 from media_bridge import WindowsMediaBridge
+from winrt.windows.media.control import GlobalSystemMediaTransportControlsSessionPlaybackStatus as PlaybackStatus
 from frozen_source import load_module
 
 FIXTURE = ROOT/'build/artwork-crop-2026-10-19/fixtures/whoopty-source.png'
@@ -134,6 +135,12 @@ class CropTests(unittest.TestCase):
         for name, payload in self.negatives():
             with self.subTest(name=name):
                 self.assertIsNone(detect(payload))
+                if name == 'transparent WEBP unsupported':
+                    for windows_thumbnail in (False, True):
+                        with self.assertRaises(UnidentifiedImageError):
+                            WindowsMediaBridge._to_vinyl_rgb888(
+                                payload, windows_spotify_thumbnail=windows_thumbnail)
+                    continue
                 expected = old(payload)
                 self.assertEqual(WindowsMediaBridge._to_vinyl_rgb888(payload), expected)
                 self.assertEqual(WindowsMediaBridge._to_vinyl_rgb888(payload, windows_spotify_thumbnail=True), expected)
@@ -147,7 +154,7 @@ class CropTests(unittest.TestCase):
         session.try_get_media_properties_async = AsyncMock(return_value=NS(
             title='unrelated title', artist='unrelated artist', album_artist='', album_title='',
             track_number=1, thumbnail=object()))
-        session.get_playback_info.return_value.playback_status = 'PLAYING'
+        session.get_playback_info.return_value.playback_status = PlaybackStatus.PLAYING
         session.get_timeline_properties.return_value = NS(position=dt.timedelta(seconds=1),
             end_time=dt.timedelta(seconds=100), last_updated_time=dt.datetime.now(dt.timezone.utc))
         return session

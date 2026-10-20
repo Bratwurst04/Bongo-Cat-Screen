@@ -36,7 +36,7 @@ class Response:
 
     def __enter__(self): return self
     def __exit__(self, *args): return False
-    def read(self): return self.payload
+    def read(self, size=-1): return self.payload if size < 0 else self.payload[:size]
 
 
 def frozen_client():
@@ -105,7 +105,7 @@ class ControlConfirmationTests(unittest.TestCase):
 
         with patch('time.time', new=lambda: clock.now), \
              patch('time.monotonic', new=lambda: clock.mono), \
-             patch('urllib.request.urlopen', new=http), \
+             patch('urllib.request.urlopen', new=http), patch('spotify_api._spotify_urlopen', new=http), \
              patch('media_bridge.asyncio.sleep', new=sleep), \
              patch('media_bridge.diagnostics.event') as event, \
              patch('media_bridge.SpotifyApiError',client._api_request_locked.__globals__['SpotifyApiError']), \
@@ -185,7 +185,7 @@ class ControlConfirmationTests(unittest.TestCase):
             with patch('time.time',new=lambda:clock.now),patch('time.monotonic',new=lambda:clock.mono):
                 api=SpotifyApiBridge('fixture',Path(folder)/'tokens.json')
                 api._tokens.update(access_token='fixture',refresh_token='fixture',expires_at=clock.now+86400)
-                with patch('urllib.request.urlopen',return_value=Response(b'not-json',200)):
+                with patch('spotify_api._spotify_urlopen',return_value=Response(b'not-json',200)):
                     with self.assertRaises(json.JSONDecodeError):api.get_playback()
                 self.assertEqual(api._budget.view()['long_used'],1)
 

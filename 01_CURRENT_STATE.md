@@ -1,5 +1,66 @@
 # Bongo Cat – Current State
 
+## Aktuellt 2026-10-20 – C421 installerad/PLAY-status accepterad, rullning öppen
+
+- Lead installerade **C42112AD/EBB334A9/921600**, verifierad B701-/profilbackup,
+  endast EXE bytt. Aktuella profiler/auth/budget/Run/två genvägar bevarade.
+  Faktisk Startmenystart och två observationer; den senare 13:35:14,692 visar
+  statusålder 0,165 s, ansluten ESP och aktiv Windows Spotify/API `ready`.
+- Användaren: **”Spelstatus rätt, rullningen rycker fortfarande”**, sedan jämn
+  vid PAUSED. Snäv PLAY/PAUSE-acceptans; rullningsfelet kvarstår efter full bild.
+  Ingen ny allmän omslags-/animationsacceptans. Aktiv vinyl/renderbelastning
+  utreds; ingen rotations-/font-/touchändring. Separata firmwarekandidater är
+  byggda oflashade och ska inte beskrivas som färdig rullningsfix.
+- Fyra kompakt READY→ACK 541/459/479/640 ms, tre full SLOT→ACK 3099/3118/3937 ms,
+  första försök. Verkliga capability/inference-händelser och två lyckade NEXT-
+  kontrollkedjor observerades; inga LCD-tider eller rå-UART-rotorsak bevisas.
+- **B846FF52**, 937 360 byte, normal labeleffektivisering och **D7DA9953**,
+  938 192 byte, separat gated mätprofil: byggda/granskade, inte flashade.
+  Normal bin saknar diagnoshooks; diagnosen rapporterar anonym RAM-timing glesare
+  än per frame. EBB/C421 bevarade. **368 funna/359 PASS/nio klassade SKIP/noll
+  fel eller blockerade operationer**, inklusive fem label-/sex timingnativeprov.
+  Se [firmwarekandidater, fulla hashar och provgränser](docs/render-measurement-2026-10-20.md).
+
+### Historik: 092 underkänd/rollback och C421 byggstatus före installation
+
+- Användaren underkände **092E4E7D**: skärmen visade paus trots uppspelning.
+  Lead återställde exakt **B7019579/EBB334A9/921600** 13:26:42. Nuvarande
+  profiler/auth/budget behölls, ingen credentialrollback; Run/genvägar och
+  firmware oförändrade. Ny faktisk Startmenystart gjordes.
+  Användaren bekräftade fungerande B701 men preciserade att **textrullningen
+  rycker**. Orsaken utreds separat; ingen textfix ingår i enumrättningen.
+- **C42112AD**, **22 856 796 byte**, är byggd/paketgranskad men inte installerad.
+  Verklig WinRT-PLAYING blev strängen `4` på Python 3.13; två äldre
+  strängjämförelser är ersatta av typad enumjämförelse. 31 fokuserade prov PASS,
+  inklusive fyra nya riktiga SDK-status-/wireprov. Ren svit på exakt byggbas:
+  **357 funna/348 PASS/nio klassade SKIP/noll fel eller blockerade operationer**.
+  Installation och snävt nytt spelstatusprov genomfördes därefter enligt ovan.
+
+### Historik: första kommittépaketet 092 före underkänt prov
+
+- Ny companion **092E4E7D**, **22 856 667 byte**, är byggd/paketgranskad med
+  **CPython 3.13.16/Pillow 13.0.0**. Lead installerade **092E4E7D/EBB334A9
+  vid 921600** 13:19–13:21 med verifierad tidigare app-/profilbackup och
+  oförändrade profiler/Run/genvägar. Ingen firmwarebyggning/flash eller release.
+- Appen överlever saknad skärm; AUTO gissar inte bland flera portar. Settings
+  har port/baud med uttrycklig omstart. Config/backup och tokens skrivs atomiskt;
+  robust OAuth/instansägarskap och HTTP-/JPEG/PNG-gränser är verifierade i kod.
+- Slutlig ren snapshot på 3.13.16: **353 funna/344 PASS/nio klassade SKIP,
+  noll fel/externa blockerade operationer**. 100 fokuserade backendprov och
+  sista 24 auth/configprov PASS; UI:s 72 nya + 580 befintliga kontroller PASS.
+  14 paketerade produktmoduler och sex resurser matchar; Lead har granskat
+  arkivet oberoende. En äldre WEBP-testförväntning rättades till avvisning.
+- Faktisk Startmenygenväg startade rätt hash; två färska observationer visar
+  ansluten ESP och aktiv Windows Spotify, lokalt API-tillstånd `ready`.
+  Första kompakta READY→ACK var 630 ms efter explicit bas+COMPACT; ingen full-
+  ACK ännu i uppstartsprovet. Detta är inga nya LCD-/skärpningsmått.
+- 092:s fysiska regression underkändes enligt senaste status ovan. För rättad
+  kandidat är fysisk acceptans, faktiskt kontolänknings-/portfältprov och sleep/resume
+  väntar. Tokens är fortsatt klartext; DPAPI, aktiv frånkoppling, bred Spotify-
+  distribution/licenser och signerad leverans är öppna. Se
+  [rapport och kandidatens fulla hash](docs/product-committee-2026-10-20.md).
+  Historik, gamla källfrysningar och releasefiler är bevarade.
+
 ## Aktuellt 2026-10-20 – B7019579/EBB334A9 installerat och snävt skärmprovat
 
 - Lead installerade **B7019579**, 19 664 148 byte, på kanonisk plats efter

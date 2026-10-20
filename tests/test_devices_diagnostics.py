@@ -95,7 +95,7 @@ class DevicesDiagnosticTests(unittest.TestCase):
             await real_sleep(0)
 
         with patch('time.time', new=lambda: clock.now), patch('time.monotonic', new=lambda: clock.mono), \
-             patch('urllib.request.urlopen', new=http), patch('media_bridge.asyncio.sleep', new=sleep), \
+             patch('spotify_api._spotify_urlopen', new=http), patch('media_bridge.asyncio.sleep', new=sleep), \
              patch('diagnostics.diagnostics.event') as event, \
              patch('media_bridge.GlobalSystemMediaTransportControlsSessionManager.request_async',
                    new_callable=AsyncMock, return_value=Mock(get_sessions=lambda: [session] if windows else [])):
@@ -259,7 +259,7 @@ class DevicesDiagnosticTests(unittest.TestCase):
                         if block == 'retry': state['retry_until'] = now + 60
                         if block == 'clock': state['clock_guard'] = now + 60
                     budget.store.update(budget._factory, guard)
-                    with patch('urllib.request.urlopen') as http:
+                    with patch('spotify_api._spotify_urlopen') as http:
                         if block == 'io':
                             with patch.object(budget.store, 'save', side_effect=BudgetWait(60, 'history_io')):
                                 with self.assertRaises(SpotifyPacingError):
@@ -322,7 +322,7 @@ class DevicesDiagnosticTests(unittest.TestCase):
                         api = SpotifyApiBridge('fixture', root/'tokens.json')
                         api._tokens.update(access_token='SECRET-token', refresh_token='fixture', expires_at=clock.now+86400)
                         with patch('spotify_api.diagnostics', diag), \
-                             patch('urllib.request.urlopen', return_value=Response(body, 200)) as http:
+                             patch('spotify_api._spotify_urlopen', return_value=Response(body, 200)) as http:
                             self.assertEqual(api.diagnose_devices(lambda: True), expected == 'valid')
                             self.assertEqual(http.call_count, 1)
                     diag._handler.flush(); log = (root/'logs/events.log').read_text(encoding='utf-8')
@@ -381,7 +381,7 @@ class DevicesDiagnosticTests(unittest.TestCase):
                 bridge._wait_for_spotify_work = wait
                 with patch.object(budget, 'http_attempt', side_effect=attempt), \
                      patch.object(budget.store, 'save', side_effect=save), \
-                     patch('urllib.request.urlopen', side_effect=http), \
+                     patch('spotify_api._spotify_urlopen', side_effect=http), \
                      patch('diagnostics.diagnostics.event') as events, \
                      patch('media_bridge.GlobalSystemMediaTransportControlsSessionManager.request_async',
                            new_callable=AsyncMock, return_value=Mock(get_sessions=lambda: [])):

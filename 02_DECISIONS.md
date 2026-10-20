@@ -1,5 +1,61 @@
 # Bongo Cat – Architecture Decisions
 
+## 2026-10-20 – Installed C421; playback accepted, separate render measurements
+
+- Lead installed exact C42112AD/EBB334A9/921600 with verified backups and current
+  profiles/Run/shortcuts retained. Actual Start-menu launch/fresh connected
+  Windows Spotify status passed. User accepted corrected PLAY/PAUSE status.
+- Scrolling still stutters while playing and becomes smooth when paused, even
+  after artwork completes. Rotation/render load is a hypothesis to measure;
+  the label-only optimization must not be presented as a proven scrolling fix.
+- Separate normal-label **B846FF52** and gated render-measurement **D7DA9953**
+  candidates are built/statically reviewed, not flashed. Normal mode has no
+  diagnostic hooks/output; measurement mode adds sparse anonymous RAM timings.
+  Rotation/full invalidation and RX contract are preserved. Fresh suite:
+  368 discovered/359 PASS/nine classified SKIP/zero errors or blocked operations.
+  Actual LVGL phase/TFT smoothness remains untested. See the
+  [separate firmware evidence](docs/render-measurement-2026-10-20.md).
+  No flashing without separate exact-candidate approval. C421 app stays unchanged.
+- Keep rejected 092/rollback/startup measurements as history. C421 compact
+  ACK459–640ms/full ACK3099–3937ms are transport results, not LCD guarantees;
+  inference events are observed but do not prove raw UART loss/root cause.
+
+## 2026-10-20 – Reject 092 playback regression; typed WinRT status fix
+
+- The user rejected 092E4E7D: display PAUSED while actual playback continued.
+  Lead restored exact B7019579/EBB334A9/921600 at 13:26:42, preserving current
+  config/auth/budget/Run/shortcuts; credentials were not rolled back.
+- Python 3.11+ IntEnum string conversion exposed two old name-string checks.
+  Compare the real WinRT playback enum directly in both Windows paths. Add
+  actual SDK enum/state/wire tests and replace old string-only session fixtures.
+- C42112AD, 22,856,796 bytes, is built/statically reviewed with 31 focused
+  checks passing. Exact-base suite:357 discovered/348 PASS/nine classified
+  SKIP/zero errors or blocked operations. New installation/physical acceptance
+  remain pending. Preserve rejected 092 and its startup evidence as history;
+  no firmware, release, merge or Git publication before the regression gate.
+
+## 2026-10-20 – First bounded product hardening package
+
+- Keep public source and prioritize the local hobby product. Broad Spotify
+  distribution, payment, artwork presentation and complete third-party license
+  obligations remain separate decisions; this package does not clear them.
+- Fix actual startup/config/OAuth/HTTP/image-input defects with existing workers,
+  guarded single-instance token ownership, atomic files and bounded parsing.
+  Preserve animations, serial protocol, compact/refine/cache and firmware.
+- Use official project-local CPython 3.13.16 with Tcl/Tk and Pillow 13.0.0 for
+  the reviewed candidate. No global Python/registry/PATH changes. Plaintext token
+  encryption/migration and active disconnect UI remain the next separate scope.
+- Add isolated fresh-source checks, SHA-pinned CI actions, dependency update
+  configuration and public SECURITY/PRIVACY documents. Source CI is distinct
+  from remote run evidence. Default-main alerts do not certify a feature build.
+- Lead installed **092E4E7D**, 22,856,667 bytes, after reviewed build/archive and
+  verified app/profile backups. Actual Start-menu launch and two fresh connected
+  Windows Spotify observations passed with profiles/Run/shortcuts preserved.
+  Compact READY→ACK 630 ms is transport evidence, not LCD/sharpening acceptance;
+  new physical regression remains pending. No new firmware, tag or release.
+  Preserve old freezes and dated reports. See the
+  [review and limitations](docs/product-committee-2026-10-20.md).
+
 ## 2026-10-20 – Installed B7019579; explicit CAPS and bounded physical acceptance
 
 - Lead installed the user-approved B7019579 with unchanged EBB334A9/921600

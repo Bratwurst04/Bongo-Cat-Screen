@@ -15,6 +15,7 @@ ROOT=Path(__file__).resolve().parents[1]
 sys.path.insert(0,str(ROOT/'companion'))
 from api_budget import ApiBudget
 from media_bridge import WindowsMediaBridge, MediaSnapshot
+from winrt.windows.media.control import GlobalSystemMediaTransportControlsSessionPlaybackStatus as PlaybackStatus
 from spotify_api import SpotifyApiBridge
 from test_api_control_confirmation import Clock, Response
 
@@ -121,7 +122,7 @@ class ManualRefreshTests(unittest.TestCase):
             await real_sleep(0)
 
         with patch('time.time',new=lambda:clock.now),patch('time.monotonic',new=lambda:clock.mono), \
-             patch('urllib.request.urlopen',new=http),patch('media_bridge.asyncio.sleep',new=sleep), \
+             patch('spotify_api._spotify_urlopen',new=http),patch('media_bridge.asyncio.sleep',new=sleep), \
              patch('media_bridge.GlobalSystemMediaTransportControlsSessionManager.request_async',
                    new_callable=AsyncMock,return_value=Mock(get_sessions=sessions)):
             # Keep the manual preemption stress case at an explicit 60s day
@@ -292,7 +293,7 @@ class ManualRefreshTests(unittest.TestCase):
         session=Mock(source_app_user_model_id='Spotify.exe')
         session.try_get_media_properties_async=AsyncMock(return_value=NS(title='fixture',artist='fixture',
             album_artist='',album_title='',track_number=1,thumbnail=object()))
-        session.get_playback_info.return_value.playback_status='PAUSED'
+        session.get_playback_info.return_value.playback_status=PlaybackStatus.PAUSED
         session.get_timeline_properties.return_value=NS(position=dt.timedelta(seconds=3),
             end_time=dt.timedelta(seconds=180))
         with patch.object(bridge,'_read_thumbnail',new_callable=AsyncMock,return_value=b'png') as thumbnail, \

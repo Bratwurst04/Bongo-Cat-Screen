@@ -11,6 +11,7 @@
 #include <ctype.h>
 #include <math.h>
 #include <stdlib.h>
+#include <string.h>
 #include <atomic>
 #include <freertos/queue.h>
 #include <freertos/task.h>
@@ -28,6 +29,13 @@
 #include "media_art_v2.h"
 #include "media_art_compact.h"
 #include "serial_line_receiver.h"
+
+#ifndef BONGO_RENDER_DIAGNOSTICS
+#define BONGO_RENDER_DIAGNOSTICS 0
+#endif
+#if BONGO_RENDER_DIAGNOSTICS
+#include "render_diagnostics.h"
+#endif
 
 // Display settings
 #define SCREEN_WIDTH 240
@@ -205,6 +213,39 @@ MediaArtV2Transfer media_art_v2(MEDIA_ART_RGB_BYTES, COMPACT_ART_BYTES);
 MediaArtV2Transfer media_art_v2(MEDIA_ART_RGB_BYTES);
 #endif
 bool media_art_compact_active = false;
+#if BONGO_RENDER_DIAGNOSTICS
+static RenderDiagnostics render_diagnostics;
+
+static void serviceRenderDiagnostics(uint32_t now_ms) {
+    if (!render_diagnostics.reportDue(now_ms)) return;
+    for (unsigned int group = 0; group < 4; ++group) {
+        const RenderTimingGroup &sample = render_diagnostics.groups[group];
+        if (!sample.handler.count && !sample.flush.count) continue;
+        // G/H/F: count,max_us, then <=1/4/16/33/66ms and >66ms bins.
+        // One anonymous numeric line per active mode/transfer group per 15s.
+        char line[512];
+        snprintf(line, sizeof(line),
+                 "DIAG_RENDER:M:%u,T:%u,G:%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu"
+                 ",H:%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu"
+                 ",F:%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu",
+                 group & 1U, (group >> 1U) & 1U,
+                 (unsigned long)sample.gap.count, (unsigned long)sample.gap.maximum_us,
+                 (unsigned long)sample.gap.bins[0], (unsigned long)sample.gap.bins[1],
+                 (unsigned long)sample.gap.bins[2], (unsigned long)sample.gap.bins[3],
+                 (unsigned long)sample.gap.bins[4], (unsigned long)sample.gap.bins[5],
+                 (unsigned long)sample.handler.count, (unsigned long)sample.handler.maximum_us,
+                 (unsigned long)sample.handler.bins[0], (unsigned long)sample.handler.bins[1],
+                 (unsigned long)sample.handler.bins[2], (unsigned long)sample.handler.bins[3],
+                 (unsigned long)sample.handler.bins[4], (unsigned long)sample.handler.bins[5],
+                 (unsigned long)sample.flush.count, (unsigned long)sample.flush.maximum_us,
+                 (unsigned long)sample.flush.bins[0], (unsigned long)sample.flush.bins[1],
+                 (unsigned long)sample.flush.bins[2], (unsigned long)sample.flush.bins[3],
+                 (unsigned long)sample.flush.bins[4], (unsigned long)sample.flush.bins[5]);
+        Serial.println(line);
+    }
+    render_diagnostics.clearWindow();
+}
+#endif
 SerialLineReceiver<SERIAL_LINE_BYTES> serial_line_receiver;
 BufferedSerialSource<HardwareSerial, SERIAL_LINE_BYTES> &serialInput() {
     static BufferedSerialSource<HardwareSerial, SERIAL_LINE_BYTES> input(Serial);
@@ -524,6 +565,9 @@ void refreshFeatureOverlay() {
 
 // Function to flush the display buffer
 void my_disp_flush(lv_disp_drv_t *disp, const lv_area_t *area, lv_color_t *color_p) {
+#if BONGO_RENDER_DIAGNOSTICS
+    const uint32_t render_flush_start_us = micros();
+#endif
     uint32_t w = (area->x2 - area->x1 + 1);
     uint32_t h = (area->y2 - area->y1 + 1);
 
@@ -536,6 +580,10 @@ void my_disp_flush(lv_disp_drv_t *disp, const lv_area_t *area, lv_color_t *color
     tft.endWrite();
 
     lv_disp_flush_ready(disp);
+#if BONGO_RENDER_DIAGNOSTICS
+    render_diagnostics.recordFlush(render_flush_start_us, micros(),
+                                   media_is_playing, media_art_receiving || media_art_v2.active);
+#endif
 }
 
 // Update system stats display
@@ -690,6 +738,12 @@ String formatMediaTime(uint32_t total_seconds) {
     return String(value);
 }
 
+static void setMediaLabelTextIfChanged(lv_obj_t *label, const char *text) {
+    if (label && strcmp(lv_label_get_text(label), text) != 0) {
+        lv_label_set_text(label, text);
+    }
+}
+
 void refreshMediaProgressUi() {
     if (!media_progress_bar) return;
     int progress = 0;
@@ -699,10 +753,10 @@ void refreshMediaProgressUi() {
         progress = (int)(scaled_progress > 1000 ? 1000 : scaled_progress);
     }
     lv_bar_set_value(media_progress_bar, progress, LV_ANIM_OFF);
-    lv_label_set_text(media_elapsed_label,
-                      formatMediaTime(media_position_seconds).c_str());
-    lv_label_set_text(media_duration_label,
-                      formatMediaTime(media_duration_seconds).c_str());
+    setMediaLabelTextIfChanged(media_elapsed_label,
+                              formatMediaTime(media_position_seconds).c_str());
+    setMediaLabelTextIfChanged(media_duration_label,
+                              formatMediaTime(media_duration_seconds).c_str());
 }
 
 void drawDjSprite(const DjSprite &sprite) {
@@ -743,27 +797,31 @@ void renderMediaCat() {
 void refreshMediaUi() {
     if (!media_screen) return;
 
-    lv_label_set_text(media_source_label, media_source.c_str());
+    setMediaLabelTextIfChanged(media_source_label, media_source.c_str());
     lv_obj_align(media_source_label, LV_ALIGN_TOP_RIGHT, -10, 4);
-    lv_label_set_text(media_title_label, media_title.c_str());
-    lv_label_set_text(media_artist_label, media_artist.c_str());
+    setMediaLabelTextIfChanged(media_title_label, media_title.c_str());
+    setMediaLabelTextIfChanged(media_artist_label, media_artist.c_str());
     if (media_playback_status_label) {
-        lv_label_set_text(media_playback_status_label,
-                          media_is_playing ? "PLAYING" :
-                          (media_has_track ? "PAUSED" : "NO MEDIA"));
+        setMediaLabelTextIfChanged(media_playback_status_label,
+                                  media_is_playing ? "PLAYING" :
+                                  (media_has_track ? "PAUSED" : "NO MEDIA"));
     }
     if (media_play_label) {
-        lv_label_set_text(media_play_label,
-                          media_is_playing ? LV_SYMBOL_PAUSE : LV_SYMBOL_PLAY);
+        setMediaLabelTextIfChanged(media_play_label,
+                                  media_is_playing ? LV_SYMBOL_PAUSE : LV_SYMBOL_PLAY);
     }
     refreshMediaProgressUi();
 
     // The circular viewport is white only for DJ mode. Restore its original
     // dark fill and border before showing artwork or the generic vinyl.
-    lv_obj_set_style_bg_color(media_art_box,
-                              media_cat_mode ? lv_color_white() : lv_color_hex(0x080A0C), 0);
-    lv_obj_set_style_border_color(media_art_box,
-                                  media_cat_mode ? lv_color_white() : lv_color_hex(0x252A30), 0);
+    const lv_color_t background = media_cat_mode ? lv_color_white() : lv_color_hex(0x080A0C);
+    const lv_color_t border = media_cat_mode ? lv_color_white() : lv_color_hex(0x252A30);
+    if (lv_obj_get_style_bg_color(media_art_box, 0).full != background.full) {
+        lv_obj_set_style_bg_color(media_art_box, background, 0);
+    }
+    if (lv_obj_get_style_border_color(media_art_box, 0).full != border.full) {
+        lv_obj_set_style_border_color(media_art_box, border, 0);
+    }
 
     if (media_cat_mode) {
         lv_obj_add_flag(media_state_label, LV_OBJ_FLAG_HIDDEN);
@@ -778,7 +836,7 @@ void refreshMediaUi() {
         lv_obj_clear_flag(media_state_label, LV_OBJ_FLAG_HIDDEN);
         lv_obj_add_flag(media_art_image, LV_OBJ_FLAG_HIDDEN);
         lv_obj_add_flag(media_cat_canvas, LV_OBJ_FLAG_HIDDEN);
-        lv_label_set_text(media_state_label, LV_SYMBOL_AUDIO "\nVINYL");
+        setMediaLabelTextIfChanged(media_state_label, LV_SYMBOL_AUDIO "\nVINYL");
     }
 }
 
@@ -2231,7 +2289,14 @@ void setup() {
     // Apply loaded settings to display visibility now that UI is created
     updateDisplayVisibility();
 
+#if BONGO_RENDER_DIAGNOSTICS
+    const bool render_setup_sample = render_diagnostics.beginHandler(
+        micros(), media_is_playing, media_art_receiving || media_art_v2.active);
+#endif
     lv_timer_handler();
+#if BONGO_RENDER_DIAGNOSTICS
+    if (render_setup_sample) render_diagnostics.endHandler(micros());
+#endif
     releaseBacklightHold();
     digitalWrite(TFT_BL, HIGH);
     // A reset loses RAM state, including the cover. The companion resends its
@@ -3675,9 +3740,19 @@ void loop() {
     // Reduce LVGL timer handler frequency to prevent system overload
     static uint32_t last_lvgl_update = 0;
     if (current_time - last_lvgl_update >= 5) {  // Flush LVGL invalidations with lower latency
+#if BONGO_RENDER_DIAGNOSTICS
+        const bool render_loop_sample = render_diagnostics.beginHandler(
+            micros(), media_is_playing, media_art_receiving || media_art_v2.active);
+#endif
         lv_timer_handler();
+#if BONGO_RENDER_DIAGNOSTICS
+        if (render_loop_sample) render_diagnostics.endHandler(micros());
+#endif
         last_lvgl_update = current_time;
     }
+#if BONGO_RENDER_DIAGNOSTICS
+    serviceRenderDiagnostics(current_time);
+#endif
     
     delay(2);  // Reduced from 5ms for better responsiveness
 } 

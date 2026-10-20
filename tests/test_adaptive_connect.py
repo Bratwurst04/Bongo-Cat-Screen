@@ -61,7 +61,7 @@ class AdaptiveConnectTests(unittest.TestCase):
             if len(self.starts) == 4:
                 media._stop.set()
 
-        with patch("spotify_api.urllib.request.urlopen", side_effect=self.response), \
+        with patch("spotify_api._spotify_urlopen", side_effect=self.response), \
              patch("media_bridge.GlobalSystemMediaTransportControlsSessionManager.request_async",
                    new_callable=AsyncMock, return_value=manager), \
              patch.object(media, "_try_api_artwork", new_callable=AsyncMock), \
@@ -72,7 +72,7 @@ class AdaptiveConnectTests(unittest.TestCase):
         self.assertEqual(media.status()["polling_mode"], "adaptive")
 
     def test_poll_controls_and_urgent_confirmation_share_the_gate(self):
-        with patch("spotify_api.urllib.request.urlopen", side_effect=self.response) as http:
+        with patch("spotify_api._spotify_urlopen", side_effect=self.response) as http:
             self.api.get_playback()
             for action in (lambda: self.api.control("NEXT"),
                            lambda: self.api.get_playback(urgent=True)):
@@ -90,7 +90,7 @@ class AdaptiveConnectTests(unittest.TestCase):
     def test_429_restart_deadline_and_gradual_margin_recovery(self):
         error = urllib.error.HTTPError("fixture", 429, "limited", {"Retry-After": "10"},
                                        io.BytesIO(b'{"error":{"reason":"RATE_LIMITED"}}'))
-        with patch("spotify_api.urllib.request.urlopen", side_effect=error):
+        with patch("spotify_api._spotify_urlopen", side_effect=error):
             with self.assertRaises(SpotifyRateLimitError):
                 self.api.get_playback()
         self.assertEqual(self.api._current_interval(), 1)
@@ -99,7 +99,7 @@ class AdaptiveConnectTests(unittest.TestCase):
         self.api = SpotifyApiBridge("fixture-client", self.path, {
             "api_min_interval_seconds": 0.5, "api_initial_interval_seconds": 1,
         })
-        with patch("spotify_api.urllib.request.urlopen", side_effect=self.response) as http:
+        with patch("spotify_api._spotify_urlopen", side_effect=self.response) as http:
             for now in (1005, 1009.999):
                 self.now = now
                 for action in (self.api.get_playback,
@@ -130,7 +130,7 @@ class AdaptiveConnectTests(unittest.TestCase):
         self.assertEqual(persisted["rate_limit_until"], 1010)
 
     def test_quota_and_idle_deadlines_survive_the_removed_connect_floor(self):
-        with patch("spotify_api.urllib.request.urlopen", side_effect=self.response):
+        with patch("spotify_api._spotify_urlopen", side_effect=self.response):
             self.api.get_playback()
         self.assertAlmostEqual(self.api.poll_delay_seconds(idle=True), 2.88)
         self.api._record_rate_limit(60, "quota_exceeded", "playback_poll")
@@ -140,7 +140,7 @@ class AdaptiveConnectTests(unittest.TestCase):
         with self.assertRaises(SpotifyRateLimitError):
             self.api.get_playback()
         self.now = until
-        with patch("spotify_api.urllib.request.urlopen", side_effect=self.response):
+        with patch("spotify_api._spotify_urlopen", side_effect=self.response):
             self.api.get_playback()
         current = self.api._current_interval()
         self.now += 30
@@ -151,7 +151,7 @@ class AdaptiveConnectTests(unittest.TestCase):
         self.assertEqual(self.api.poll_interval_seconds(), current)
         self.assertEqual(self.api.poll_interval_seconds(idle=True), 60)
         self.assertAlmostEqual(self.api.poll_delay_seconds(idle=True), 29.88)
-        with patch("spotify_api.urllib.request.urlopen", side_effect=self.response) as http:
+        with patch("spotify_api._spotify_urlopen", side_effect=self.response) as http:
             self.api.get_playback()
             http.assert_called_once()
         self.api.configure_pacing({"api_min_interval_seconds": 0.5,

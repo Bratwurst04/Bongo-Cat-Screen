@@ -26,6 +26,7 @@ $ast=[Management.Automation.Language.Parser]::ParseFile((Join-Path $companionRoo
 if ($entryErrors) { throw "Entry parser errors: $entryErrors" }
 $functions=$ast.FindAll({param($n) $n -is [Management.Automation.Language.FunctionDefinitionAst]},$true)
 foreach ($function in $functions) { Invoke-Expression $function.Extent.Text }
+function Get-AvailableComPorts { return @('COM7', 'COM11') }
 $view=Get-Content (Join-Path $companionRoot 'settings-view.ps1') -Raw -Encoding UTF8
 $viewErrors=$null
 $null=[Management.Automation.Language.Parser]::ParseInput($view,[ref]$null,[ref]$viewErrors)
@@ -179,7 +180,11 @@ try {
     Assert ($cpuToggle.Enabled -and $cpuMessage.Text -like '*bekräftat*') 'CPU acknowledgement missing'
     Select-Page 'Inställningar'
     [void]$startup.Focus(); [void]$form.SelectNextControl($startup,$true,$true,$true,$true)
-    Assert ($minimumBox.Focused) 'Keyboard order does not reach Connect after startup'
+    Assert ($portBox.Focused) 'Keyboard order does not reach USB port after startup'
+    [void]$form.SelectNextControl($portBox,$true,$true,$true,$true)
+    Assert ($baudBox.Focused) 'Keyboard order does not reach baud after USB port'
+    [void]$form.SelectNextControl($baudBox,$true,$true,$true,$true)
+    Assert ($minimumBox.Focused) 'Keyboard order does not reach Connect after baud'
     $sample.media.spotify.pacing | Add-Member last_change ([pscustomobject]@{ from_seconds=0.5; to_seconds=120; reason='spotify_rate_limit'; at=((Get-UnixTime)-120) }) -Force
     $sample.esp32 | Add-Member psram_total_bytes 8388608 -Force; $sample.esp32 | Add-Member free_psram_bytes 7234567 -Force
     Write-FixtureStatus $sample; Update-LiveStatus

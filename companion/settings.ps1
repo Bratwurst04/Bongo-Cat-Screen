@@ -13,6 +13,37 @@ function Read-JsonFile([string]$Path) {
     catch { return $null }
 }
 
+function Write-JsonFileAtomic([string]$Path, $Value) {
+    # Each writer owns its temporary file. Replace the existing Windows file
+    # only after the complete JSON has been written and closed on this volume.
+    $destination = [IO.Path]::GetFullPath($Path)
+    $temporary = Join-Path ([IO.Path]::GetDirectoryName($destination)) (
+        '.' + [IO.Path]::GetFileName($destination) + '.' + [Guid]::NewGuid().ToString('N') + '.tmp'
+    )
+    try {
+        [IO.File]::WriteAllText($temporary, ($Value | ConvertTo-Json -Depth 100), [Text.UTF8Encoding]::new($false))
+        [IO.File]::Replace($temporary, $destination, [NullString]::Value)
+    } finally {
+        if ([IO.File]::Exists($temporary)) { [IO.File]::Delete($temporary) }
+    }
+}
+
+function Get-AvailableComPorts {
+    # Enumerate names only; never open, probe or reset an attached device.
+    try {
+        [IO.Ports.SerialPort]::GetPortNames() | Where-Object { $_ -match '^COM[1-9][0-9]*$' } |
+            ForEach-Object { $_.ToUpperInvariant() } | Sort-Object -Unique
+    } catch { return @() }
+}
+
+function Get-ConnectionValues($configuration) {
+    $port = [string]$configuration.connection.com_port
+    $baud = [string]$configuration.connection.baudrate
+    if ([string]::IsNullOrWhiteSpace($port)) { $port = 'AUTO' }
+    if ([string]::IsNullOrWhiteSpace($baud)) { $baud = '230400' }
+    return @{ com_port=$port.Trim().ToUpperInvariant(); baudrate=$baud }
+}
+
 function Format-Seconds([double]$seconds) { return ('{0:0.0}' -f $seconds) }
 
 function Format-429-Baseline($limits) {
@@ -68,9 +99,7 @@ function Request-PacingReset {
     if ($null -eq $fresh) { throw 'Kunde inte läsa inställningsfilen igen.' }
     if ($null -eq $fresh.spotify) { $fresh | Add-Member -NotePropertyName spotify -NotePropertyValue ([pscustomobject]@{}) }
     $fresh.spotify | Add-Member api_reset_safety_requested_at (Get-UnixTime) -Force
-    $temporary = "$ConfigPath.tmp"
-    [IO.File]::WriteAllText($temporary, ($fresh | ConvertTo-Json -Depth 8), [Text.UTF8Encoding]::new($false))
-    Move-Item -LiteralPath $temporary -Destination $ConfigPath -Force
+    Write-JsonFileAtomic $ConfigPath $fresh
 }
 
 function Set-CpuDiagnosticsEnabled([bool]$enabled) {
@@ -78,9 +107,7 @@ function Set-CpuDiagnosticsEnabled([bool]$enabled) {
     if ($null -eq $fresh) { throw 'Kunde inte läsa inställningsfilen igen.' }
     if ($null -eq $fresh.diagnostics) { $fresh | Add-Member -NotePropertyName diagnostics -NotePropertyValue ([pscustomobject]@{}) }
     $fresh.diagnostics | Add-Member esp32_cpu_meter_enabled $enabled -Force
-    $temporary = "$ConfigPath.tmp"
-    [IO.File]::WriteAllText($temporary, ($fresh | ConvertTo-Json -Depth 8), [Text.UTF8Encoding]::new($false))
-    Move-Item -LiteralPath $temporary -Destination $ConfigPath -Force
+    Write-JsonFileAtomic $ConfigPath $fresh
 }
 
 function Get-DiagnosticValues($info) {

@@ -103,7 +103,7 @@ class PlaybackDiagnosticsTests(unittest.TestCase):
                     with patch('time.time', new=lambda: clock.now), patch('time.monotonic', new=lambda: clock.mono):
                         api = SpotifyApiBridge('fixture', Path(folder) / 'tokens.json')
                         api._tokens.update(access_token='fixture', refresh_token='fixture', expires_at=clock.now + 86400)
-                        with patch('urllib.request.urlopen', return_value=Response(payload, status)) as http, \
+                        with patch('spotify_api._spotify_urlopen', return_value=Response(payload, status)) as http, \
                              patch('diagnostics.diagnostics.event') as event:
                             if shape == 'invalid':
                                 with self.assertRaises((json.JSONDecodeError, UnicodeDecodeError)):

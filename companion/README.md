@@ -1,5 +1,30 @@
 # Windows companion
 
+## Installed WinRT playback fix (2026-10-20)
+
+The user rejected **092E4E7D**: the display stayed paused during playback.
+Lead restored **B7019579 / EBB334A9 at 921600**, preserving current profiles.
+Fixed companion **C42112AD**, 22,856,796 bytes, is built/statically reviewed
+using **Python 3.13.16 / Pillow 13.0.0**, then installed by Lead with current
+profiles/Run/shortcuts retained. The user accepted corrected playback status.
+Two old string-based playback checks now compare actual WinRT enum values;
+31 focused checks pass. Exact-base suite: **348 PASS, nine classified SKIP,
+zero errors**. Scrolling still stutters while playing and is smooth when paused;
+render load is being investigated separately. No firmware was flashed.
+Separate **B846FF52** label and **D7DA9953** render-measurement firmware candidates
+are built only; installed EBB remains unchanged. They do not establish smoother
+scrolling. Fresh combined source suite:359 PASS/nine classified SKIP/zero errors.
+See the [firmware evidence and limits](../docs/render-measurement-2026-10-20.md).
+No published release is changed. App-v1.3 remains the latest release.
+
+The app stays available without a screen and reconnects through its existing
+workers. Settings now exposes COM port/baud with an explicit app restart. AUTO
+requires one unambiguous device. Config recovery, OAuth ownership/callback,
+token writes, authenticated HTTP redirects and JPEG/PNG input limits are tested.
+Spotify linking is still CLI-only with the running app closed; tokens remain
+plaintext locally. See the [review and limits](../docs/product-committee-2026-10-20.md),
+[Security](../SECURITY.md) and [Privacy](../PRIVACY.md). Older sections are history.
+
 ## Current development source (2026-10-19)
 
 The installed development pair is **companion 94145746 / firmware EBB334A9
@@ -152,14 +177,19 @@ Complete authorization in the browser, then start the EXE normally. This uses Sp
 
 ## Run from source
 
-From the repository root, with Python 3.10 or later:
+From the repository root, using the verified build baseline **Python 3.13.16**:
 
 ```powershell
-python -m pip install -r companion/requirements_app.txt
-python companion/main.py
+python -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -r companion/requirements_app.txt
+.\.venv\Scripts\python.exe companion/main.py
 ```
 
-The ESP32 should be connected before starting the app. The serial port defaults to `AUTO`; set `connection.com_port` in the config if automatic detection does not find it. Settings and Spotify OAuth tokens live in `%APPDATA%/BongoCat`, outside the repository.
+The app may start without an ESP32 and will retry through its existing workers.
+The port defaults to `AUTO`; with multiple possible devices, select an explicit
+COM port in Settings, save, then Exit and restart the app. Baud changes also
+require restart and must match the firmware. Settings and OAuth tokens live in
+`%USERPROFILE%\AppData\Roaming\BongoCat`, outside the repository.
 
 Supported command-line options:
 
@@ -170,7 +200,11 @@ Supported command-line options:
 --link-spotify       Authorize Spotify using the saved Client ID
 ```
 
-For example, after creating a Spotify app and adding its redirect URI, run `python companion/main.py --spotify-client-id YOUR_ID --link-spotify`. You can also configure Spotify through the app's settings.
+After setting the registered redirect URI, **Exit the running tray app first**,
+then run `.\.venv\Scripts\python.exe companion/main.py --spotify-client-id YOUR_ID --link-spotify`.
+Use the public Client ID; no Client Secret is needed. A second token owner is
+refused while the app runs. The active Settings window has no Spotify link or
+disconnect control yet. See [manual disconnect instructions](../PRIVACY.md#stop-access-and-remove-local-data).
 
 ### Preventive API budget development candidate, 2026-10-14
 

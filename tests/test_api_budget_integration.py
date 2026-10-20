@@ -29,7 +29,7 @@ class Response:
     def __init__(self,data):self.data=data
     def __enter__(self):return self
     def __exit__(self,*args):return False
-    def read(self):return self.data
+    def read(self, size=-1):return self.data if size < 0 else self.data[:size]
 
 
 class IntegrationTests(unittest.TestCase):
@@ -40,7 +40,7 @@ class IntegrationTests(unittest.TestCase):
         ledger=self.path/'spotify_api_budget.json';ledger.write_text(json.dumps(state))
         self.budget=ApiBudget(ledger,wall=lambda:self.clock.now,monotonic=lambda:self.clock.mono)
         for name,value in [('time.time',lambda:self.clock.now),('time.monotonic',lambda:self.clock.mono),
-                           ('urllib.request.urlopen',self.http)]:
+                           ('spotify_api._spotify_urlopen',self.http)]:
             p=patch(name,new=value);p.start();self.addCleanup(p.stop)
         self.api=SpotifyApiBridge('fixture',self.path/'tokens.json',budget=self.budget)
         self.api._tokens.update(access_token='fixture',refresh_token='fixture',expires_at=self.clock.now+86400)
@@ -96,7 +96,7 @@ class IntegrationTests(unittest.TestCase):
             self.clock.advance(0.6)
             self.api._tokens['access_token']='refreshed-fixture'
         self.api._refresh=Mock(side_effect=refresh)
-        with patch('spotify_api.urllib.request.urlopen',side_effect=self.http) as http:
+        with patch('spotify_api._spotify_urlopen',side_effect=self.http) as http:
             self.api.control('NEXT',operation=operation)
         self.api._refresh.assert_called_once_with()
         self.assertEqual(http.call_count,2)

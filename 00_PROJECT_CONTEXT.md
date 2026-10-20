@@ -1,5 +1,44 @@
 # Bongo Cat – Project Context
 
+## Aktuellt 2026-10-20 – C421 installerad; spelstatus rätt, rullning utreds
+
+Lead installerade **C42112AD/EBB334A9 vid 921600** med verifierade backuper och
+aktuella profiler/Run/genvägar bevarade. Faktisk Startmenystart och färsk status
+visar ansluten ESP/Windows Spotify. Användaren accepterade spelstatusen men
+rapporterade ryckig rullning under PLAYING, jämn under PAUSED. Snäv acceptans,
+inte nytt helt omslags-/animationsgodkännande. Fyra kompakta ACK 459–640 ms och
+tre full-ACK 3099–3937 ms är transportmått, inga LCD-tider. Inference-händelser
+observerades faktiskt men förklarar inte rå UART-/rotorsak.
+
+Separat normal labelkandidat **B846FF52** och mätkandidat **D7DA9953** är
+byggda/granskade, **inte flashade**. Installerad EBB och C421-app är oförändrade.
+Ingen rotation/touch/font ändras; färre setteranrop är ingen bevisad rullningsfix.
+Ren slutkontroll **368 funna/359 PASS/nio klassade SKIP/noll fel eller blockerade
+operationer**. Se [mätkandidater och bevisgränser](docs/render-measurement-2026-10-20.md).
+
+### Historik: underkänd 092 och återställning före C421
+
+Companion **092E4E7D underkändes fysiskt**: PAUSED trots verklig uppspelning.
+Lead återställde **B7019579/EBB334A9 vid 921600** 13:26:42 med nuvarande
+profiler/auth/budget, Run och genvägar bevarade. Ingen firmware skrevs.
+Användaren bekräftade återställd funktion men preciserade att **textrullningen
+rycker**; orsaken utreds separat och ingen textändring ingår i enumfixen.
+Rättad **C42112AD**, byggd/paketgranskad på **Python 3.13.16/Pillow 13.0.0**,
+jämför verklig WinRT-enum i två kodvägar; Python 3.11+ ändrade enumens sträng.
+31 fokuserade prov PASS. Ny ren svit på exakt byggbas: **357 funna/348 PASS/
+nio klassade SKIP/noll fel eller blockerade operationer**. Installation och
+snäv fysisk spelstatusacceptans finns nu ovan. Det tidigare 630 ms-provet gäller 092
+och är ingen fysisk acceptans.
+
+Start utan skärm, entydig AUTO-port, config-/tokenintegritet, OAuth-callback/
+ägarskap, HTTP/bildgränser och aktivt Settings-portfält har rättats inom ett
+avgränsat apppaket. Ingen firmware, serialprotokoll eller release ändras.
+Den tidigare rena sviten på 092 var 353 funna/344 PASS/nio klassade SKIP/noll
+fel men missade enumregressionen med strängmockar. Ny fysisk acceptans,
+LCD-/skärpningstid och sleep/resume är fortfarande väntande. Se
+[kommittérapport, testgränser och öppna prioriteringar](docs/product-committee-2026-10-20.md),
+[Security](SECURITY.md) och [Privacy](PRIVACY.md). Äldre avsnitt/bevis bevaras.
+
 ## Aktuellt 2026-10-20 – B7019579 installerad via Startmenyn och snävt accepterad
 
 Installerat är nu **B7019579/EBB334A9 vid 921600**, efter användarens

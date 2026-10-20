@@ -1,5 +1,33 @@
 # Bongo Cat för ESP32-024R
 
+## Produktförbättringar 2026-10-20 – C421 installerad, spelstatus rättad
+
+**092E4E7D underkändes fysiskt**: pausstatus trots uppspelning. Lead återställde
+först B701 med nuvarande profiler bevarade och installerade sedan rättningen.
+Rättad companion **C42112AD**, byggd med **Python 3.13.16/Pillow 13.0.0**, är
+installerad av Lead med profiler/genvägar bevarade. Användaren har accepterat
+rättad spelstatus. Två strängjämförelser använder nu Windows riktiga statusenum.
+Ren svit på exakt byggbas: **348 PASS, nio klassade SKIP, noll fel**.
+Rullningen rycker fortfarande under uppspelning, men är jämn vid paus; separat
+renderbelastning utreds. Ingen firmware har flashats och sleep/resume återstår.
+Installerad firmware EBB är oförändrad. Separata kandidater **B846FF52**
+(färre textuppdateringar) och **D7DA9953** (renderingsmätning) är byggda, **inte
+flashade**. De är ingen bevisad rullningsfix. Senaste rena kontroll: **359 PASS,
+nio klassade SKIP, noll fel**. Se [firmwareunderlaget](docs/render-measurement-2026-10-20.md).
+Ingen publicerad release ändras.
+
+Appen fortsätter nu utan ansluten skärm. **Settings** har port/baud; ändring
+kräver appomstart och AUTO gissar inte mellan flera enheter. Sparade inställningar
+skyddas vid skrivfel. Kontolänkning, HTTP och bildinläsning har stärkts, och
+befintliga animationer/omslag/protokoll bevaras. Spotify-länkning görs fortfarande
+via CLI med appen stängd, inte i Settings.
+
+Läs [granskning, kandidat och kvarvarande arbete](docs/product-committee-2026-10-20.md),
+[Security](SECURITY.md) och [Privacy](PRIVACY.md). Tokens är fortfarande
+klartext lokalt. Spotifyåtkomst, omslagsregler och full licens-/distributionshantering
+återstår före bred release eller betalprodukt. **App-v1.3 är fortsatt senaste
+publicerade release**. Äldre daterade avsnitt nedan är historik.
+
 ## Utvecklingskälla 2026-10-19 – aktuellt installerat par
 
 Installerat utvecklingspar är **companion 94145746 / firmware EBB334A9 vid

@@ -33,7 +33,7 @@ class SpotifyCooldownTests(unittest.TestCase):
                 io.BytesIO(json.dumps({"error": {"status": 429,
                                                  "reason": "QUOTA_EXCEEDED"}}).encode()),
             )
-            with patch("spotify_api.urllib.request.urlopen", side_effect=error) as http, \
+            with patch("spotify_api._spotify_urlopen", side_effect=error) as http, \
                  patch("spotify_api.diagnostics.event") as event:
                 with self.assertRaises(SpotifyRateLimitError) as raised:
                     bridge.get_playback()
@@ -54,7 +54,7 @@ class SpotifyCooldownTests(unittest.TestCase):
             restarted = SpotifyApiBridge("client", token_path)
             self.assertEqual(restarted.status()["pacing"]["rate_limits"]["total"], 1)
             self.assertEqual(restarted.poll_interval_seconds(), 60.0)
-            with patch("spotify_api.urllib.request.urlopen") as http:
+            with patch("spotify_api._spotify_urlopen") as http:
                 with self.assertRaises(SpotifyRateLimitError) as cached:
                     restarted.get_playback()
                 self.assertTrue(cached.exception.cached)
@@ -70,7 +70,7 @@ class SpotifyCooldownTests(unittest.TestCase):
             }).encode()
             after_retry = restarted._tokens["rate_limit_until"] + 1
             with patch("spotify_api.time.time", return_value=after_retry), \
-                 patch("spotify_api.urllib.request.urlopen", return_value=response) as http:
+                 patch("spotify_api._spotify_urlopen", return_value=response) as http:
                 playback, _ = restarted.get_playback()
             self.assertEqual(playback["title"], "Song")
             http.assert_called_once()

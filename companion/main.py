@@ -17,6 +17,7 @@ from windows_integration import SingleInstanceLock, set_start_with_windows
 from diagnostics import diagnostics
 
 _instance_lock = SingleInstanceLock()
+_WINDOWED = sys.stdout is None or sys.stderr is None
 
 # A PyInstaller --windowed process has no console streams. Route diagnostic
 # output to the null device so logging and argparse never crash the tray app.
@@ -164,6 +165,14 @@ class BongoCatApplication:
                 self.tray.stop()
             print("👋 Goodbye!")
 
+def _setup_error(message):
+    """CLI setup must also give feedback in the packaged windowed executable."""
+    print(message)
+    if _WINDOWED and os.name == "nt":
+        import ctypes
+        ctypes.windll.user32.MessageBoxW(None, message, "Bongo Cat – Spotify", 0x10)
+
+
 def main():
     """Main application entry point"""
     diagnostics.start()
@@ -181,42 +190,34 @@ def main():
     
     args = parser.parse_args()
 
-    if args.spotify_client_id or args.link_spotify:
-        config = ConfigManager()
-        client_id = args.spotify_client_id.strip()
-        if client_id:
-            config.set_setting("spotify", "client_id", client_id)
-            config.save_config()
-        else:
-            client_id = (config.get_setting("spotify", "client_id") or "").strip()
-
-        if args.link_spotify:
-            if not client_id:
-                print("Spotify Client ID is missing")
-                return 2
-            try:
-                spotify = SpotifyApiBridge(
-                    client_id, config.config_dir / "spotify_tokens.json"
-                )
-                spotify.authorize_interactive()
-                print("Spotify account linked")
-                return 0
-            except SpotifyApiError as exc:
-                print(f"Spotify setup failed: {exc}")
-                return 1
-
-        return 0
-
     if not _instance_lock.acquire():
+        if args.spotify_client_id or args.link_spotify:
+            _setup_error("Stäng Bongo Cat via Exit i systemfältet innan du ändrar Spotify-kopplingen.")
+            return 1
         print("BongoDeskSpotify is already running")
         return 0
-    
-    # Determine start mode
-    start_minimized = args.minimized or args.startup
-    
-    # Create and run application
-    app = BongoCatApplication(start_minimized=start_minimized)
     try:
+        if args.spotify_client_id or args.link_spotify:
+            try:
+                config = ConfigManager()
+                client_id = args.spotify_client_id.strip()
+                if client_id:
+                    if not config.set_setting("spotify", "client_id", client_id) or not config.save_config():
+                        raise SpotifyApiError("Spotify Client ID could not be saved")
+                else:
+                    client_id = (config.get_setting("spotify", "client_id") or "").strip()
+                if args.link_spotify:
+                    if not client_id:
+                        _setup_error("Spotify Client ID is missing")
+                        return 2
+                    spotify = SpotifyApiBridge(client_id, config.config_dir / "spotify_tokens.json")
+                    spotify.authorize_interactive()
+                    print("Spotify account linked")
+                return 0
+            except (SpotifyApiError, OSError) as exc:
+                _setup_error(f"Spotify setup failed: {exc}")
+                return 1
+        app = BongoCatApplication(start_minimized=args.minimized or args.startup)
         return app.run()
     finally:
         _instance_lock.close()

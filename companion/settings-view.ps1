@@ -194,6 +194,51 @@ $startup.Text='Starta BongoDesk när jag loggar in i Windows'; $startup.AutoSize
 $startup.Checked=[bool]$config.startup.start_with_windows; $startup.Margin=[Windows.Forms.Padding]::new(0,0,0,9)
 Add-StackControl $general $startup
 $null=Add-Text $general 'Companion körs i bakgrunden och nås via ikonen vid klockan.' 9 'Muted'
+$deviceCard=Add-Card $settings 'ANSLUTNING TILL SKÄRMEN'
+$connectionHelp=Add-Text $deviceCard 'Välj AUTO eller skriv skärmens COM-port. Baudhastigheten måste stämma med skärmens firmware.' 10 'Muted'
+function Add-ConnectionChoice($card, [string]$caption, [bool]$editable=$false) {
+    $row=[Windows.Forms.TableLayoutPanel]::new()
+    $row.AutoSize=$true; $row.Dock='Fill'; $row.ColumnCount=2; $row.RowCount=1
+    $row.Margin=[Windows.Forms.Padding]::new(0,0,0,12)
+    [void]$row.ColumnStyles.Add([Windows.Forms.ColumnStyle]::new([Windows.Forms.SizeType]::Percent,100))
+    [void]$row.ColumnStyles.Add([Windows.Forms.ColumnStyle]::new([Windows.Forms.SizeType]::Absolute,192))
+    $label=[Windows.Forms.Label]::new()
+    $label.Text=$caption; $label.AutoSize=$true; $label.Dock='Fill'; $label.TextAlign='MiddleLeft'
+    $label.Margin=[Windows.Forms.Padding]::new(0,4,12,0)
+    $choice=[Windows.Forms.ComboBox]::new()
+    $choice.Dock='Fill'; $choice.BackColor=$palette.Input; $choice.ForeColor=$palette.Text
+    $choice.FlatStyle='Flat'; $choice.Margin=[Windows.Forms.Padding]::new(0,4,18,0)
+    $choice.DropDownStyle=if ($editable) { 'DropDown' } else { 'DropDownList' }
+    $choice.AccessibleName=$caption
+    [void]$row.Controls.Add($label,0,0); [void]$row.Controls.Add($choice,1,0)
+    Add-StackControl $card $row
+    return $choice
+}
+$portBox=Add-ConnectionChoice $deviceCard 'USB-port' $true
+$portBox.AccessibleDescription='AUTO väljer automatiskt. Du kan också skriva en COM-port, till exempel COM7. Börjar gälla efter appomstart.'
+$baudBox=Add-ConnectionChoice $deviceCard 'Baudhastighet'
+$baudBox.AccessibleDescription='Välj samma baudhastighet som skärmens firmware. Börjar gälla efter appomstart.'
+function Update-PortChoices {
+    $current=$portBox.Text; $wasLoading=$script:loadingEdits; $script:loadingEdits=$true
+    try {
+        $portBox.Items.Clear(); [void]$portBox.Items.Add('AUTO')
+        foreach ($port in (@(Get-AvailableComPorts) + @($current))) {
+            if ($port -and -not $portBox.Items.Contains($port)) { [void]$portBox.Items.Add($port) }
+        }
+        $portBox.Text=$current
+    } finally { $script:loadingEdits=$wasLoading }
+}
+function Set-ConnectionInputs($values) {
+    $portBox.Text=$values.com_port; Update-PortChoices
+    $baudBox.Items.Clear()
+    foreach ($baud in @('115200','230400','460800','921600')) { [void]$baudBox.Items.Add($baud) }
+    # Display an older explicit value without changing it during unrelated edits.
+    if (-not $baudBox.Items.Contains($values.baudrate)) { [void]$baudBox.Items.Add($values.baudrate) }
+    $baudBox.SelectedItem=$values.baudrate
+}
+Set-ConnectionInputs (Get-ConnectionValues $config)
+$portBox.Add_DropDown({ Update-PortChoices })
+$restartNotice=Add-Text $deviceCard 'Port och baudhastighet gäller efter appomstart. Avsluta BongoDesk via ikonen vid klockan och starta appen igen.' 9 'Muted'
 $connectCard=Add-Card $settings 'SPOTIFY CONNECT'
 $null=Add-Text $connectCard 'Musik på en annan enhet' 13 'Text' $true
 $null=Add-Text $connectCard 'Aktiv musik uppdateras så snabbt som din lägsta gräns tillåter. Spotify-gränser ger längre väntan; takten återhämtas sedan gradvis. Vid paus läser appen mer sällan.' 10 'Muted'
@@ -290,7 +335,7 @@ function Select-Page([string]$name) {
     }
     switch ($name) {
         'Översikt' { $heading.Text='Din Bongo, i ett ögonkast'; $subtitle.Text='Skärmen och musiken, samlat här.' }
-        'Inställningar' { $heading.Text='Gör Bongo till din'; $subtitle.Text='Ändringar används när du sparar. Ctrl+S sparar, Ångra återställer.' }
+        'Inställningar' { $heading.Text='Gör Bongo till din'; $subtitle.Text='Ctrl+S sparar, Ångra återställer. Anslutningsval kräver appomstart.' }
         'Diagnostik' { $heading.Text='Se vad som händer'; $subtitle.Text='Livevärden från Spotify, Windows och skärmen. Uppdateras varje sekund.' }
     }
     $viewport.AutoScrollPosition=[Drawing.Point]::Empty; $viewport.ResumeLayout($true)
@@ -304,7 +349,7 @@ function Update-FooterVisibility([bool]$restoreFocus=$false) {
     if (-not $show -and ($hadFocus -or $restoreFocus)) { [void]$navButtons[$script:currentPage].Focus() }
 }
 function Get-EditSnapshot {
-    $snapshot=@{ startup=[bool]$startup.Checked }
+    $snapshot=@{ startup=[bool]$startup.Checked; com_port=$portBox.Text; baudrate=$baudBox.Text }
     foreach ($field in $fieldSpecs) { $snapshot[$field.Key]=$field.Control.Text }
     return $snapshot
 }
@@ -321,7 +366,7 @@ function Update-EditState {
     $save.ForeColor=if ($script:dirty) { $palette.Background } else { $palette.Muted }
     if (-not $script:loadingEdits) {
         $errors.Clear(); $message.ForeColor=$palette.Muted
-        $message.Text=if ($script:dirty) { 'Osparade ändringar. Spara för att använda dem.' } else { 'Alla ändringar sparade' }
+        $message.Text=if ($script:dirty) { 'Osparade ändringar.' } else { 'Alla ändringar sparade' }
     }
     if ($null -ne $script:lastInfo) { $safetyReset.Enabled=(-not $script:dirty -and $null -ne $script:lastInfo.media.spotify.pacing -and -not $script:statusStale) }
     try {
@@ -344,6 +389,28 @@ function Save-Settings {
         if ($null -eq $fresh) { $invalid=$null; throw 'Kunde inte läsa inställningsfilen igen. Inget har sparats.' }
         if ($null -eq $fresh.spotify) { $fresh | Add-Member -NotePropertyName spotify -NotePropertyValue ([pscustomobject]@{}) }
         if ($null -eq $fresh.startup) { $fresh | Add-Member -NotePropertyName startup -NotePropertyValue ([pscustomobject]@{}) }
+        $connectionValues=Get-ConnectionValues $fresh
+        $portChanged=($portBox.Text -cne $script:savedEdits.com_port)
+        $baudChanged=($baudBox.Text -cne $script:savedEdits.baudrate)
+        if ($portChanged) {
+            $invalid=[pscustomobject]@{ Control=$portBox }
+            $connectionValues.com_port=$portBox.Text.Trim().ToUpperInvariant()
+            if ($connectionValues.com_port -ne 'AUTO' -and $connectionValues.com_port -notmatch '^COM[1-9][0-9]*$') {
+                throw 'Välj AUTO eller en giltig COM-port, till exempel COM7.'
+            }
+        }
+        if ($baudChanged) {
+            $invalid=[pscustomobject]@{ Control=$baudBox }
+            if (@('115200','230400','460800','921600') -notcontains $baudBox.Text) {
+                throw 'Välj 115200, 230400, 460800 eller 921600 baud.'
+            }
+            $connectionValues.baudrate=$baudBox.Text
+        }
+        foreach ($field in $fieldSpecs) {
+            if ($field.Control.Text -ceq $script:savedEdits[$field.Key] -and $null -ne $fresh.spotify.PSObject.Properties[$field.Key]) {
+                $values[$field.Key]=$fresh.spotify.($field.Key)
+            }
+        }
         $maximum=if ($null -ne $fresh.spotify.api_max_interval_seconds) { [double]$fresh.spotify.api_max_interval_seconds } else { 30.0 }
         $minimum=$values.api_min_interval_seconds; $initial=$values.api_initial_interval_seconds
         $idle=$values.api_idle_interval_seconds; $retries=$values.artwork_retry_attempts
@@ -354,20 +421,36 @@ function Save-Settings {
         elseif ($idle -lt $initial -or $idle -gt 300) { $badKey='api_idle_interval_seconds'; $errorText='Pausgränsen ska vara minst Efter en gränsträff och högst 300 sekunder.' }
         if ($null -ne $badKey) { $invalid=$fieldSpecs | Where-Object Key -eq $badKey | Select-Object -First 1; throw $errorText }
         $invalid=$null
-        foreach ($key in $values.Keys) { $fresh.spotify | Add-Member -NotePropertyName $key -NotePropertyValue $values[$key] -Force }
-        $fresh.startup | Add-Member start_with_windows ([bool]$startup.Checked) -Force
-        $temporary="$ConfigPath.tmp"
-        [IO.File]::WriteAllText($temporary,($fresh | ConvertTo-Json -Depth 8),[Text.UTF8Encoding]::new($false))
-        Move-Item -LiteralPath $temporary -Destination $ConfigPath -Force
+        foreach ($field in $fieldSpecs) {
+            if ($field.Control.Text -cne $script:savedEdits[$field.Key]) {
+                $fresh.spotify | Add-Member -NotePropertyName $field.Key -NotePropertyValue $values[$field.Key] -Force
+            }
+        }
+        if ([bool]$startup.Checked -ne $script:savedEdits.startup) { $fresh.startup | Add-Member start_with_windows ([bool]$startup.Checked) -Force }
+        if ($portChanged -or $baudChanged) {
+            if ($null -eq $fresh.connection) { $fresh | Add-Member -NotePropertyName connection -NotePropertyValue ([pscustomobject]@{}) }
+            if ($portChanged) { $fresh.connection | Add-Member com_port $connectionValues.com_port -Force }
+            if ($baudChanged) { $fresh.connection | Add-Member baudrate ([int]$connectionValues.baudrate) -Force }
+        }
+        Write-JsonFileAtomic $ConfigPath $fresh
+        $script:loadingEdits=$true
+        try {
+            Set-ConnectionInputs $connectionValues
+            foreach ($field in $fieldSpecs) {
+                $field.Control.Text=if ($field.Key -eq 'artwork_retry_attempts') { [string]$values[$field.Key] } else { ([double]$values[$field.Key]).ToString('0.################',[Globalization.CultureInfo]::GetCultureInfo('sv-SE')) }
+            }
+            $startup.Checked=[bool]$fresh.startup.start_with_windows
+        } finally { $script:loadingEdits=$false }
         $script:savedEdits=Get-EditSnapshot; Update-EditState
-        $message.ForeColor=$palette.Accent; $message.Text='Sparat. Companion använder de nya värdena automatiskt.'
+        $message.ForeColor=$palette.Accent; $message.Text='Sparat. Port och baudhastighet gäller efter appomstart.'
         return $true
     } catch {
         if ($null -ne $invalid) {
             Select-Page 'Inställningar'
             if ($advancedContent.Contains($invalid.Control)) { Set-AdvancedExpanded $true }
             $errors.SetError($invalid.Control,$_.Exception.Message)
-            $viewport.ScrollControlIntoView($invalid.Control); [void]$invalid.Control.Focus(); $invalid.Control.SelectAll()
+            $viewport.ScrollControlIntoView($invalid.Control); [void]$invalid.Control.Focus()
+            if ($invalid.Control -is [Windows.Forms.TextBox]) { $invalid.Control.SelectAll() }
         }
         $message.ForeColor=$palette.Error; $message.Text=$_.Exception.Message
         return $false
@@ -376,12 +459,15 @@ function Save-Settings {
 function Undo-Settings {
     $script:loadingEdits=$true
     foreach ($field in $fieldSpecs) { $field.Control.Text=$script:savedEdits[$field.Key] }
+    Set-ConnectionInputs $script:savedEdits
     $startup.Checked=[bool]$script:savedEdits.startup; $script:loadingEdits=$false
     Update-EditState; $message.Text='Ändringarna har ångrats. Sparade värden visas.'
 }
 $script:savedEdits=Get-EditSnapshot
 $script:loadingEdits=$false; $script:lastInfo=$null; $script:cpuPending=$null; $script:statusStale=$true
-foreach ($field in $fieldSpecs) { $field.Control.Add_TextChanged({ Update-EditState }) }
+foreach ($field in $fieldSpecs) { $field.Control.Add_TextChanged({ if (-not $script:loadingEdits) { Update-EditState } }) }
+$portBox.Add_TextChanged({ if (-not $script:loadingEdits) { Update-EditState } })
+$baudBox.Add_SelectedIndexChanged({ if (-not $script:loadingEdits) { Update-EditState } })
 $startup.Add_CheckedChanged({ Update-EditState })
 $save.Add_Click({ $null=Save-Settings }); $undo.Add_Click({ Undo-Settings })
 $form.Add_KeyDown({
