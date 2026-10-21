@@ -1,0 +1,70 @@
+{
+  "classification": "SIMULATED actual codec/receiver/renderer; no hardware acceptance",
+  "source_sha256": {
+    "companion/artwork_codec.py": "41DF42632A2FA407EF773D7710F1321736B45F38A64B51F753E6AC031A8F11FD",
+    "companion/media_bridge.py": "835763BE72990837F5B23E8D8FBE0335753BD1EBE961C6113AFF85FA5D1660C9",
+    "src/media_art_v2.h": "92F338BF0EF4ED8F4C7D783119248EF80E80D1DA0899575506941F829C3A58F9",
+    "src/media_art_compact.h": "6B0A1FF31ECB348279C4A7A254C1DA746CD5CB8201E2FE02434F89DCCF700A60",
+    "src/media_turntable.h": "F53416A9F37380561B04420FF68B1D47A6A5CDB9554134ACC12091743A006EC5",
+    "src/bongo_cat_featured.inc": "6DBA3725045AFDEC5830BC64C9979AC0980185ACDA475D7D8B0F51BAC6354230",
+    "tests/compact_art_host.cpp": "6C44665D2BC45F4ADCBEE65FD336DECE6C7801E37A3B25B9F0FAD7EAFD1A6187",
+    "tests/compact_art_host.py": "B2884E3FAC62BE8EE9DF6DB68FA029967EC94C9DE801083F189EFAA21B25F468",
+    "tests/turntable_paw_host.cpp": "C10FCE850250291FB6EE2403BE6A266AC669AE186CF76D38A275D5FDD2AABD8B",
+    "tests/turntable_paw_host.py": "CD98D032D5AA997FDDA794C9BE7DE33227A817C47BDB18C0214B9789FC58C112",
+    "tools/turntable_paw_visuals.py": "22989D46DBB1763BDD1327A8487DDF576BCB9BEABC1E338602F2161928825EE5",
+    "tools/record_flip_visuals.py": "DEBE628D33F364801539631C4B86E76E02161662303C1AE2E7223B01DE691B3A",
+    "tools/artwork_compact_visuals.py": "481B8A815A0501E714DCB7721459E0879ABA5CC92FE7BC5A6BE5D8AB4F06E9B8",
+    ".pio/libdeps/esp32-024r-spotify-artfast921600/lvgl/src/misc/lv_color.h": "C7604889FFB54C8B08BA73DD4275D532D2D68710AF4F4E73FACBF282ED5CFB3D"
+  },
+  "output_sha256": {
+    "comparison.png": "38CBD33029F961C1D061B31F0C1D4F6631BE0A65C0C9096F19F9330586A13B43",
+    "detail.png": "7DED19F88BBB23A471EE5DAF77091B80E026A980AC05B2053C5E08F68E9308B1",
+    "fixture-cover.png": "EB6CFA3B640F17A864CE05955A7FF59D7F798ECA1D25634C2CECBE97915B9610",
+    "index.html": "B9A07230659DB6C3271D99E12571C89F205782382B91E8E150240C988371A635"
+  },
+  "payload_bytes": 12800,
+  "payload_sha256": "12A1989060CB71D2D15A494DE84D7D6D6DD82EDE5B218F0196D3A7B29B298244",
+  "frame": [
+    1,
+    112,
+    0,
+    0,
+    -56,
+    0,
+    256,
+    0,
+    0,
+    1000,
+    1,
+    0,
+    1,
+    1,
+    0,
+    84
+  ],
+  "timings": {
+    "frame_ms": 20,
+    "clear_end": 160,
+    "reach_end": 300,
+    "grip_end": 420,
+    "lift_end": 680,
+    "flip_end": 1060,
+    "full_out_end": 1070,
+    "full_in_end": 1550,
+    "lower_end": 1380,
+    "full_lower_end": 1870,
+    "settle_end": 1460,
+    "full_settle_end": 1950,
+    "withdraw_end": 1580,
+    "full_withdraw_end": 2070,
+    "normal_ms": 1880,
+    "full_ms": 2380,
+    "reveal_ms": 180,
+    "lift_pixels": 5
+  },
+  "limitations": [
+    "Synthetic fixture, no live album data.",
+    "Host String/base64/UI stubs; production parser/CRC/expansion/slot activation and LVGL colour macro executed.",
+    "No TFT rate, CH340 throughput, runtime, touch or physical acceptance inferred."
+  ]
+}

@@ -9,6 +9,8 @@ $config = Get-Content (Join-Path $companionRoot 'default_config.json') -Raw -Enc
 $config | Add-Member custom_unrelated 'preserve-me'
 $config.spotify | Add-Member client_id 'fixture-id' -Force
 $config.spotify | Add-Member api_initial_interval_seconds 3.5 -Force
+$config.spotify | Add-Member api_idle_interval_seconds 4.5 -Force
+$config.spotify | Add-Member api_only_poll_interval_seconds 15 -Force
 $config.connection.baudrate = 230400
 $config | ConvertTo-Json -Depth 8 | Set-Content $ConfigPath -Encoding UTF8
 function Write-FixtureStatus($sample) { $sample | ConvertTo-Json -Depth 12 | Set-Content $StatusPath -Encoding UTF8 }
@@ -24,6 +26,7 @@ $ast=[Management.Automation.Language.Parser]::ParseFile((Join-Path $companionRoo
 if ($entryErrors) { throw "Entry parser errors: $entryErrors" }
 $functions=$ast.FindAll({param($n) $n -is [Management.Automation.Language.FunctionDefinitionAst]},$true)
 foreach ($function in $functions) { Invoke-Expression $function.Extent.Text }
+function Get-AvailableComPorts { return @('COM7', 'COM11') }
 $view=Get-Content (Join-Path $companionRoot 'settings-view.ps1') -Raw -Encoding UTF8
 $viewErrors=$null
 $null=[Management.Automation.Language.Parser]::ParseInput($view,[ref]$null,[ref]$viewErrors)
@@ -69,7 +72,7 @@ function Render([string]$name,[string]$page,[int]$width=960,[int]$height=740,$sc
     Check-Labels $form
 }
 try {
-    Assert ($fieldSpecs.Count -eq 5) 'Expected the five existing numeric settings'
+    Assert ($fieldSpecs.Count -eq 4) 'Expected four adaptive/artwork numeric settings'
     Assert (-not (Test-Dirty)) 'Initial view is dirty'
     Assert (-not $save.Enabled) 'Initial save should be disabled'
     Assert ($connectionTitle.Text -eq 'Ansluten till skärmen') 'Fresh device status missing'
@@ -84,8 +87,8 @@ try {
     Assert ($advancedContent.Visible -and $advancedToggle.Text -like 'Dölj*') 'Expansion failed'
     Render 'settings-advanced' 'Inställningar' 960 740 $idleBox
     Render 'settings-artwork' 'Inställningar' 960 740 $retryBox
-    $minimumBox.Text='0,5'; [void]$minimumBox.Focus(); Set-AdvancedExpanded $false
-    Assert ($advancedToggle.Focused -and $minimumBox.Text -eq '0,5') 'Collapse lost values or focus'
+    $initialBox.Text='4'; [void]$initialBox.Focus(); Set-AdvancedExpanded $false
+    Assert ($advancedToggle.Focused -and $initialBox.Text -eq '4') 'Collapse lost values or focus'
     Select-Page 'Översikt'
     Assert ($footer.Visible -and (Test-Dirty)) 'Dirty settings were forgotten after changing page'
     Render 'overview-unsaved' 'Översikt'
@@ -96,23 +99,23 @@ try {
     Render 'diagnostics-screen' 'Diagnostik' 960 740 $cpuToggle
     Render 'settings-minimum' 'Inställningar' 824 611
     Assert (-not $advancedContent.Visible) 'Navigation unexpectedly expanded advanced fields'
-    $minimumBox.Text='0,5'; $connectBox.Text='20,5'; $startup.Checked=$false
+    $minimumBox.Text='1,5'; $startup.Checked=$false
     Assert (Test-Dirty) 'Editing did not mark dirty'
     Assert ($save.Enabled -and $undo.Enabled) 'Edit actions remain disabled'
     Assert (Save-Settings) "Valid Swedish decimals rejected: $($message.Text)"
     $fresh=Read-JsonFile $ConfigPath
-    Assert ($fresh.spotify.api_min_interval_seconds -eq 0.5 -and $fresh.spotify.api_only_poll_interval_seconds -eq 20.5) 'Decimal values not saved'
+    Assert ($fresh.spotify.api_min_interval_seconds -eq 1.5 -and $fresh.spotify.api_only_poll_interval_seconds -eq 15) 'Decimal values not saved'
     Assert ($fresh.custom_unrelated -eq 'preserve-me' -and $fresh.spotify.client_id -eq 'fixture-id' -and $fresh.connection.baudrate -eq 230400) 'Unrelated configuration changed'
     Assert (-not (Test-Dirty)) 'Saved form remains dirty'
     $before=[IO.File]::ReadAllText($ConfigPath)
-    $connectBox.Text='2'
+    $minimumBox.Text='0,4'
     Assert (-not (Save-Settings)) 'Out-of-range Connect value accepted'
     Assert ([IO.File]::ReadAllText($ConfigPath) -ceq $before) 'Invalid save changed the config'
-    Assert ($currentPage -eq 'Inställningar' -and $errors.GetError($connectBox) -ne '') 'Invalid field is not identified'
-    Assert ($form.ActiveControl -eq $connectBox -or $connectBox.Focused) 'Invalid field did not receive focus'
+    Assert ($currentPage -eq 'Inställningar' -and $errors.GetError($minimumBox) -ne '') 'Invalid field is not identified'
+    Assert ($form.ActiveControl -eq $minimumBox -or $minimumBox.Focused) 'Invalid field did not receive focus'
     Render 'validation-error' 'Inställningar' 960 740
     Undo-Settings
-    Assert ($connectBox.Text -eq '20,5' -and -not (Test-Dirty)) 'Undo did not restore saved values'
+    Assert ($minimumBox.Text -eq '1,5' -and -not (Test-Dirty)) 'Undo did not restore saved values'
     $initialBox.Text='40'; $idleBox.Text='50'
     Set-AdvancedExpanded $false; Select-Page 'Översikt'
     Assert (-not (Save-Settings)) 'Value above configured API max accepted'
@@ -126,7 +129,7 @@ try {
     $retryBox.Text='1,5'
     Assert (-not (Save-Settings)) 'Fractional retry count accepted'
     Undo-Settings
-    $connectBox.Text='25'
+    $minimumBox.Text='1'
     function Request-SaveChoice { return [Windows.Forms.DialogResult]::Cancel }
     Assert (-not (Confirm-Close)) 'Cancel should leave the window open'
     function Request-SaveChoice { return [Windows.Forms.DialogResult]::No }
@@ -134,16 +137,16 @@ try {
     Assert ([IO.File]::ReadAllText($ConfigPath) -ceq $before) 'Discard wrote configuration'
     function Request-SaveChoice { return [Windows.Forms.DialogResult]::Yes }
     Assert (Confirm-Close) 'Save on close failed'
-    Assert ((Read-JsonFile $ConfigPath).spotify.api_only_poll_interval_seconds -eq 25) 'Close-save did not persist'
-    $connectBox.Text='0'
+    Assert ((Read-JsonFile $ConfigPath).spotify.api_min_interval_seconds -eq 1) 'Close-save did not persist'
+    $minimumBox.Text='0'
     Assert (-not (Confirm-Close)) 'Invalid save on close should leave the window open'
     Undo-Settings
     # External edits made while the UI is open must survive a subsequent save.
     $fresh=Read-JsonFile $ConfigPath; $fresh.custom_unrelated='changed-elsewhere'
     $fresh | ConvertTo-Json -Depth 8 | Set-Content $ConfigPath -Encoding UTF8
-    $connectBox.Text='15'; Assert (Save-Settings) 'Save after external edit failed'
+    $minimumBox.Text='0,75'; Assert (Save-Settings) 'Save after external edit failed'
     Assert ((Read-JsonFile $ConfigPath).custom_unrelated -eq 'changed-elsewhere') 'External edit overwritten'
-    $connectBox.Text='16'; Select-Page 'Diagnostik'; [void]$save.Focus(); $save.PerformClick()
+    $minimumBox.Text='1,25'; Select-Page 'Diagnostik'; [void]$save.Focus(); $save.PerformClick()
     Assert (-not $footer.Visible -and $navButtons['Diagnostik'].Focused -and -not (Test-Dirty)) 'Saving from Diagnostics left focus in hidden controls'
     $sample.media.spotify.state='rate_limited'
     $sample.media.spotify | Add-Member retry_remaining_seconds 34696 -Force
@@ -177,7 +180,11 @@ try {
     Assert ($cpuToggle.Enabled -and $cpuMessage.Text -like '*bekräftat*') 'CPU acknowledgement missing'
     Select-Page 'Inställningar'
     [void]$startup.Focus(); [void]$form.SelectNextControl($startup,$true,$true,$true,$true)
-    Assert ($connectBox.Focused) 'Keyboard order does not reach Connect after startup'
+    Assert ($portBox.Focused) 'Keyboard order does not reach USB port after startup'
+    [void]$form.SelectNextControl($portBox,$true,$true,$true,$true)
+    Assert ($baudBox.Focused) 'Keyboard order does not reach baud after USB port'
+    [void]$form.SelectNextControl($baudBox,$true,$true,$true,$true)
+    Assert ($minimumBox.Focused) 'Keyboard order does not reach Connect after baud'
     $sample.media.spotify.pacing | Add-Member last_change ([pscustomobject]@{ from_seconds=0.5; to_seconds=120; reason='spotify_rate_limit'; at=((Get-UnixTime)-120) }) -Force
     $sample.esp32 | Add-Member psram_total_bytes 8388608 -Force; $sample.esp32 | Add-Member free_psram_bytes 7234567 -Force
     Write-FixtureStatus $sample; Update-LiveStatus

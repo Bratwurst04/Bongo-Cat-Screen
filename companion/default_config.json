@@ -25,7 +25,20 @@
   },
   "spotify": {
     "client_id": "",
-    "api_only_poll_interval_seconds": 15.0
+    "api_min_interval_seconds": 0.5,
+    "api_initial_interval_seconds": 1.0,
+    "api_idle_interval_seconds": 3.0,
+    "api_budget_short_total": 24,
+    "api_budget_short_auto": 18,
+    "api_budget_long_total": 8000,
+    "api_budget_long_auto": 7200,
+    "api_budget_day_playing_seconds": 5.0,
+    "api_budget_night_playing_seconds": 30.0,
+    "api_budget_day_idle_seconds": 15.0,
+    "api_budget_night_idle_seconds": 60.0,
+    "api_budget_night_start_hour": 0,
+    "api_budget_night_end_hour": 8,
+    "api_budget_timezone": "Europe/Stockholm"
   },
   "app_animations": {
     "enabled": false,

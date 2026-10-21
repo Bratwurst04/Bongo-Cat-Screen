@@ -1,0 +1,33 @@
+name: Offline checks
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: checks-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  windows:
+    runs-on: windows-2022
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.13'
+          architecture: x64
+          check-latest: true
+      - name: Install pinned companion dependencies
+        run: python -m pip install -r companion/requirements_app.txt
+      - name: Fetch SHA-256 verified LVGL test sources
+        run: python -B tools/fetch_lvgl_test_dependency.py --output-dir build/testdeps/lvgl
+      - name: Run isolated source checks
+        run: python -B tools/check_clean_checkout.py --testdeps-root build/testdeps/lvgl

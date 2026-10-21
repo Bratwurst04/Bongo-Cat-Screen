@@ -1,0 +1,361 @@
+{
+  "events": {
+    "same-cover": [
+      {
+        "ms": 0,
+        "event": "BEGIN compact",
+        "id": 1
+      },
+      {
+        "ms": 360,
+        "event": "CRC/ACK compact",
+        "id": 1
+      },
+      {
+        "ms": 880,
+        "event": "slot selected / SHOWN",
+        "id": 1
+      },
+      {
+        "ms": 900,
+        "event": "BEGIN full",
+        "id": 2
+      },
+      {
+        "ms": 5600,
+        "event": "CRC/ACK full",
+        "id": 2
+      }
+    ],
+    "focus-refinement": [
+      {
+        "ms": 0,
+        "event": "BEGIN compact",
+        "id": 1
+      },
+      {
+        "ms": 360,
+        "event": "CRC/ACK compact",
+        "id": 1
+      },
+      {
+        "ms": 880,
+        "event": "slot selected / SHOWN",
+        "id": 1
+      },
+      {
+        "ms": 900,
+        "event": "BEGIN full",
+        "id": 2
+      },
+      {
+        "ms": 5600,
+        "event": "CRC/ACK full",
+        "id": 2
+      }
+    ],
+    "paused-refinement": [
+      {
+        "ms": 0,
+        "event": "BEGIN compact",
+        "id": 1
+      },
+      {
+        "ms": 360,
+        "event": "CRC/ACK compact",
+        "id": 1
+      },
+      {
+        "ms": 880,
+        "event": "slot selected / SHOWN",
+        "id": 1
+      },
+      {
+        "ms": 900,
+        "event": "BEGIN full",
+        "id": 2
+      },
+      {
+        "ms": 5600,
+        "event": "CRC/ACK full",
+        "id": 2
+      }
+    ],
+    "bad-high-crc": [
+      {
+        "ms": 0,
+        "event": "BEGIN compact",
+        "id": 1
+      },
+      {
+        "ms": 360,
+        "event": "CRC/ACK compact",
+        "id": 1
+      },
+      {
+        "ms": 880,
+        "event": "slot selected / SHOWN",
+        "id": 1
+      },
+      {
+        "ms": 900,
+        "event": "BEGIN full",
+        "id": 2
+      },
+      {
+        "ms": 5600,
+        "event": "CRC rejected; keep low",
+        "id": 2
+      }
+    ],
+    "rapid-retarget": [
+      {
+        "ms": 0,
+        "event": "BEGIN compact",
+        "id": 1
+      },
+      {
+        "ms": 360,
+        "event": "CRC/ACK compact",
+        "id": 1
+      },
+      {
+        "ms": 880,
+        "event": "slot selected / SHOWN",
+        "id": 1
+      },
+      {
+        "ms": 900,
+        "event": "BEGIN full",
+        "id": 2
+      },
+      {
+        "ms": 1440,
+        "event": "BEGIN compact",
+        "id": 3
+      },
+      {
+        "ms": 1800,
+        "event": "CRC/ACK compact",
+        "id": 3
+      },
+      {
+        "ms": 2760,
+        "event": "slot selected / SHOWN",
+        "id": 3
+      },
+      {
+        "ms": 2780,
+        "event": "BEGIN full",
+        "id": 4
+      },
+      {
+        "ms": 7480,
+        "event": "CRC/ACK full",
+        "id": 4
+      }
+    ],
+    "double-skip": [
+      {
+        "ms": 0,
+        "event": "BEGIN compact",
+        "id": 1
+      },
+      {
+        "ms": 360,
+        "event": "CRC/ACK compact",
+        "id": 1
+      },
+      {
+        "ms": 880,
+        "event": "slot selected / SHOWN",
+        "id": 1
+      },
+      {
+        "ms": 900,
+        "event": "BEGIN full",
+        "id": 2
+      },
+      {
+        "ms": 1440,
+        "event": "BEGIN compact",
+        "id": 3
+      },
+      {
+        "ms": 1820,
+        "event": "BEGIN compact",
+        "id": 4
+      },
+      {
+        "ms": 2180,
+        "event": "CRC/ACK compact",
+        "id": 4
+      },
+      {
+        "ms": 2760,
+        "event": "slot selected / SHOWN",
+        "id": 4
+      },
+      {
+        "ms": 2780,
+        "event": "BEGIN full",
+        "id": 5
+      },
+      {
+        "ms": 7480,
+        "event": "CRC/ACK full",
+        "id": 5
+      }
+    ]
+  },
+  "metrics": {
+    "same-cover": {
+      "low_selected_ms": 880,
+      "full_committed_ms": 5600,
+      "selected_to_full_ms": 4720,
+      "full_matches_actual_112_conversion": true,
+      "changed_words": 2307
+    },
+    "focus-refinement": {
+      "low_selected_ms": 880,
+      "full_committed_ms": 5600,
+      "selected_to_full_ms": 4720
+    },
+    "paused-refinement": {
+      "low_selected_ms": 880,
+      "full_committed_ms": 5600,
+      "selected_to_full_ms": 4720
+    },
+    "bad-high-crc": {
+      "low_selected_ms": 880,
+      "full_committed_ms": null,
+      "selected_to_full_ms": null
+    },
+    "rapid-retarget": {
+      "low_selected_ms": 2760,
+      "full_committed_ms": 7480,
+      "selected_to_full_ms": 4720
+    },
+    "double-skip": {
+      "low_selected_ms": 2760,
+      "full_committed_ms": 7480,
+      "selected_to_full_ms": 4720
+    }
+  },
+  "sender_packet_hashes": {
+    "same-cover": [
+      {
+        "kind": "compact",
+        "id": 1,
+        "packets": 16,
+        "sha256": "64FD422AE60F30A50F1A6A83F698E30B5D084C282A1D2CECB0B43ACCDD19E544"
+      },
+      {
+        "kind": "full",
+        "id": 2,
+        "packets": 149,
+        "sha256": "8693D8194C9E6A0945B1437172F97B184A4F31F44E3ADC2AE9A70AD7751D11FA"
+      }
+    ],
+    "focus-refinement": [
+      {
+        "kind": "compact",
+        "id": 1,
+        "packets": 16,
+        "sha256": "64FD422AE60F30A50F1A6A83F698E30B5D084C282A1D2CECB0B43ACCDD19E544"
+      },
+      {
+        "kind": "full",
+        "id": 2,
+        "packets": 149,
+        "sha256": "8693D8194C9E6A0945B1437172F97B184A4F31F44E3ADC2AE9A70AD7751D11FA"
+      }
+    ],
+    "paused-refinement": [
+      {
+        "kind": "compact",
+        "id": 1,
+        "packets": 16,
+        "sha256": "64FD422AE60F30A50F1A6A83F698E30B5D084C282A1D2CECB0B43ACCDD19E544"
+      },
+      {
+        "kind": "full",
+        "id": 2,
+        "packets": 149,
+        "sha256": "8693D8194C9E6A0945B1437172F97B184A4F31F44E3ADC2AE9A70AD7751D11FA"
+      }
+    ],
+    "bad-high-crc": [
+      {
+        "kind": "compact",
+        "id": 1,
+        "packets": 16,
+        "sha256": "64FD422AE60F30A50F1A6A83F698E30B5D084C282A1D2CECB0B43ACCDD19E544"
+      },
+      {
+        "kind": "full",
+        "id": 2,
+        "packets": 149,
+        "sha256": "8693D8194C9E6A0945B1437172F97B184A4F31F44E3ADC2AE9A70AD7751D11FA"
+      }
+    ],
+    "rapid-retarget": [
+      {
+        "kind": "compact",
+        "id": 1,
+        "packets": 16,
+        "sha256": "64FD422AE60F30A50F1A6A83F698E30B5D084C282A1D2CECB0B43ACCDD19E544"
+      },
+      {
+        "kind": "full",
+        "id": 2,
+        "packets": 19,
+        "sha256": "B709D63EB688B7BD7DED5893535BFE5B24EA83842D25647F53EDA7988CCFBA8B"
+      },
+      {
+        "kind": "compact",
+        "id": 3,
+        "packets": 15,
+        "sha256": "E03A04FB96897A9EF63A084E84A108067D3827DAED04CF05C516F501E7F36387"
+      },
+      {
+        "kind": "full",
+        "id": 4,
+        "packets": 149,
+        "sha256": "266811DA38DD0E7C3F4C7971D90533248644179160BCD99510990B9645A545DD"
+      }
+    ],
+    "double-skip": [
+      {
+        "kind": "compact",
+        "id": 1,
+        "packets": 16,
+        "sha256": "64FD422AE60F30A50F1A6A83F698E30B5D084C282A1D2CECB0B43ACCDD19E544"
+      },
+      {
+        "kind": "full",
+        "id": 2,
+        "packets": 19,
+        "sha256": "B709D63EB688B7BD7DED5893535BFE5B24EA83842D25647F53EDA7988CCFBA8B"
+      },
+      {
+        "kind": "compact",
+        "id": 3,
+        "packets": 4,
+        "sha256": "40D1FE024EAA87A2EFAA13E675EF6B7E601D299562F47E3416C79F92F1A72604"
+      },
+      {
+        "kind": "compact",
+        "id": 4,
+        "packets": 15,
+        "sha256": "E8FE0785572284D141FE5359280E43AFE81DF907A7B3D5A638EE80AEB8729C1A"
+      },
+      {
+        "kind": "full",
+        "id": 5,
+        "packets": 149,
+        "sha256": "7A79B7D4A63F434853470D7F3865E69EC406F0AF0C9B6C969DD5D11DBF75F6B3"
+      }
+    ]
+  }
+}

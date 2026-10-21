@@ -1,6 +1,9 @@
 # -*- mode: python ; coding: utf-8 -*-
+from PyInstaller.utils.hooks import collect_data_files
 datas = [('default_config.json', '.'), ('settings.ps1', '.'),
-         ('settings-view.ps1', '.'), ('ui/bongo.png', 'ui')]
+         ('settings-view.ps1', '.'), ('ui/bongo.png', 'ui'),
+         ('../LICENSE.txt', '.'), ('../THIRD_PARTY_NOTICES.txt', '.')]
+datas += collect_data_files('tzdata')
 binaries = []
 hiddenimports = []
 

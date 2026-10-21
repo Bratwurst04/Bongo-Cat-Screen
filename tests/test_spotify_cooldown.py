@@ -15,7 +15,8 @@ from unittest.mock import AsyncMock, MagicMock, Mock, patch
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "companion"))
 
 from media_bridge import MediaSnapshot, WindowsMediaBridge  # noqa: E402
-from spotify_api import SpotifyApiBridge, SpotifyPacingError, SpotifyRateLimitError  # noqa: E402
+from spotify_api import SpotifyPacingError, SpotifyRateLimitError  # noqa: E402
+from transport_budget import TransportSpotifyApiBridge as SpotifyApiBridge
 from config import ConfigManager  # noqa: E402
 
 
@@ -32,7 +33,7 @@ class SpotifyCooldownTests(unittest.TestCase):
                 io.BytesIO(json.dumps({"error": {"status": 429,
                                                  "reason": "QUOTA_EXCEEDED"}}).encode()),
             )
-            with patch("spotify_api.urllib.request.urlopen", side_effect=error) as http, \
+            with patch("spotify_api._spotify_urlopen", side_effect=error) as http, \
                  patch("spotify_api.diagnostics.event") as event:
                 with self.assertRaises(SpotifyRateLimitError) as raised:
                     bridge.get_playback()
@@ -53,7 +54,7 @@ class SpotifyCooldownTests(unittest.TestCase):
             restarted = SpotifyApiBridge("client", token_path)
             self.assertEqual(restarted.status()["pacing"]["rate_limits"]["total"], 1)
             self.assertEqual(restarted.poll_interval_seconds(), 60.0)
-            with patch("spotify_api.urllib.request.urlopen") as http:
+            with patch("spotify_api._spotify_urlopen") as http:
                 with self.assertRaises(SpotifyRateLimitError) as cached:
                     restarted.get_playback()
                 self.assertTrue(cached.exception.cached)
@@ -69,11 +70,12 @@ class SpotifyCooldownTests(unittest.TestCase):
             }).encode()
             after_retry = restarted._tokens["rate_limit_until"] + 1
             with patch("spotify_api.time.time", return_value=after_retry), \
-                 patch("spotify_api.urllib.request.urlopen", return_value=response) as http:
+                 patch("spotify_api._spotify_urlopen", return_value=response) as http:
                 playback, _ = restarted.get_playback()
             self.assertEqual(playback["title"], "Song")
             http.assert_called_once()
-            self.assertEqual(restarted.poll_interval_seconds(), 60.0)
+            self.assertEqual(restarted.poll_interval_seconds(), restarted._current_interval())
+            self.assertEqual(restarted.poll_interval_seconds(idle=True), 60.0)
 
     def test_total_429_migrates_all_retained_events_and_never_resets_on_configure(self):
         with tempfile.TemporaryDirectory() as folder:
@@ -130,7 +132,7 @@ class SpotifyCooldownTests(unittest.TestCase):
                 })
                 self.assertEqual(bridge.poll_interval_seconds(), 60)
 
-    def test_configured_connect_floor_and_window_counts(self):
+    def test_legacy_connect_floor_is_ignored_and_window_counts_retained(self):
         with tempfile.TemporaryDirectory() as folder:
             with patch("builtins.print"):
                 config = ConfigManager(folder)
@@ -141,9 +143,9 @@ class SpotifyCooldownTests(unittest.TestCase):
                 candidate["connection"]["baudrate"] = 230400
                 self.assertTrue(config.validate_config(candidate))
                 candidate["spotify"]["api_only_poll_interval_seconds"] = 9.9
-                self.assertFalse(config.validate_config(candidate))
+                self.assertTrue(config.validate_config(candidate))
                 candidate["spotify"]["api_only_poll_interval_seconds"] = 121
-                self.assertFalse(config.validate_config(candidate))
+                self.assertTrue(config.validate_config(candidate))
 
             media = WindowsMediaBridge(on_update=Mock(), spotify_settings={
                 "api_only_poll_interval_seconds": 10,
@@ -153,9 +155,10 @@ class SpotifyCooldownTests(unittest.TestCase):
             media._spotify.poll_interval_seconds.return_value = 3
             media._spotify.poll_delay_seconds.return_value = 0.5
             media._current_source = "spotify_api"
-            self.assertEqual(media._api_only_poll_delay(idle=False), 10)
-            self.assertEqual(media.status()["effective_poll_interval_seconds"], 10)
+            self.assertEqual(media._api_only_poll_delay(idle=False), 0.5)
+            self.assertEqual(media.status()["effective_poll_interval_seconds"], 3)
             media._spotify.poll_interval_seconds.return_value = 60
+            media._spotify.poll_delay_seconds.return_value = 60
             self.assertEqual(media._api_only_poll_delay(idle=False), 60)
             self.assertEqual(media.status()["effective_poll_interval_seconds"], 60)
 
@@ -167,40 +170,14 @@ class SpotifyCooldownTests(unittest.TestCase):
             self.assertEqual(pacing["calls_last_30_seconds"], 2)
             self.assertEqual(pacing["calls_last_15_minutes"], 2)
 
-    def test_one_end_probe_replaces_regular_poll_without_bypassing_safety(self):
-        media = WindowsMediaBridge(on_update=Mock())
-        media._spotify = Mock(is_ready=True)
-        media._spotify.poll_interval_seconds.return_value = 3
-        media._spotify.poll_delay_seconds.return_value = 0.5
-        media._spotify.status.return_value = {"state": "ready", "pacing": {
-            "quota_poll_floor_seconds": 0,
-        }}
-        nearly_done = MediaSnapshot(available=True, source="SPOTIFY API", playing=True,
-                                    track_key="track", duration_seconds=180,
-                                    position_seconds=170)
-        with patch("media_bridge.diagnostics.event") as event:
-            self.assertEqual(media._api_only_poll_delay(False, nearly_done), 10.75)
-            self.assertEqual(media._api_only_poll_delay(False, nearly_done), 15)
-        event.assert_called_once_with("SPOTIFY_END_PROBE", interval_ms=10750)
-        media._spotify.poll_interval_seconds.return_value = 20
-        other = MediaSnapshot(available=True, source="SPOTIFY API", playing=True,
-                              track_key="other", duration_seconds=180,
-                              position_seconds=175)
-        self.assertEqual(media._api_only_poll_delay(False, other), 20)
-        media._spotify.poll_interval_seconds.return_value = 60
-        media._spotify.status.return_value = {"state": "ready", "pacing": {
-            "quota_poll_floor_seconds": 60,
-        }}
-        self.assertEqual(media._api_only_poll_delay(False, other), 60)
-
     def test_touch_control_uses_guarded_urgent_request_and_prompt_confirmation(self):
         with tempfile.TemporaryDirectory() as folder:
             api = SpotifyApiBridge("client", Path(folder) / "tokens.json")
             api._tokens["refresh_token"] = "secret"
             with patch.object(api, "_api_request") as request:
-                api.control("NEXT")
+                operation = api.control("NEXT")
             request.assert_called_once_with("POST", "/me/player/next",
-                                            empty_ok=True, urgent=True)
+                                            empty_ok=True, urgent=True, operation=operation)
         media = WindowsMediaBridge(on_update=Mock())
         spotify = Mock(is_ready=True)
         spotify.status.return_value = {"state": "ready"}
@@ -212,6 +189,10 @@ class SpotifyCooldownTests(unittest.TestCase):
         spotify.poll_interval_seconds.return_value = 15
         spotify.poll_delay_seconds.return_value = 0.5
         media._spotify = spotify
+        media._source_mode = media._current_source = "spotify_api"
+        media._source_epoch = media._api_snapshot_epoch = 1
+        media._last_snapshot = MediaSnapshot(available=True, source="SPOTIFY API",
+                                            track_key="old", title="Old", playing=True)
         media.control("NEXT")
         manager = Mock()
         manager.get_sessions.return_value = []
@@ -226,8 +207,9 @@ class SpotifyCooldownTests(unittest.TestCase):
              patch("media_bridge.asyncio.sleep", new_callable=AsyncMock), \
              patch.object(media, "_wait_for_spotify_work", new_callable=AsyncMock):
             asyncio.run(asyncio.wait_for(media._run(), timeout=2))
-        spotify.control.assert_called_once_with("NEXT")
-        spotify.get_playback.assert_called_once_with(urgent=True)
+        operation=spotify.begin_operation.return_value
+        spotify.control.assert_called_once_with("NEXT", operation=operation)
+        spotify.get_playback.assert_called_once_with(urgent=True, operation=operation)
 
     def test_rapid_touch_is_retained_until_urgent_guard_allows_it(self):
         media = WindowsMediaBridge(on_update=Mock())
@@ -237,9 +219,12 @@ class SpotifyCooldownTests(unittest.TestCase):
         media.control("PREVIOUS")
         with self.assertRaises(SpotifyPacingError):
             media._handle_spotify_commands()
-        self.assertEqual(media._pending_spotify_command, "NEXT")
+        self.assertEqual(media._pending_spotify_command.action, "NEXT")
         self.assertTrue(media._handle_spotify_commands())
         self.assertIsNone(media._pending_spotify_command)
+        media._spotify.finish_operation(media._confirmation_operation)
+        media._confirmation_operation=None
+        self.assertTrue(media._handle_spotify_commands())
         self.assertEqual([call.args[0] for call in media._spotify.control.call_args_list],
                          ["NEXT", "NEXT", "PREVIOUS"])
 
@@ -278,7 +263,7 @@ class SpotifyCooldownTests(unittest.TestCase):
         bridge._api_artwork_key = "same"
         bridge._api_artwork_complete_key = "same"
         bridge.control("NEXT")
-        self.assertEqual(bridge._api_only_poll_delay(idle=False), 15.0)
+        self.assertEqual(bridge._api_only_poll_delay(idle=False), 0.5)
 
         bridge._publish_no_windows_status()
         bridge._publish_no_windows_status()
@@ -331,7 +316,7 @@ class SpotifyCooldownTests(unittest.TestCase):
             asyncio.run(asyncio.wait_for(bridge._run(), timeout=3.0))
 
         self.assertEqual(spotify.get_playback.call_count, 2)
-        wait.assert_awaited_once_with(15.0)
+        wait.assert_awaited_once_with(0.5)
         fallbacks = [call for call in event.call_args_list
                      if call.args[0] == "SPOTIFY_FALLBACK"]
         self.assertEqual(len(fallbacks), 1)

@@ -1,5 +1,276 @@
 # Bongo Cat – Project Context
 
+## Avslutad mätcykel 2026-10-21 – normal 61BE återställd
+
+Lead 5 har tillfälligt mätt **1252EBAC** och återställt exakt **normal 61BE3B63**.
+Aktuellt är **C42112AD/61BE3B63/921600**, CPU meter av. Användaren bekräftar att
+vanlig låt och omslag är tillbaka. Syntetisk paus/spelande/paus gav 3/2/2
+godkända diagnosfönster: spelande H 57/430 över 66 ms, pauser 0/4435.
+Det är instrumenterad handlertid, inte panel-FPS eller exakt normal-CPU.
+Se [mätning, återgång och säkra publika kvitton](docs/render-viewport-measurement-2026-10-21.md).
+Äldre före-/efterflashuppgifter nedan bevaras som historik.
+
+## Driftprov 2026-10-21 – normal viewport flashad, rullning delvis bättre
+
+Lead 5 har efter uttryckligt tillstånd och verifierad EBB-backup flashat
+**normal 61BE3B63**. Installerat är **C42112AD/61BE3B63 vid 921600**;
+diagnos **1252EBAC** är fortsatt oflashad. Användaren rapporterar bättre
+rullning men kvarvarande skillnad mot paus. Två låtbyten, senare skärpning,
+arm/tass och återgång efter meny är snävt skärmprovade utan observerade bildrester;
+se [driftresultat och kvarvarande prov](docs/render-viewport-runtime-2026-10-21.md).
+Äldre föreflashuppgifter nedan är historik.
+
+## Senaste underlag 2026-10-20 – EBB återställd, viewport endast byggd
+
+Lead har efter syntetisk D7DA-mätning återställt verifierad EBB-appsektorbackup.
+**C42112AD/EBB334A9/921600** är åter i drift med profiler och genvägar bevarade;
+färsk kontakt/resync/ACK är loggad. Ny fysisk acceptans väntar. Nya normala
+**61BE3B63** och diagnostiska **1252EBAC** viewportkandidater är byggda,
+**inte flashade**. Rullningsfelet är fortsatt öppet. Riktig LVGL-raster och
+[mätunderlag, byggningar och provgränser](docs/render-viewport-2026-10-20.md)
+hålls skilda från fysisk jämnhet. Äldre daterade byggstatusar nedan är historik.
+Ny ren svit: **388 funna/379 PASS/nio klassade SKIP/noll fel eller blockerade
+operationer**, inklusive sex nya riktiga LVGL-hostprov.
+
+## Aktuellt 2026-10-20 – C421 installerad; spelstatus rätt, rullning utreds
+
+Lead installerade **C42112AD/EBB334A9 vid 921600** med verifierade backuper och
+aktuella profiler/Run/genvägar bevarade. Faktisk Startmenystart och färsk status
+visar ansluten ESP/Windows Spotify. Användaren accepterade spelstatusen men
+rapporterade ryckig rullning under PLAYING, jämn under PAUSED. Snäv acceptans,
+inte nytt helt omslags-/animationsgodkännande. Fyra kompakta ACK 459–640 ms och
+tre full-ACK 3099–3937 ms är transportmått, inga LCD-tider. Inference-händelser
+observerades faktiskt men förklarar inte rå UART-/rotorsak.
+
+Separat normal labelkandidat **B846FF52** och mätkandidat **D7DA9953** är
+byggda/granskade, **inte flashade**. Installerad EBB och C421-app är oförändrade.
+Ingen rotation/touch/font ändras; färre setteranrop är ingen bevisad rullningsfix.
+Ren slutkontroll **368 funna/359 PASS/nio klassade SKIP/noll fel eller blockerade
+operationer**. Se [mätkandidater och bevisgränser](docs/render-measurement-2026-10-20.md).
+
+### Historik: underkänd 092 och återställning före C421
+
+Companion **092E4E7D underkändes fysiskt**: PAUSED trots verklig uppspelning.
+Lead återställde **B7019579/EBB334A9 vid 921600** 13:26:42 med nuvarande
+profiler/auth/budget, Run och genvägar bevarade. Ingen firmware skrevs.
+Användaren bekräftade återställd funktion men preciserade att **textrullningen
+rycker**; orsaken utreds separat och ingen textändring ingår i enumfixen.
+Rättad **C42112AD**, byggd/paketgranskad på **Python 3.13.16/Pillow 13.0.0**,
+jämför verklig WinRT-enum i två kodvägar; Python 3.11+ ändrade enumens sträng.
+31 fokuserade prov PASS. Ny ren svit på exakt byggbas: **357 funna/348 PASS/
+nio klassade SKIP/noll fel eller blockerade operationer**. Installation och
+snäv fysisk spelstatusacceptans finns nu ovan. Det tidigare 630 ms-provet gäller 092
+och är ingen fysisk acceptans.
+
+Start utan skärm, entydig AUTO-port, config-/tokenintegritet, OAuth-callback/
+ägarskap, HTTP/bildgränser och aktivt Settings-portfält har rättats inom ett
+avgränsat apppaket. Ingen firmware, serialprotokoll eller release ändras.
+Den tidigare rena sviten på 092 var 353 funna/344 PASS/nio klassade SKIP/noll
+fel men missade enumregressionen med strängmockar. Ny fysisk acceptans,
+LCD-/skärpningstid och sleep/resume är fortfarande väntande. Se
+[kommittérapport, testgränser och öppna prioriteringar](docs/product-committee-2026-10-20.md),
+[Security](SECURITY.md) och [Privacy](PRIVACY.md). Äldre avsnitt/bevis bevaras.
+
+## Aktuellt 2026-10-20 – B7019579 installerad via Startmenyn och snävt accepterad
+
+Installerat är nu **B7019579/EBB334A9 vid 921600**, efter användarens
+appgodkännande och Leads verifierade appbyte. Den befintliga Startmeny-
+genvägen startade rätt kanonisk EXE. Firmware skrevs inte. Användaren
+bekräftade snabb bild och senare skärpning utan extra flip/hopp: **”Ja, det fungerar”**.
+Uppstart kompakt READY→ACK 789 ms; senare sex 431–475 ms. Full SLOT→ACK
+var 4 682–4 795 ms. Det är transport/slotmått, inga titel- eller LCD-tider.
+Alla explicita caps kom; fysisk partial-inference och sleep/resume är
+fortfarande oprövade. Se [separat driftrapport](docs/capability-partial-runtime-2026-10-20.md).
+Den stående rutinen i [CHAT_ROLES](CHAT_ROLES.md) håller samma Windows-app
+uppdaterad vid våra färdiga appuppgifter. Äldre avsnitt och frysta bevis bevaras.
+
+
+## Aktuellt 2026-10-20 – separat app återhämtar partiella cap-svar
+
+Installerat är fortsatt **94145746/EBB334A9 vid 921600**. Ny companion
+**B7019579**, 19 664 148 byte, är byggd/paketkontrollerad, **inte körd eller
+installerad**. Appens fullformatslåsning har reproducerats med bas+REFINE
+utan COMPACT. Färska bas+REFINE för samma connection/epoch/nonce kan nu
+bekräfta firmwarekontraktets kompaktstöd. Fysiska radbortfallet är obevisat.
+12 nya PASS; 120 relevanta PASS/ett avsiktligt foto-SKIP. Inga nya frågor,
+ny burst, firmwareändring eller release. Fysisk återhämtning väntar; ingen
+LCD-/ensekundsgaranti. Se [underlag och provgränser](docs/capability-partial-2026-10-20.md).
+Äldre statusavsnitt och frysta bevis bevaras som historik.
+
+
+## Aktuellt 2026-10-19 – beskärningsapp installerad och snävt skärmprovad
+
+Installerat är **94145746/EBB334A9 vid 921600**, efter exakt appgodkännande
+och Leads verifierade appbyte. Firmware skrevs inte. Användaren godkände
+Whoopty utan Spotify-remsa och skärpning utan hopp: **”Japp ser bra ut”**.
+Jämförelsen med redan korrekt omslag är **osäker**, inte accepterad.
+Första kompakta READY→ACK var 1 410 ms; refine kom efter ACK/resend och
+ingen fullbild finns i uppstartsbaslinjen. Senare anonymt låtbyte gav
+kompakt 444 ms och SLOT→full-ACK 4 748 ms på första försöket. Inga titel-
+eller LCD-tider tillskrivs detta. Se [driftrapporten](docs/artwork-crop-runtime-2026-10-19.md).
+Äldre statusavsnitt och frysta byggbevis bevaras som historik.
+
+
+## Aktuellt 2026-10-19 – selektiv Spotify-beskärning endast i byggd app
+
+Installerat lämnas **59FC2E33/EBB334A9 vid 921600**. Ny separat companion
+**94145746**, 19 664 430 byte, är byggd/arkivverifierad men inte startad eller
+installerad. Endast säkert igenkänd transparent Windows Spotify SMTC-ram
+beskärs före RGB; referensen blir exakt 234×234 utan andra 6 %-inset.
+API/andra spelare och icke-match behåller gammal bildkedja byteidentiskt.
+8 nya/165 relevanta PASS; käll-/hostpreview är ingen fysisk TFT-acceptans.
+Firmware är exakt EBB utan ny byggning/flash. Se
+[beskärningsunderlaget](docs/artwork-crop-2026-10-19.md).
+Alla äldre avsnitt och frysta bevis bevaras som historik.
+
+
+## Aktuellt 2026-10-19 – progressivt omslag installerat och skärmprovat
+
+Installerat är nu **59FC2E33/EBB334A9 vid 921600**, efter exakt godkännande
+och Leads verifierade byte/flash. Användaren: **”Japp det ser asbra ut nu.”**
+Det gäller snabb bild, senare skärpning utan ny flip/hopp och gammalt omslag
+kvar till flipens mitt. Kompakt READY→ACK var 626/616 ms på första försöket;
+tre SLOT→full-ACK var 4 749/4 797/4 700 ms. Detta är inte LCD-tidsmätning.
+Legacy-uppstart tog 9 276 ms och ett kompaktjobb med retry 9 553 ms.
+Engångs-CAPS-resend och färsk bas/compact/refine observerades. Ingen generell
+under-en-sekunds-, rapid-skip-, Fokus/DJ-, sleep- eller långdriftsacceptans.
+Se [separat driftresultat](docs/artwork-refinement-runtime-2026-10-19.md).
+Alla äldre avsnitt, byggbevis och handoff nedan bevaras som historik.
+
+## Aktuellt 2026-10-19 – kompakt först, senare detalj från samma cache
+
+Installerat är fortsatt **FD9D811B/C6EBAE4B vid 921600**. Användaren vill få
+skarpare omslag ungefär fem sekunder efter snabbilden, utan ny flip eller
+ändrad storlek. Lead valde att invänta en komplett separat kandidat.
+Nytt par **59FC2E33/EBB334A9** är byggt, **inte installerat eller flashat**.
+Den tidigare granskade **5556B647** är exakt bevarad, också endast byggd.
+
+Efter kompakt-ACK och färsk challenge-/id-bunden bekräftelse på vald bildslot
+kan samma sender skicka ett enda konservativt full112-omslag ur befintlig
+cache. Synlig low-res hålls kvar under mottagningen. Atomiskt detaljbyte
+bevarar exakt coarse-mask; ingen ny flip/default/API-hämtning eller MCU-buffer.
+Ny låt/cache/generation/stop avbryter refinement även under ACK-väntan.
+156 relevanta PASS/två kända SDK-skip; r4 är godkänd av Lead/UI som hostpreview.
+Modellens cirka 4,72 s från slotval till fullbild är **inte fysisk mätning**.
+Se [byggunderlag och provgränser](docs/artwork-refinement-2026-10-19.md).
+Äldre daterade statusar nedan är historiska bevis.
+
+## Aktuellt 2026-10-18 – C3 installerad; nästa firmware håller kvar gammalt omslag
+
+Installerat är **companion FD9D811B / firmware C6EBAE4B vid 921600**.
+[C3-driftprovet](docs/capability-startup-runtime-2026-10-18.md) bekräftar kompakt
+12 800-byteformat och tre lyckade första försök: 1 164 ms vid appstart,
+374/351 ms vid två låtbyten. Användaren bekräftade snabbhet och bildkvalitet.
+Ingen fallback-resend loggades; fysisk fallback/sleep/långdrift är inte bevisad.
+Äldre bygg-/C2-rapporter nedan bevaras som historiska underlag.
+
+Ny separat firmware **5556B647**, **endast byggd**, håller kvar visat omslag
+till flipens kant (870 ms) eller helt ur bild (1 070 ms). De befintliga två
+RGB565-slotarna används för visning/staging; tidig ACK kvitterar mottagen
+CRC, inte visning. En ersättbar senaste identitet kan vänta på nästa dolda
+brytpunkt. Ingen companionändring eller runtimeåtgärd ingår.
+Förhandsvisning/källgranskning och fysisk provning skiljs åt; flash får ske
+tidigast i morgon efter användarens godkännande. Se
+[byggunderlaget](docs/turntable-face-2026-10-18.md).
+
+## Aktuellt 2026-10-18 – C3-app byggd för tappad startkapabilitet
+
+Installerat är **companion 356A5EC0 / firmware C6EBAE4B vid 921600**.
+[C2-rapporten](docs/artwork-compact80-runtime-2026-10-18.md) visar endast
+uppstart: kontakt men ingen loggad kapabilitet eller omslagsmätning till
+22:45:01. Ett senare reset-/musikprov gav bas-ART2 men ingen kompaktkapabilitet;
+två fullformatsomslag fick ACK efter 4,682/4,680 s. Det är inget kompaktfartprov;
+se [separat uppföljning](docs/artwork-compact80-post-reset-2026-10-18.md).
+Ny **C3-app FD9D811B** är byggd, **inte körd eller installerad**, och återanvänder
+exakt C6-firmware. Den kan fråga en gång till med samma challenge efter giltig
+status för aktuell conn/epoch. Hela bas+kompakt-tillståndet krävs för att hoppa
+över omsändningen. Inga nya trådar, API-anrop eller periodiska prober införs.
+Detta garanterar inte kompaktformat för ett första omslag som redan hunnit starta
+eller att den saknade kompaktraden i det senare C2-provet återhämtas.
+Se [C3-underlaget](docs/capability-startup-2026-10-18.md).
+Äldre daterade avsnitt nedan är historiska bygg-/föreflashuppgifter.
+
+## Aktuellt 2026-10-18 – kompakt omslag endast i ny byggd kandidat
+
+Installerat är **445D72A0 / 860896DB vid 921600**, med underkänt fartprov
+enligt [driftrapporten](docs/artwork-fast921600-runtime-2026-10-18.md).
+Nytt separat par **356A5EC0 / C6EBAE4B** är byggt, **inte installerat/flashat**.
+80×80 RGB565 ger 12 800 byte/100 chunks och skalas upp i befintlig inaktiv
+112×112-slot efter CRC. Cache/API och utgående bildstorlek bevaras.
+Profilen `esp32-024r-spotify-compact80` har egen färsk codec-kapabilitet;
+den annonserar inte den äldre underkända FAST-tieren. Default 230400 och
+flash 115200 är oförändrade. UI har godkänt stillbildsjämförelsen med väntad
+detaljförlust. **Ensekundsmålet är oprövat för det nya paret.**
+Se [kompaktrapporten](docs/artwork-compact80-2026-10-18.md).
+Äldre avsnitt och frysta C/B/627-bevis bevaras; inga runtimeåtgärder från Code.
+
+## Aktuellt 2026-10-18 – 921600 installerat, fartprovet underkänt
+
+Installerat är nu **companion 445D72A0 / firmware 860896DB**, faktisk baud
+**921600**, efter användarens uttryckliga godkännande och Leads installation/
+appflash. Kanonisk appplats, Run-post och genvägar bevaras. Kodens default
+är fortfarande 230400 och flash 115200. B:s tjockare arm ingår.
+**Ensekundsmålet ART_READY→ACK är underkänt**: 703 ms snabb sändning gav
+ett lyckat omslag på 1652 ms; art2_decode/art2_line avvisade andra försök,
+och ett omslag tog 12344 ms med konservativ retry. Användaren rapporterade
+”Nope de tar lång tid för vissa, en tog 11 sekunder typ.” Orsaken är inte
+fastställd; kort sändtid bevisar inte snabb mottagarcommit.
+Se [fryst driftresultat](docs/artwork-fast921600-runtime-2026-10-18.md).
+[Byggrapporten](docs/artwork-fast921600-2026-10-18.md) är oförändrat
+föreflashbevis. Spotify-felsökning/API-budget/auth ändras inte. Äldre
+daterade statusar nedan är historik.
+
+## Aktuellt 2026-10-18 – kattarm/tempo flashad och snävt skärmprovad
+
+Spotify-felsökningen är pausad. Användaren avböjde flash av 3606F2E0 och
+beställde en synlig kattarm samt långsammare lyft och nedläggning.
+Firmware **627E6B93** har sammanhängande vit arm ut genom vänsterkanten,
+greppaus och egna mjuka rörelsefaser (1,88 s normalt / 2,38 s komplett byte).
+Efter användarens ”Flasha” skrev Lead den vid `0x10000` med verifierad
+55669C87-backup; esptool verifierade skrivningen. Installerat par är nu
+**companion 68721143 / firmware 627E6B93**. Oförändrad companion startades
+om; första serieanslutningen misslyckades och försök två lyckades.
+Resync och två omslag med art2-ACK är bekräftade. Användaren svarade
+**”Ja. Armen kan bli lite tjockare”** på prov av ansluten vit kattarm,
+lyft/nedläggning och tonarm play/pause. Det är snäv kvalitativ acceptans;
+sällsynt komplett byte, Fokus, full touch och långdrift väntar. Önskemålet
+om lite tjockare vit underarm finns nu i separat byggd kandidat **9961C753**,
+**inte flashad eller fysiskt provad**; installerad firmware är fortsatt 627E6B93.
+Se [armbreddsrapporten](docs/turntable-arm-width-2026-10-18.md).
+Se [driftrapporten](docs/turntable-arm-tempo-runtime-2026-10-18.md).
+[Byggrapporten](docs/turntable-arm-tempo-2026-10-18.md) beskriver föreflashläget
+och bevaras som historiskt underlag.
+Föregående 3606F2E0 och [dess rapport](docs/turntable-paw-2026-10-18.md)
+är bevarade oförändrade.
+Ingen companionbuild, profiländring eller release ingår. Äldre daterade
+uppgifter nedan är historik; nya driftobservationer innebär ingen Spotifyfix.
+
+## Aktuellt beslut 2026-10-16
+
+Användaren har avbrutit seek och beställt att funktionen tas bort. Aktuell
+arbetskälla återgår till vanliga mediegester; skivflip, åäö och neutral
+låtidentitet bevaras. Installerat par är fortfarande **26A0FAF0 / C7E594B4**
+tills Lead byter det. Nytt par och fysisk provstatus redovisas i
+[borttagningsrapporten](docs/seek-removal-2026-10-16.md).
+Äldre daterade uppgifter nedan är historik.
+
+## Aktuellt underlag 2026-10-15
+
+Installerat utvecklingspar är companion **17466EBF / firmware F406C485**,
+med fortsatt **5 s grundintervall** för känd aktiv API-uppspelning dagtid.
+Automatisk mobilföljning med rätt låttext/omslag och jämnhet är kvalitativt
+godkänd; ingen separat uppmätt mobilhandlingstid eller end-to-end-latens.
+Budget/Retry/natt/idle kan ge längre intervall. 3 s är endast analyserat;
+användarbeslutet är att behålla 5 s.
+
+**Seek-firmware 57894EE0 är byggd men inte flashad, ännu inte skärmprovad
+eller fysiskt accepterad.** Aktuell arbetskälla och installerad firmware
+ska hållas isär. Långdrift och sleep/resume med nuvarande companion väntar.
+Se [daterade driftbevis](docs/api-budget-runtime-2026-10-15.md) och
+[Lead-överlämning](docs/lead-handoff-2026-10-15.md) för exakta hashar,
+roller och testat/väntande. Äldre daterade uppgifter nedan är historik;
+app-v1.3 är senast publicerade release, utan ny release i detta steg.
+
 ## Projekt
 
 Bongo Cat består av:
@@ -107,6 +378,16 @@ Nästa fokusområde är ESP32-skärmen och UI:t.
 Inställningsfönstret på Windows ska inte byggas om utan ett konkret behov.
 
 ## Aktuellt fokus
+
+Sedan 2026-10-11 är adaptiv Spotify Connect-pollning beställd: aktiv musik
+ska följa API-pacingens minimum (0,5 s som lokal undre gräns) och backa vid
+Spotify-begränsningar. En separat companionkandidat är byggd och testad i
+isolering samt installerad och driftprovad av Lead. Användaren bekräftar
+snabba mobilbyten och jämn skiva; exakt ändringslatens är omätt. Det gamla fasta Connect-
+intervallet är avvecklat i källan utan att skriva om befintliga profiler.
+Sparad Retry-After och kvotåterhämtning finns kvar. Publicerad app-v1.3,
+ESP32-firmware och serialtrafik är oförändrade. Detaljer finns i
+`01_CURRENT_STATE.md` och `companion/README.md`. UI-proven nedan är historik.
 
 Sedan 2026-10-07 är en UI-ombyggnad av Windows-companionen uttryckligen
 beställd: matcha skärmens stil och förbättra informationsstrukturen. Det

@@ -1,0 +1,113 @@
+{
+  "classification": "Review-only touch overlay on the approved F406 source-derived preview; no UI change",
+  "dimensions": [
+    240,
+    320
+  ],
+  "seek_start_xywh_half_open": [
+    16,
+    262,
+    210,
+    31
+  ],
+  "seek_start_touchrect_inclusive": [
+    16,
+    262,
+    225,
+    292
+  ],
+  "info_panel_xywh": [
+    8,
+    205,
+    224,
+    90
+  ],
+  "border": 1,
+  "padding": 0,
+  "actual_progress_xywh": [
+    19,
+    264,
+    204,
+    6
+  ],
+  "actual_elapsed_label_position": [
+    19,
+    278
+  ],
+  "actual_duration_label_right_edge_exclusive_y": [
+    221,
+    278
+  ],
+  "time_font": "lv_font_montserrat_10",
+  "time_line_height": 11,
+  "sample_time_rects": [
+    [
+      19,
+      278,
+      18,
+      11
+    ],
+    [
+      201,
+      278,
+      20,
+      11
+    ]
+  ],
+  "protected_xywh": {
+    "title": [
+      19,
+      213,
+      204,
+      18
+    ],
+    "artist": [
+      19,
+      238,
+      204,
+      16
+    ],
+    "playback_state": [
+      8,
+      300,
+      224,
+      16
+    ],
+    "focus_status_touch": [
+      36,
+      16,
+      168,
+      37
+    ],
+    "active_art": [
+      48,
+      54,
+      144,
+      144
+    ],
+    "inactive_art": [
+      34,
+      26,
+      172,
+      172
+    ]
+  },
+  "margins_from_progress": {
+    "left": 3,
+    "right": 3,
+    "above": 2,
+    "below": 23
+  },
+  "protected_overlap_checks_passed": true,
+  "protected_preview_pixels_unchanged": true,
+  "base_preview": "visuals/focus-countdown/status-tap-implemented-2026-10-12/composed/player_focus.png",
+  "base_preview_sha256": "7d41823bbed9017364e32724d9206d79018fcbc40fb1f9c91314f4abd0b349a3",
+  "geometry_function_sha256": "57f29008050cee526824dc98e24e36cf197c6e20778990acfc2486aa63ccc397",
+  "source_sha256_at_render": "29ca89c1dc07bc40da5858bcbd7d2cf2d5d9166ac575ef95279eae6f4f40dc58",
+  "rendering_limit": "Existing preview uses approximate Pillow rendering for media metadata; normative geometry includes the actual LVGL 1px parent border.",
+  "files": {
+    "player-original.png": "7d41823bbed9017364e32724d9206d79018fcbc40fb1f9c91314f4abd0b349a3",
+    "player-seek-overlay.png": "ea5d4f41fa828ce51b95ca676a8f5f6d38b67389b61216e87d96a25c7a48b5e4",
+    "touch-map.png": "0201e11b7404bf5bffcf31696f6157efce1ce8200d6994a5c1394b8f32f52958"
+  }
+}

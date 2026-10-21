@@ -1,0 +1,53 @@
+{
+  "user_selected_reference": "Quitter / Cameron Whitcomb",
+  "capture_type": "Read-only current Windows Spotify SMTC thumbnail; no Spotify API or COM access",
+  "source_bytes": 178217,
+  "source_sha256": "A0FD7349C4C63E7D00E58F029AB5E2F6C4D11DC20D1D94BC484048C456194C4E",
+  "source_mode": "RGBA",
+  "source_size": [
+    300,
+    300
+  ],
+  "source_format": "PNG",
+  "crop_recognized": true,
+  "crop_box": [
+    33,
+    0,
+    267,
+    234
+  ],
+  "source_icc_present": false,
+  "source_gamma": null,
+  "panel_photo_available": false,
+  "physical_color_conclusion": null,
+  "source_album_whole_square": {
+    "pixels": 54756,
+    "neargray_rgb_spread_le16_count": 9648,
+    "neargray_percent": 17.62
+  },
+  "circular_label_metrics": {
+    "definition": "RGB channel spread <=16 on circular label, excluding center spindle; simple digital threshold, not calibrated colorimetry. Source full234 circle; full81 label; compact nearest80 label pixels. Stages have differing pixel counts and resampling.",
+    "source234": {
+      "pixels": 41648,
+      "neargray_rgb_spread_le16": 6070,
+      "neargray_percent": 14.575,
+      "mean_rgb_spread": 80.003,
+      "chroma_key565_collisions": 0
+    },
+    "converted_label81": {
+      "pixels": 4912,
+      "neargray_rgb_spread_le16": 459,
+      "neargray_percent": 9.344,
+      "mean_rgb_spread": 78.088,
+      "chroma_key565_collisions": 0
+    },
+    "compact565_label": {
+      "pixels": 2516,
+      "neargray_rgb_spread_le16": 240,
+      "neargray_percent": 9.539,
+      "mean_rgb_spread": 80.151,
+      "chroma_key565_collisions": 0
+    }
+  },
+  "interpretation": "Original and calculated vinyl visibly retain colors. Digital downsampling can mix dense details; no attribution of physical gray appearance without panel photo or measurement. No claim of measured percent gray on TFT."
+}

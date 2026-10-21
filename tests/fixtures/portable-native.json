@@ -1,0 +1,47 @@
+{
+  "description": "Portable test/visual data only; no product implementation or album photo",
+  "files": {
+    "lvgl8311-color16.inc": {
+      "bytes": 492,
+      "sha256": "B3B96C036E3238ED6A11040703150C5414E993026EE149C28F68960C2905C5A1"
+    },
+    "record-c3-legacy.inc": {
+      "bytes": 4371,
+      "sha256": "210508FA44A05BD18CBA2D2B96FE4B8DF991D7781396AB435C21591CE8894DE3"
+    },
+    "lvgl8311-ascii-fonts.json": {
+      "bytes": 121406,
+      "sha256": "80C7776BC4512617C670ECD18B380484A644D7AABC085E0E986B7A43E36A31A2"
+    },
+    "LVGL-LICENSE.txt": {
+      "bytes": 1072,
+      "sha256_lf": "6A916130A36E83A79BB0DCA6C6A7BFE60A67AF7D118605E2B7B23BD5AD5C4EB0"
+    },
+    "Montserrat-OFL.txt": {
+      "bytes": 4400,
+      "sha256_lf": "8B7141C03FA4F8D44E6345D5D4931709290F0F67875E452E95AC1FD3A027802E"
+    }
+  },
+  "upstream": {
+    "lvgl_version": "8.3.11",
+    "license": "LVGL-LICENSE.txt",
+    "color_source": ".pio/libdeps/esp32-024r-spotify-artfast921600/lvgl/src/misc/lv_color.h",
+    "color_sha256": "C7604889FFB54C8B08BA73DD4275D532D2D68710AF4F4E73FACBF282ED5CFB3D",
+    "font_source_sha256": {
+      ".pio/libdeps/esp32-024r-spotify-fastserial/lvgl/src/font/lv_font_montserrat_10.c": "25BE76110812574B73F90139453AAD191E60694218B984371B4035A58068F237",
+      ".pio/libdeps/esp32-024r-spotify-fastserial/lvgl/src/font/lv_font_montserrat_14.c": "CB0E6923DD76CCEECDB655135F0D2F85E5A978571226149640BF30135BCE8D28",
+      ".pio/libdeps/esp32-024r-spotify-fastserial/lvgl/src/font/lv_font_montserrat_16.c": "FF16A58B4A20150ED4B606B84E2A17AA7C1E5B2717E811CD616CE416DE9FA858",
+      ".pio/libdeps/esp32-024r-spotify-fastserial/lvgl/src/font/lv_font_montserrat_20.c": "1BC2011C66D2C4E1BDFF90E5D1489F7155E2B8EAAF47A7578F53EA854E8AFEAC",
+      ".pio/libdeps/esp32-024r-spotify-fastserial/lvgl/src/font/lv_font_unscii_16.c": "09B133B9A1404BD7B3A3CE7D7D512DAC116ACC60BD701A52207E6BD03AE90282"
+    },
+    "montserrat_license_url": "https://raw.githubusercontent.com/JulietaUla/Montserrat/master/OFL.txt"
+  },
+  "record": {
+    "historical_source": "build/capability-startup-2026-10-18/source-frozen/src/bongo_cat_featured.inc",
+    "source_sha256": "6DBA3725045AFDEC5830BC64C9979AC0980185ACDA475D7D8B0F51BAC6354230",
+    "extracted_by": "record_flip_host.py before portability adjustment",
+    "extractor_sha256": "0867E2BC9FE9AE50D556C7DE3AE03A4326AD0FBEAFB8054FBBC723B948B7679B",
+    "no_seek": true
+  },
+  "line_endings": "inc/json are pinned LF via .gitattributes; license txt hashes normalize CRLF to LF"
+}

@@ -15,6 +15,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "companion"))
 
 from diagnostics import Diagnostics  # noqa: E402
 from media_bridge import WindowsMediaBridge  # noqa: E402
+from winrt.windows.media.control import GlobalSystemMediaTransportControlsSessionPlaybackStatus as PlaybackStatus
 from tray import BongoCatSystemTray  # noqa: E402
 
 
@@ -127,7 +128,7 @@ class ArtworkRetryTests(unittest.TestCase):
             title="Private title", artist="Private artist", album_artist="",
             album_title="", track_number=1, thumbnail=object(),
         ))
-        session.get_playback_info.return_value.playback_status = "PLAYING"
+        session.get_playback_info.return_value.playback_status = PlaybackStatus.PLAYING
         session.get_timeline_properties.return_value = SimpleNamespace(
             position=dt.timedelta(seconds=1), end_time=dt.timedelta(seconds=100),
             last_updated_time=now,
@@ -201,7 +202,7 @@ class ArtworkRetryTests(unittest.TestCase):
             properties("Song A", None), properties("Song B", object()),
             properties("Song A", None),
         ])
-        session.get_playback_info.return_value.playback_status = "PLAYING"
+        session.get_playback_info.return_value.playback_status = PlaybackStatus.PLAYING
         session.get_timeline_properties.return_value = SimpleNamespace(
             position=dt.timedelta(seconds=1), end_time=dt.timedelta(seconds=100),
             last_updated_time=now,

@@ -1,0 +1,18 @@
+#pragma once
+#include <stdint.h>
+#define CHAR_BIT 8
+#define CHAR_MIN (-128)
+#define CHAR_MAX 127
+#define UCHAR_MAX 255U
+#define SHRT_MIN INT16_MIN
+#define SHRT_MAX INT16_MAX
+#define USHRT_MAX UINT16_MAX
+#define INT_MIN INT32_MIN
+#define INT_MAX INT32_MAX
+#define UINT_MAX UINT32_MAX
+#define LONG_MIN INT32_MIN
+#define LONG_MAX 2147483647L
+#define ULONG_MAX 0xFFFFFFFFUL
+#define LLONG_MIN INT64_MIN
+#define LLONG_MAX INT64_MAX
+#define ULLONG_MAX UINT64_MAX

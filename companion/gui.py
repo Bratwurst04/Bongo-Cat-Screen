@@ -243,7 +243,7 @@ class BongoCatSettingsGUI:
         
         self.widgets['baudrate'] = tk.IntVar(value=115200)
         baud_combo = ttk.Combobox(port_group, textvariable=self.widgets['baudrate'], width=15)
-        baud_combo['values'] = (9600, 19200, 38400, 57600, 115200, 230400)
+        baud_combo['values'] = (9600, 19200, 38400, 57600, 115200, 230400, 460800, 921600)
         baud_combo.pack(anchor='w')
         baud_combo.bind('<<ComboboxSelected>>', lambda e: self.on_setting_changed())
         

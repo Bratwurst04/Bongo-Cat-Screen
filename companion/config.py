@@ -5,11 +5,12 @@ Handles JSON-based settings persistence and validation
 """
 
 import json
+from api_budget import DEFAULTS as API_BUDGET_DEFAULTS, settings as validate_api_budget_settings
 import os
-import shutil
 import copy
 from pathlib import Path
 from typing import Dict, Any, Callable, List
+from atomic_file import atomic_write
 
 class ConfigManager:
     """Manages application configuration with JSON persistence and validation"""
@@ -53,12 +54,12 @@ class ConfigManager:
                 "show_notifications": True
             },
             "spotify": {
+                **API_BUDGET_DEFAULTS,
                 "client_id": "",
-                "api_initial_interval_seconds": 3.0,
-                "api_min_interval_seconds": 1.0,
+                "api_initial_interval_seconds": 1.0,
+                "api_min_interval_seconds": 0.5,
                 "api_max_interval_seconds": 30.0,
-                "api_idle_interval_seconds": 10.0,
-                "api_only_poll_interval_seconds": 15.0,
+                "api_idle_interval_seconds": 3.0,
                 "artwork_retry_attempts": 5,
             },
             "diagnostics": {
@@ -125,7 +126,7 @@ class ConfigManager:
             
             # Validate connection settings
             connection = config["connection"]
-            if connection.get("baudrate", 0) not in (9600, 19200, 38400, 57600, 115200, 230400):
+            if connection.get("baudrate", 0) not in (9600, 19200, 38400, 57600, 115200, 230400, 460800, 921600):
                 print("❌ Invalid baudrate")
                 return False
             if not (1 <= connection.get("timeout_seconds", 0) <= 30):
@@ -133,20 +134,17 @@ class ConfigManager:
                 return False
 
             spotify = config.get("spotify", {})
-            minimum = float(spotify.get("api_min_interval_seconds", 1.0))
-            initial = float(spotify.get("api_initial_interval_seconds", 3.0))
+            validate_api_budget_settings(spotify)
+            minimum = float(spotify.get("api_min_interval_seconds", 0.5))
+            initial = float(spotify.get("api_initial_interval_seconds", 1.0))
             maximum = float(spotify.get("api_max_interval_seconds", 30.0))
-            idle = float(spotify.get("api_idle_interval_seconds", 10.0))
-            api_only = float(spotify.get("api_only_poll_interval_seconds", 15.0))
+            idle = float(spotify.get("api_idle_interval_seconds", 3.0))
             retries = int(spotify.get("artwork_retry_attempts", 5))
             if not (0.5 <= minimum <= initial <= maximum <= 120.0):
                 print("Invalid Spotify API polling intervals")
                 return False
             if not (initial <= idle <= 300.0) or not (1 <= retries <= 5):
                 print("Invalid Spotify idle interval or artwork retry count")
-                return False
-            if not (10.0 <= api_only <= 120.0):
-                print("Invalid Spotify Connect poll interval (10-120 seconds)")
                 return False
 
             diagnostics = config.get("diagnostics", {})
@@ -175,43 +173,54 @@ class ConfigManager:
             return False
     
     def load_config(self) -> bool:
-        """Load configuration from file"""
-        try:
-            if self.config_file.exists():
-                with open(self.config_file, 'r') as f:
-                    loaded_config = json.load(f)
-                
-                if self.validate_config(loaded_config):
-                    self.config = self._merge_defaults(loaded_config)
-                    self._remember_config_mtime()
-                    print(f"📂 Configuration loaded from {self.config_file}")
-                    return True
-                else:
-                    print("⚠️ Invalid configuration file, using defaults")
-                    self.reset_to_defaults()
-                    return False
-            else:
-                print("📝 No configuration file found, creating default")
-                self.reset_to_defaults()
-                self.save_config()
-                return True
-                
-        except Exception as e:
-            print(f"❌ Error loading config: {e}")
-            print("🔄 Using default configuration")
-            self.reset_to_defaults()
-            return False
+        """Prefer the active file, then a validated backup; never rewrite damage."""
+        for path in (self.config_file, self.backup_file):
+            try:
+                raw = path.read_bytes()
+                loaded = json.loads(raw.decode("utf-8-sig"))
+                if not isinstance(loaded, dict) or not self.validate_config(loaded):
+                    continue
+            except (OSError, UnicodeError, ValueError, RecursionError):
+                continue
+            self.config = self._merge_defaults(loaded)
+            if path == self.backup_file:
+                try:
+                    atomic_write(self.config_file, raw)
+                except OSError as exc:
+                    # Still use the validated backup in memory. Do not erase it
+                    # if disk/permissions also prevent repairing the active file.
+                    print(f"Config backup loaded; active file repair failed: {type(exc).__name__}")
+            self._remember_config_mtime()
+            print(f"📂 Configuration loaded from {path}")
+            return True
+        if not self.config_file.exists() and not self.backup_file.exists():
+            print("📝 No configuration file found, creating default")
+            return self.save_config()
+        # On a live reload keep the last working settings, rather than silently
+        # replacing them (and later their backup) with defaults.
+        print("Invalid configuration and backup; retaining current settings")
+        return False
     
     def save_config(self) -> bool:
         """Save current configuration to file"""
         try:
-            # Create backup of existing config
-            if self.config_file.exists():
-                shutil.copy2(self.config_file, self.backup_file)
-            
-            # Save current configuration
-            with open(self.config_file, 'w') as f:
-                json.dump(self.config, f, indent=2)
+            if not self.validate_config(self.config):
+                return False
+            payload = json.dumps(self.config, indent=2, ensure_ascii=False,
+                                 allow_nan=False).encode("utf-8")
+            previous = None
+            try:
+                raw = self.config_file.read_bytes()
+                loaded = json.loads(raw.decode("utf-8-sig"))
+                if isinstance(loaded, dict) and self.validate_config(loaded):
+                    previous = raw
+            except (OSError, UnicodeError, ValueError, RecursionError):
+                pass
+            # An invalid active file must never replace a known good backup.
+            # If backup creation fails, leave the active file untouched too.
+            if previous is not None:
+                atomic_write(self.backup_file, previous)
+            atomic_write(self.config_file, payload)
             self._remember_config_mtime()
             
             print(f"💾 Configuration saved to {self.config_file}")

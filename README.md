@@ -1,5 +1,100 @@
 # Bongo Cat för ESP32-024R
 
+## Senaste renderunderlag 2026-10-20
+
+**C42112AD/EBB334A9 vid 921600** är åter i drift efter Leads tillfälliga
+syntetiska mätprov och verifierade återställning. Profiler och genvägar bevarades.
+Nya viewportkandidater **61BE3B63/1252EBAC är endast byggda**, inte flashade.
+Ryckig rullning under uppspelning är fortfarande öppen; riktig LVGL-raster är
+ingen fysisk jämnhetsacceptans. Se [mätresultat, nya byggen och fysisk provplan](docs/render-viewport-2026-10-20.md).
+Äldre daterade uppgifter nedan beskriver respektive tidigare bygg-/driftläge.
+Ny ren kontroll: **379 PASS, nio klassade undantag, noll fel**. Alla nya
+LVGL-rasterprov kördes; fysisk provning av dessa binärer återstår.
+
+## Produktförbättringar 2026-10-20 – C421 installerad, spelstatus rättad
+
+**092E4E7D underkändes fysiskt**: pausstatus trots uppspelning. Lead återställde
+först B701 med nuvarande profiler bevarade och installerade sedan rättningen.
+Rättad companion **C42112AD**, byggd med **Python 3.13.16/Pillow 13.0.0**, är
+installerad av Lead med profiler/genvägar bevarade. Användaren har accepterat
+rättad spelstatus. Två strängjämförelser använder nu Windows riktiga statusenum.
+Ren svit på exakt byggbas: **348 PASS, nio klassade SKIP, noll fel**.
+Rullningen rycker fortfarande under uppspelning, men är jämn vid paus; separat
+renderbelastning utreds. Ingen firmware har flashats och sleep/resume återstår.
+Installerad firmware EBB är oförändrad. Separata kandidater **B846FF52**
+(färre textuppdateringar) och **D7DA9953** (renderingsmätning) är byggda, **inte
+flashade**. De är ingen bevisad rullningsfix. Senaste rena kontroll: **359 PASS,
+nio klassade SKIP, noll fel**. Se [firmwareunderlaget](docs/render-measurement-2026-10-20.md).
+Ingen publicerad release ändras.
+
+Appen fortsätter nu utan ansluten skärm. **Settings** har port/baud; ändring
+kräver appomstart och AUTO gissar inte mellan flera enheter. Sparade inställningar
+skyddas vid skrivfel. Kontolänkning, HTTP och bildinläsning har stärkts, och
+befintliga animationer/omslag/protokoll bevaras. Spotify-länkning görs fortfarande
+via CLI med appen stängd, inte i Settings.
+
+Läs [granskning, kandidat och kvarvarande arbete](docs/product-committee-2026-10-20.md),
+[Security](SECURITY.md) och [Privacy](PRIVACY.md). Tokens är fortfarande
+klartext lokalt. Spotifyåtkomst, omslagsregler och full licens-/distributionshantering
+återstår före bred release eller betalprodukt. **App-v1.3 är fortsatt senaste
+publicerade release**. Äldre daterade avsnitt nedan är historik.
+
+## Utvecklingskälla 2026-10-19 – aktuellt installerat par
+
+Installerat utvecklingspar är **companion 94145746 / firmware EBB334A9 vid
+921600 baud**. Källan har kompakt omslag följt av mer detalj ur samma cache,
+selektiv beskärning av den kända Windows Spotify-ramen, skivflip med tass och
+rörlig tonarm samt åäö. Seek är borttaget; vanliga medietryck/svep kvarstår.
+
+Användaren har kvalitativt godkänt snabbild/skärpning utan extra hopp och
+Whoopty utan Spotify-remsa. Jämförelse med redan korrekta omslag är osäker.
+Transportkvittens är ingen LCD-tid eller garanti för alla omslag under en
+sekund. Se [senaste beskärningsprov](docs/artwork-crop-runtime-2026-10-19.md)
+och [progressivt omslag i drift](docs/artwork-refinement-runtime-2026-10-19.md).
+
+Denna uppdatering publicerar **utvecklingskälla**, utan versionshöjning,
+ny tagg eller release. **App-v1.3 är fortsatt senast publicerad release**;
+dess nedladdningar och filer behålls. Äldre daterade avsnitt nedan är historik.
+
+Riktade tester använder publika [testfixtures](tests/fixtures/README.md) i en
+vanlig checkout. Nativeprov kräver befintlig MSVC-byggare; Python/Pillow
+behövs för bildproven. Saknade uttryckliga historiska byggarkiv och det
+opublicerade fotoreferensprovet markeras SKIP. Aktuella beteendeprov och
+korrupta publika fixtures får inte döljas av dessa undantag.
+
+
+## Utvecklingskandidat 2026-10-18 – kompakt omslag
+
+Nytt separat par **356A5EC0 / C6EBAE4B** använder 80×80 RGB565 och visar
+fortsatt 112×112-vinyl. Det är byggt och isolerat testat, **inte installerat
+eller flashat**. UI har godkänt stillbildsjämförelsen med väntad detaljförlust.
+Ensekundsmålet väntar på hårdvaruprov. Profil `esp32-024r-spotify-compact80`
+kräver matchat par vid 921600; standarden är fortsatt 230400, flash 115200.
+Installerat är **445D72A0 / 860896DB**, vars tidigare fartprov underkändes.
+Se [kompaktrapporten](docs/artwork-compact80-2026-10-18.md) och
+[driftresultatet](docs/artwork-fast921600-runtime-2026-10-18.md).
+Äldre daterade utvecklingsuppgifter nedan är historik.
+
+## Experiment 2026-10-18 – snabbare omslagsöverföring, ännu inte installerat
+
+Ett separat par **companion 445D72A0 / firmware 860896DB** är byggt för
+`esp32-024r-spotify-artfast921600`. Samma bildkvalitet och ART2 används;
+en sekund till kvitterat omslag är ett oprövat mål. Vid ett senare godkänt
+prov används matchande firmware och companion inställda på 921600 baud.
+Ordinarie standard är fortsatt 230400, flashning 115200. Installerat par
+är **68721143 / 627E6B93** och är orört. CH340-stöd, faktisk hastighet och
+stabilitet behöver provas på enheten. Se
+[experimentrapporten](docs/artwork-fast921600-2026-10-18.md).
+Äldre daterade utvecklingsuppgifter nedan är historik.
+
+## Utvecklingsstatus 2026-10-16
+
+Seek är avbrutet på användarens begäran och borttaget ur arbetskällan.
+Spelarens tidsyta använder åter vanliga tryck och mediesvep. Skivflip,
+åäö och övriga funktioner bevaras. Installerat par är ännu
+**26A0FAF0 / C7E594B4**; se [nytt par och provgränser](docs/seek-removal-2026-10-16.md).
+Detta ändrar inte publicerad app-v1.3. Äldre daterad status är historik.
+
 Firmware för en ESP32-024R med 240×320 ILI9341-pekskärm och en Windows
 companion som skickar tid, systemvärden, mediastatus och albumomslag via serial.
 ESP32 visar Bongo-animationer, en gemensam panelmeny och en mediasida med
@@ -8,7 +103,28 @@ omslag, vinyl och DJ-katt.
 > [!Important]
 > Vibe-coded project made by me
 
-## Aktuell release: app-v1.3 (2026-10-07)
+## Aktuell utvecklingsstatus (2026-10-15)
+
+Installerat utvecklingspar är companion **17466EBF** och firmware **F406C485**.
+Aktiv API-uppspelning dagtid har **5 s grundintervall**, med budgettryck,
+högre pacing och Retry-After kvar. Natt/idle kan ge längre väntan; 0,5 s är
+en separat lägsta anropsgräns, inte den aktuella automatiska dagtakten.
+Mobilens automatiska låttext, rätt omslag och jämnhet är kvalitativt godkända
+av användaren. Mobilhandlingarnas tidpunkter och end-to-end-latens är inte
+separat uppmätta; långdrift och sleep/resume med detta par återstår.
+
+**Seek-firmware 57894EE0 är endast byggd, inte flashad och ännu inte
+skärmprovad/fysiskt accepterad.** Arbetskällan innehåller seek-stödet;
+det innebär inte att F406 på skärmen har tidslinjesvep. 3 s har jämförts
+isolerat och användarbeslutet är att behålla **5 s**. Denna källuppdatering
+skapar ingen ny release; app-v1.3 är fortsatt senast publicerad nedan.
+
+Se [aktuella driftbevis](docs/api-budget-runtime-2026-10-15.md),
+[3/5 s-analys](docs/api-cadence-3s-analysis-2026-10-15.md) och
+[överlämningen med exakta hashar och väntande prov](docs/lead-handoff-2026-10-15.md).
+De äldre daterade installationsuppgifterna längre ned är historik.
+
+## Senast publicerad release: app-v1.3 (2026-10-07)
 
 App-v1.3 parar **230400 baud i drift** med **115200 baud vid flashning**.
 Den innehåller snabbare omslagsöverföring, större Spelare med stabil tidslinje,
@@ -38,6 +154,17 @@ det måste ändras vid denna uppgradering. Nya profiler får 230400 direkt.
 Övriga inställningar och Spotify-token återanvänds och ingår inte i paketet.
 Se [flashinstruktioner](#flasha-från-windows), [companioninstruktioner](companion/README.md),
 [release notes](release/app-v1.3-notes.md) och [verifieringsrapport](release/app-v1.3-verification.md).
+
+### Historik: adaptiv Connect (2026-10-11)
+
+En separat companionkandidat har installerats och provats och tar bort det fasta
+15-sekundersintervallet för aktiv Spotify Connect. Källan använder gemensam
+adaptiv takt för pollning och touch, ned till konfigurerat minimum (ny standard
+0,5 s), med bevarad Retry-After och kvotåterhämtning. Gamla sparade Connect-
+värden bevaras men påverkar inte denna källversion. Firmware och app-v1.3-
+nedladdningarna ovan är oförändrade. Färsk status visade 0,5 s adaptiv gräns;
+användaren rapporterade direkt låtbyte från mobilen, snabbt omslag och jämn skiva.
+Det är kvalitativt, utan stoppursmätt ändringslatens. Se [companionens modell och verifiering](companion/README.md#spotify-connect-pacing-and-diagnostics).
 
 ### Föregående app-v1.2 (2026-10-03)
 

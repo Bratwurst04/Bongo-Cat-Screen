@@ -1,0 +1,1082 @@
+{
+  "classification": "UI proposal using exact derived LVGL glyphs; not firmware or a device photo",
+  "display_pixels": [
+    240,
+    320
+  ],
+  "views": [
+    {
+      "panel": "bongo",
+      "state": "focus",
+      "caption": "Fokus",
+      "file": "bongo-focus.png",
+      "sha256": "046070351311a8c135208dcc23604e2c1884cae9ae1262fc982824363af2fb5a",
+      "glyph_boxes": [
+        [
+          196,
+          29,
+          6,
+          7
+        ],
+        [
+          204,
+          29,
+          6,
+          7
+        ],
+        [
+          211,
+          29,
+          7,
+          7
+        ],
+        [
+          220,
+          29,
+          6,
+          7
+        ],
+        [
+          228,
+          29,
+          6,
+          7
+        ],
+        [
+          157,
+          45,
+          12,
+          14
+        ],
+        [
+          171,
+          45,
+          14,
+          14
+        ],
+        [
+          193,
+          47,
+          4,
+          12
+        ],
+        [
+          205,
+          45,
+          12,
+          14
+        ],
+        [
+          221,
+          45,
+          12,
+          14
+        ]
+      ]
+    },
+    {
+      "panel": "player",
+      "state": "focus",
+      "caption": "Fokus",
+      "file": "player-focus.png",
+      "sha256": "7d68661ddfacf255466aad18d5c7c783950732cc49b0373871b59025cc8231c7",
+      "glyph_boxes": [
+        [
+          70,
+          17,
+          5,
+          7
+        ],
+        [
+          75,
+          17,
+          8,
+          7
+        ],
+        [
+          84,
+          17,
+          7,
+          7
+        ],
+        [
+          90,
+          17,
+          7,
+          7
+        ],
+        [
+          98,
+          17,
+          6,
+          7
+        ],
+        [
+          114,
+          15,
+          9,
+          10
+        ],
+        [
+          123,
+          15,
+          10,
+          10
+        ],
+        [
+          133,
+          17,
+          3,
+          8
+        ],
+        [
+          136,
+          15,
+          8,
+          10
+        ],
+        [
+          144,
+          15,
+          8,
+          10
+        ]
+      ]
+    },
+    {
+      "panel": "bongo",
+      "state": "break",
+      "caption": "Pausfas",
+      "file": "bongo-break.png",
+      "sha256": "d44cb0aac767aebde0907e7198441b2156fc8bf6c225e520e7a5aa4b76bbdadc",
+      "glyph_boxes": [
+        [
+          204,
+          29,
+          6,
+          7
+        ],
+        [
+          212,
+          29,
+          6,
+          7
+        ],
+        [
+          220,
+          29,
+          6,
+          7
+        ],
+        [
+          228,
+          29,
+          6,
+          7
+        ],
+        [
+          157,
+          45,
+          12,
+          14
+        ],
+        [
+          173,
+          45,
+          12,
+          14
+        ],
+        [
+          193,
+          47,
+          4,
+          12
+        ],
+        [
+          205,
+          45,
+          12,
+          14
+        ],
+        [
+          221,
+          45,
+          12,
+          14
+        ]
+      ]
+    },
+    {
+      "panel": "player",
+      "state": "break",
+      "caption": "Pausfas",
+      "file": "player-break.png",
+      "sha256": "590f17704b25c2955f5d3fcf0b32e8707b19e8bbad148d0449c70d2ab02f46dd",
+      "glyph_boxes": [
+        [
+          73,
+          17,
+          6,
+          7
+        ],
+        [
+          78,
+          17,
+          9,
+          7
+        ],
+        [
+          86,
+          17,
+          7,
+          7
+        ],
+        [
+          94,
+          17,
+          6,
+          7
+        ],
+        [
+          114,
+          15,
+          9,
+          10
+        ],
+        [
+          123,
+          15,
+          9,
+          10
+        ],
+        [
+          132,
+          17,
+          3,
+          8
+        ],
+        [
+          135,
+          15,
+          8,
+          10
+        ],
+        [
+          143,
+          15,
+          8,
+          10
+        ]
+      ]
+    },
+    {
+      "panel": "bongo",
+      "state": "focus-paused",
+      "caption": "Fokus pausad",
+      "file": "bongo-focus-paused.png",
+      "sha256": "6858f401a0ddfe4423cfbd34f4cfb94f4f6b1ba564809f52b814419816f6da76",
+      "glyph_boxes": [
+        [
+          172,
+          29,
+          6,
+          7
+        ],
+        [
+          180,
+          29,
+          6,
+          7
+        ],
+        [
+          187,
+          29,
+          7,
+          7
+        ],
+        [
+          196,
+          29,
+          6,
+          7
+        ],
+        [
+          204,
+          29,
+          6,
+          7
+        ],
+        [
+          211,
+          28,
+          1,
+          1
+        ],
+        [
+          222,
+          29,
+          2,
+          7
+        ],
+        [
+          230,
+          29,
+          2,
+          7
+        ],
+        [
+          157,
+          45,
+          12,
+          14
+        ],
+        [
+          171,
+          45,
+          14,
+          14
+        ],
+        [
+          193,
+          47,
+          4,
+          12
+        ],
+        [
+          205,
+          45,
+          12,
+          14
+        ],
+        [
+          221,
+          45,
+          12,
+          14
+        ]
+      ]
+    },
+    {
+      "panel": "player",
+      "state": "focus-paused",
+      "caption": "Fokus pausad",
+      "file": "player-focus-paused.png",
+      "sha256": "777705fe4c0298412af145e04077912d1b8cf8c659641e6f664540470bcbf265",
+      "glyph_boxes": [
+        [
+          70,
+          17,
+          5,
+          7
+        ],
+        [
+          75,
+          17,
+          8,
+          7
+        ],
+        [
+          84,
+          17,
+          7,
+          7
+        ],
+        [
+          90,
+          17,
+          7,
+          7
+        ],
+        [
+          98,
+          17,
+          6,
+          7
+        ],
+        [
+          116,
+          15,
+          9,
+          10
+        ],
+        [
+          125,
+          15,
+          10,
+          10
+        ],
+        [
+          135,
+          17,
+          3,
+          8
+        ],
+        [
+          138,
+          15,
+          8,
+          10
+        ],
+        [
+          146,
+          15,
+          4,
+          10
+        ],
+        [
+          163,
+          17,
+          2,
+          7
+        ],
+        [
+          168,
+          17,
+          2,
+          7
+        ]
+      ]
+    },
+    {
+      "panel": "bongo",
+      "state": "break-paused",
+      "caption": "Pausfas pausad",
+      "file": "bongo-break-paused.png",
+      "sha256": "047b4927feee9e0d556be929068cf6902597bc022a03426973e065b6afaa3fe0",
+      "glyph_boxes": [
+        [
+          180,
+          29,
+          6,
+          7
+        ],
+        [
+          188,
+          29,
+          6,
+          7
+        ],
+        [
+          196,
+          29,
+          6,
+          7
+        ],
+        [
+          204,
+          29,
+          6,
+          7
+        ],
+        [
+          211,
+          28,
+          1,
+          1
+        ],
+        [
+          222,
+          29,
+          2,
+          7
+        ],
+        [
+          230,
+          29,
+          2,
+          7
+        ],
+        [
+          157,
+          45,
+          12,
+          14
+        ],
+        [
+          173,
+          45,
+          12,
+          14
+        ],
+        [
+          193,
+          47,
+          4,
+          12
+        ],
+        [
+          203,
+          45,
+          14,
+          14
+        ],
+        [
+          221,
+          45,
+          12,
+          14
+        ]
+      ]
+    },
+    {
+      "panel": "player",
+      "state": "break-paused",
+      "caption": "Pausfas pausad",
+      "file": "player-break-paused.png",
+      "sha256": "6b827e554afa4503b3f35ddb5014bc68c9a93370a50d70f720c9c5e62ba632c6",
+      "glyph_boxes": [
+        [
+          73,
+          17,
+          6,
+          7
+        ],
+        [
+          78,
+          17,
+          9,
+          7
+        ],
+        [
+          86,
+          17,
+          7,
+          7
+        ],
+        [
+          94,
+          17,
+          6,
+          7
+        ],
+        [
+          114,
+          15,
+          9,
+          10
+        ],
+        [
+          123,
+          15,
+          9,
+          10
+        ],
+        [
+          132,
+          17,
+          3,
+          8
+        ],
+        [
+          135,
+          15,
+          10,
+          10
+        ],
+        [
+          144,
+          15,
+          8,
+          10
+        ],
+        [
+          163,
+          17,
+          2,
+          7
+        ],
+        [
+          168,
+          17,
+          2,
+          7
+        ]
+      ]
+    },
+    {
+      "panel": "bongo",
+      "state": "long-paused",
+      "caption": "120 minuter / pausad / maxstatistik",
+      "file": "bongo-long-paused.png",
+      "sha256": "072840a64116afd88f9016c8823a7276af55bcbba168239c899b9952de172ee4",
+      "glyph_boxes": [
+        [
+          172,
+          29,
+          6,
+          7
+        ],
+        [
+          180,
+          29,
+          6,
+          7
+        ],
+        [
+          187,
+          29,
+          7,
+          7
+        ],
+        [
+          196,
+          29,
+          6,
+          7
+        ],
+        [
+          204,
+          29,
+          6,
+          7
+        ],
+        [
+          211,
+          28,
+          1,
+          1
+        ],
+        [
+          222,
+          29,
+          2,
+          7
+        ],
+        [
+          230,
+          29,
+          2,
+          7
+        ],
+        [
+          141,
+          45,
+          12,
+          14
+        ],
+        [
+          157,
+          45,
+          12,
+          14
+        ],
+        [
+          173,
+          45,
+          12,
+          14
+        ],
+        [
+          193,
+          47,
+          4,
+          12
+        ],
+        [
+          205,
+          45,
+          12,
+          14
+        ],
+        [
+          221,
+          45,
+          12,
+          14
+        ]
+      ]
+    },
+    {
+      "panel": "player",
+      "state": "long-paused",
+      "caption": "120 minuter / pausad / maxstatistik",
+      "file": "player-long-paused.png",
+      "sha256": "ea625ac4fa15a4e6d3767bd8608fc85a669864eee84bd1484e81e401c10041c9",
+      "glyph_boxes": [
+        [
+          70,
+          17,
+          5,
+          7
+        ],
+        [
+          75,
+          17,
+          8,
+          7
+        ],
+        [
+          84,
+          17,
+          7,
+          7
+        ],
+        [
+          90,
+          17,
+          7,
+          7
+        ],
+        [
+          98,
+          17,
+          6,
+          7
+        ],
+        [
+          112,
+          15,
+          4,
+          10
+        ],
+        [
+          117,
+          15,
+          8,
+          10
+        ],
+        [
+          125,
+          15,
+          9,
+          10
+        ],
+        [
+          134,
+          17,
+          3,
+          8
+        ],
+        [
+          137,
+          15,
+          9,
+          10
+        ],
+        [
+          146,
+          15,
+          9,
+          10
+        ],
+        [
+          163,
+          17,
+          2,
+          7
+        ],
+        [
+          168,
+          17,
+          2,
+          7
+        ]
+      ]
+    },
+    {
+      "panel": "bongo",
+      "state": "idle",
+      "caption": "Inaktiv / dold",
+      "file": "bongo-idle.png",
+      "sha256": "efbeca3fc5fc16696e30c34749cd8ffab6607384e6af4207b8cb50aa0b395b3c",
+      "glyph_boxes": []
+    },
+    {
+      "panel": "player",
+      "state": "idle",
+      "caption": "Inaktiv / dold",
+      "file": "player-idle.png",
+      "sha256": "df81313b378d09674bd6bb7b84dd54b253d25b7c1111d34756950a2295df57d2",
+      "glyph_boxes": []
+    },
+    {
+      "panel": "bongo",
+      "state": "cue",
+      "caption": "Fasnotis / nedr\u00e4kning",
+      "file": "bongo-cue.png",
+      "sha256": "870e8f57f3bf1278a60d28c5047f669ad7b4789105dbf99a6e4e9399a0172de8",
+      "glyph_boxes": [
+        [
+          204,
+          29,
+          6,
+          7
+        ],
+        [
+          212,
+          29,
+          6,
+          7
+        ],
+        [
+          220,
+          29,
+          6,
+          7
+        ],
+        [
+          228,
+          29,
+          6,
+          7
+        ],
+        [
+          157,
+          45,
+          12,
+          14
+        ],
+        [
+          173,
+          45,
+          12,
+          14
+        ],
+        [
+          193,
+          47,
+          4,
+          12
+        ],
+        [
+          205,
+          45,
+          12,
+          14
+        ],
+        [
+          221,
+          45,
+          12,
+          14
+        ]
+      ]
+    },
+    {
+      "panel": "player",
+      "state": "cue",
+      "caption": "Fasnotis / nedr\u00e4kning",
+      "file": "player-cue.png",
+      "sha256": "0909fc23c047850b8dbd3b5a6acbfb7357872cbab39e09d5aa0a40adf2d3e302",
+      "glyph_boxes": [
+        [
+          101,
+          15,
+          9,
+          10
+        ],
+        [
+          110,
+          15,
+          9,
+          10
+        ],
+        [
+          119,
+          17,
+          3,
+          8
+        ],
+        [
+          122,
+          15,
+          8,
+          10
+        ],
+        [
+          130,
+          15,
+          8,
+          10
+        ]
+      ]
+    },
+    {
+      "panel": "bongo",
+      "state": "dj",
+      "caption": "DJ / aktiv / l\u00e5ng k\u00e4lla",
+      "file": "bongo-dj.png",
+      "sha256": "046070351311a8c135208dcc23604e2c1884cae9ae1262fc982824363af2fb5a",
+      "glyph_boxes": [
+        [
+          196,
+          29,
+          6,
+          7
+        ],
+        [
+          204,
+          29,
+          6,
+          7
+        ],
+        [
+          211,
+          29,
+          7,
+          7
+        ],
+        [
+          220,
+          29,
+          6,
+          7
+        ],
+        [
+          228,
+          29,
+          6,
+          7
+        ],
+        [
+          157,
+          45,
+          12,
+          14
+        ],
+        [
+          171,
+          45,
+          14,
+          14
+        ],
+        [
+          193,
+          47,
+          4,
+          12
+        ],
+        [
+          205,
+          45,
+          12,
+          14
+        ],
+        [
+          221,
+          45,
+          12,
+          14
+        ]
+      ]
+    },
+    {
+      "panel": "player",
+      "state": "dj",
+      "caption": "DJ / aktiv / l\u00e5ng k\u00e4lla",
+      "file": "player-dj.png",
+      "sha256": "c68258a6e6b999687273f82a961a1e332b3660b15c2b3610cbb4a3bb37f582ac",
+      "glyph_boxes": [
+        [
+          70,
+          17,
+          5,
+          7
+        ],
+        [
+          75,
+          17,
+          8,
+          7
+        ],
+        [
+          84,
+          17,
+          7,
+          7
+        ],
+        [
+          90,
+          17,
+          7,
+          7
+        ],
+        [
+          98,
+          17,
+          6,
+          7
+        ],
+        [
+          114,
+          15,
+          9,
+          10
+        ],
+        [
+          123,
+          15,
+          10,
+          10
+        ],
+        [
+          133,
+          17,
+          3,
+          8
+        ],
+        [
+          136,
+          15,
+          8,
+          10
+        ],
+        [
+          144,
+          15,
+          8,
+          10
+        ]
+      ]
+    }
+  ],
+  "bongo_rectangles": {
+    "phase": [
+      171,
+      28,
+      64,
+      9
+    ],
+    "time": [
+      139,
+      44,
+      96,
+      17
+    ]
+  },
+  "player_rectangles": {
+    "phase": [
+      68,
+      15,
+      36,
+      11
+    ],
+    "time": [
+      109,
+      15,
+      48,
+      11
+    ],
+    "pause": [
+      163,
+      17,
+      7,
+      7
+    ]
+  },
+  "player_time_max_width": 46,
+  "source_sha256": {
+    "src/bongo_cat_featured.inc": "9bd9bc94ca27a78c11bb1c438a7d3859995e586072f27584ea63513369a5e0db",
+    "src/focus_countdown.h": "efc87d887c6b34a3aafe83da2d1cee83f4c79164cb2a2a6655d88b81233e57e9",
+    "tools/export_ui_visuals.py": "e2e234519e8b9629de1b67195491c004c8baec7feaeb8e0c6cbb7f09693d59f5"
+  },
+  "font_sha256": {
+    "player": "f6c0dccc2d998157ff62605bead944f94e1bf58851268ab897ee65d5a0ccf6ad"
+  },
+  "limits": [
+    "Proposed fonts require Code2 integration and verification before any build or flash.",
+    "Non-countdown screen content uses the existing simulated exporter.",
+    "Bongo layout covers the existing companion WPM range 0..200 (three digits); arbitrary out-of-contract serial input is not a layout guarantee.",
+    "No serial, companion or user config access. Large temporary cues retain existing intentional overlay behavior."
+  ]
+}
