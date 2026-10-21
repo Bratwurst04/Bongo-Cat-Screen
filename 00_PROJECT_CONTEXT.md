@@ -1,5 +1,15 @@
 # Bongo Cat – Project Context
 
+## Driftprov 2026-10-21 – normal viewport flashad, rullning delvis bättre
+
+Lead 5 har efter uttryckligt tillstånd och verifierad EBB-backup flashat
+**normal 61BE3B63**. Installerat är **C42112AD/61BE3B63 vid 921600**;
+diagnos **1252EBAC** är fortsatt oflashad. Användaren rapporterar bättre
+rullning men kvarvarande skillnad mot paus. Två låtbyten, senare skärpning,
+arm/tass och återgång efter meny är snävt skärmprovade utan observerade bildrester;
+se [driftresultat och kvarvarande prov](docs/render-viewport-runtime-2026-10-21.md).
+Äldre föreflashuppgifter nedan är historik.
+
 ## Senaste underlag 2026-10-20 – EBB återställd, viewport endast byggd
 
 Lead har efter syntetisk D7DA-mätning återställt verifierad EBB-appsektorbackup.

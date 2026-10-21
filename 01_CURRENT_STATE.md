@@ -1,5 +1,27 @@
 # Bongo Cat – Current State
 
+## Driftprov 2026-10-21 – C421/normal 61BE installerat
+
+Normal **61BE3B63** är nu flashad av Lead 5 efter uttryckligt godkännande,
+ny verifierad EBB-appsektorbackup och hashverifierad skrivning. Companion
+**C42112AD**, profiler/Run/genvägar och drift **921600** bevarades; CPUdiagnos
+är av. **1252EBAC** är fortfarande endast byggd. Användaren: **”Bättre men
+fortfarande skillnad mot när den är pausad”** – partiell förbättring, inte löst.
+Användaren bekräftar normalt omslag, arm/tass och inga observerade bildrester
+efter två låtbyten, senare skärpning och menybesök. Snäv fysisk acceptans,
+inte långdrift/sleep/Fokus/DJ eller full gestregression. Se
+[driftrapport och säkra kvitton](docs/render-viewport-runtime-2026-10-21.md).
+Tidigare installations-/föreflashstatus nedan bevaras som historik.
+
+## Överlämning 2026-10-21 – Lead 5
+
+[Aktuellt överlämningsunderlag](docs/lead-handoff-2026-10-21.md) samlar roller,
+exakt installerat respektive endast byggt, nya faktiska CI-resultat och nästa
+bildkvalitetsutredning. Driftobservationen nedan från 20 oktober är historisk,
+inte en ny avläsning idag. Lead 5 har läst befintligt projektunderlag och meddelat
+övertaget runtimeansvar; den nya handoffen lämnas nu för slutgenomläsning.
+Fysisk kontroll efter återställningen och av nya viewportkandidater väntar.
+
 ## Senaste underlag 2026-10-20 – återställd drift och separat viewportkandidat
 
 - Drift: **C42112AD/EBB334A9 vid 921600**, efter Leads verifierade återställning

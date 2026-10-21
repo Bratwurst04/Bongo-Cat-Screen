@@ -1,5 +1,19 @@
 # Bongo Cat – Architecture Decisions
 
+## 2026-10-21 – Normal viewport flashed; partial physical improvement
+
+- Lead 5 flashed exact normal 61BE3B63 after explicit user approval, fresh
+  verified EBB-sector backup and verified write. Installed pair is now
+  C42112AD/61BE3B63/921600. Diagnostic 1252EBAC remains built only.
+- The user reports improved scrolling with a remaining difference from paused
+  playback. Treat this as partial qualitative improvement; no FPS or solved-scroll
+  claim. The user accepted normal artwork, arm/paw and no observed remnants after
+  two track changes, later sharpening and a menu visit. Keep that physical scope
+  narrow; long run/sleep/Fokus/DJ/full gestures remain pending. See the
+  [runtime evidence](docs/render-viewport-runtime-2026-10-21.md).
+- Keep older frozen reports and candidates historical. No new diagnostic flash,
+  color-chain change or release is authorized by this observation.
+
 ## 2026-10-20 – Bounded artwork viewport; measured and physical evidence separate
 
 - After synthetic D7DA timing, Lead restored the verified original EBB app-sector
