@@ -1,0 +1,611 @@
+{
+  "diagnostic_sha256": "1252EBAC2C3CBFEC4915DADB172CC06DB5799DF7E0482B17710E474DD4274C33",
+  "original_firmware_sha256": "61BE3B633AF700B27F0DDF55F9B26D41E1B9E0916F187848A470B50988701440",
+  "app_unchanged": "C42112AD2C774B0814B40B688AE8FA80BD0858D1308DA9130719362492CAC135",
+  "synthetic_data_only": true,
+  "timing_profile": "1252 viewport; own diagnostic cost; not FPS or normal61BE benchmark",
+  "phase_seconds": 60,
+  "stable_warmup_seconds": 18,
+  "requires_two_stable_windows_per_phase": true,
+  "phases": [
+    {
+      "phase": 0,
+      "playing": false,
+      "elapsed_s": 121.417
+    },
+    {
+      "phase": 1,
+      "playing": true,
+      "elapsed_s": 181.461
+    },
+    {
+      "phase": 2,
+      "playing": false,
+      "elapsed_s": 241.518
+    }
+  ],
+  "records": [
+    {
+      "elapsed_s": 36.952,
+      "phase": -1,
+      "phase_age_s": null,
+      "playing": 0,
+      "transfer": 0,
+      "gap": [
+        2009,
+        86444,
+        0,
+        2,
+        2001,
+        0,
+        5,
+        1
+      ],
+      "handler": [
+        2010,
+        76156,
+        1980,
+        1,
+        23,
+        0,
+        5,
+        1
+      ],
+      "flush": [
+        68,
+        4706,
+        5,
+        13,
+        50,
+        0,
+        0,
+        0
+      ],
+      "eligible_stable_window": false
+    },
+    {
+      "elapsed_s": 51.952,
+      "phase": -1,
+      "phase_age_s": null,
+      "playing": 0,
+      "transfer": 0,
+      "gap": [
+        2476,
+        52887,
+        0,
+        0,
+        2470,
+        0,
+        6,
+        0
+      ],
+      "handler": [
+        2476,
+        49587,
+        2441,
+        0,
+        29,
+        0,
+        6,
+        0
+      ],
+      "flush": [
+        71,
+        4515,
+        6,
+        15,
+        50,
+        0,
+        0,
+        0
+      ],
+      "eligible_stable_window": false
+    },
+    {
+      "elapsed_s": 81.953,
+      "phase": -1,
+      "phase_age_s": null,
+      "playing": 0,
+      "transfer": 0,
+      "gap": [
+        2452,
+        53350,
+        0,
+        1,
+        2443,
+        0,
+        8,
+        0
+      ],
+      "handler": [
+        2452,
+        49549,
+        2415,
+        0,
+        29,
+        0,
+        8,
+        0
+      ],
+      "flush": [
+        85,
+        4525,
+        8,
+        15,
+        62,
+        0,
+        0,
+        0
+      ],
+      "eligible_stable_window": false
+    },
+    {
+      "elapsed_s": 111.98,
+      "phase": -1,
+      "phase_age_s": null,
+      "playing": 0,
+      "transfer": 0,
+      "gap": [
+        2291,
+        153502,
+        0,
+        1,
+        2236,
+        46,
+        4,
+        4
+      ],
+      "handler": [
+        2291,
+        147536,
+        2199,
+        2,
+        35,
+        47,
+        5,
+        3
+      ],
+      "flush": [
+        191,
+        4517,
+        4,
+        72,
+        115,
+        0,
+        0,
+        0
+      ],
+      "eligible_stable_window": false
+    },
+    {
+      "elapsed_s": 126.965,
+      "phase": 0,
+      "phase_age_s": 5.548,
+      "playing": 0,
+      "transfer": 0,
+      "gap": [
+        882,
+        71682,
+        0,
+        0,
+        345,
+        532,
+        2,
+        3
+      ],
+      "handler": [
+        882,
+        65505,
+        179,
+        0,
+        169,
+        529,
+        5,
+        0
+      ],
+      "flush": [
+        1259,
+        4572,
+        5,
+        707,
+        547,
+        0,
+        0,
+        0
+      ],
+      "eligible_stable_window": false
+    },
+    {
+      "elapsed_s": 141.991,
+      "phase": 0,
+      "phase_age_s": 20.575,
+      "playing": 0,
+      "transfer": 0,
+      "gap": [
+        897,
+        75216,
+        0,
+        0,
+        393,
+        499,
+        2,
+        3
+      ],
+      "handler": [
+        897,
+        65555,
+        167,
+        0,
+        231,
+        494,
+        5,
+        0
+      ],
+      "flush": [
+        1252,
+        4522,
+        5,
+        735,
+        512,
+        0,
+        0,
+        0
+      ],
+      "eligible_stable_window": true
+    },
+    {
+      "elapsed_s": 156.996,
+      "phase": 0,
+      "phase_age_s": 35.579,
+      "playing": 0,
+      "transfer": 0,
+      "gap": [
+        890,
+        68342,
+        0,
+        0,
+        357,
+        528,
+        1,
+        4
+      ],
+      "handler": [
+        890,
+        65488,
+        185,
+        0,
+        175,
+        525,
+        5,
+        0
+      ],
+      "flush": [
+        1259,
+        4560,
+        5,
+        710,
+        544,
+        0,
+        0,
+        0
+      ],
+      "eligible_stable_window": true
+    },
+    {
+      "elapsed_s": 172.013,
+      "phase": 0,
+      "phase_age_s": 50.596,
+      "playing": 0,
+      "transfer": 0,
+      "gap": [
+        868,
+        68559,
+        0,
+        0,
+        326,
+        537,
+        2,
+        3
+      ],
+      "handler": [
+        868,
+        65374,
+        153,
+        0,
+        178,
+        532,
+        5,
+        0
+      ],
+      "flush": [
+        1275,
+        4513,
+        5,
+        720,
+        550,
+        0,
+        0,
+        0
+      ],
+      "eligible_stable_window": true
+    },
+    {
+      "elapsed_s": 187.078,
+      "phase": 1,
+      "phase_age_s": 5.617,
+      "playing": 1,
+      "transfer": 0,
+      "gap": [
+        80,
+        76852,
+        0,
+        0,
+        0,
+        1,
+        0,
+        79
+      ],
+      "handler": [
+        80,
+        71341,
+        0,
+        0,
+        0,
+        0,
+        67,
+        13
+      ],
+      "flush": [
+        490,
+        4513,
+        10,
+        159,
+        321,
+        0,
+        0,
+        0
+      ],
+      "eligible_stable_window": false
+    },
+    {
+      "elapsed_s": 217.165,
+      "phase": 1,
+      "phase_age_s": 35.704,
+      "playing": 1,
+      "transfer": 0,
+      "gap": [
+        215,
+        80934,
+        0,
+        0,
+        0,
+        0,
+        1,
+        214
+      ],
+      "handler": [
+        215,
+        71304,
+        0,
+        0,
+        0,
+        0,
+        187,
+        28
+      ],
+      "flush": [
+        1309,
+        4524,
+        20,
+        430,
+        859,
+        0,
+        0,
+        0
+      ],
+      "eligible_stable_window": true
+    },
+    {
+      "elapsed_s": 232.19,
+      "phase": 1,
+      "phase_age_s": 50.729,
+      "playing": 1,
+      "transfer": 0,
+      "gap": [
+        215,
+        76827,
+        0,
+        0,
+        0,
+        0,
+        3,
+        212
+      ],
+      "handler": [
+        215,
+        71245,
+        0,
+        0,
+        0,
+        0,
+        186,
+        29
+      ],
+      "flush": [
+        1307,
+        4524,
+        20,
+        430,
+        857,
+        0,
+        0,
+        0
+      ],
+      "eligible_stable_window": true
+    },
+    {
+      "elapsed_s": 247.146,
+      "phase": 2,
+      "phase_age_s": 5.628,
+      "playing": 0,
+      "transfer": 0,
+      "gap": [
+        307,
+        78271,
+        0,
+        0,
+        102,
+        195,
+        7,
+        3
+      ],
+      "handler": [
+        307,
+        74666,
+        52,
+        0,
+        51,
+        200,
+        3,
+        1
+      ],
+      "flush": [
+        481,
+        4557,
+        3,
+        266,
+        212,
+        0,
+        0,
+        0
+      ],
+      "eligible_stable_window": false
+    },
+    {
+      "elapsed_s": 247.147,
+      "phase": 2,
+      "phase_age_s": 5.63,
+      "playing": 1,
+      "transfer": 0,
+      "gap": [
+        134,
+        78983,
+        0,
+        0,
+        0,
+        0,
+        1,
+        133
+      ],
+      "handler": [
+        134,
+        71021,
+        0,
+        0,
+        0,
+        0,
+        119,
+        15
+      ],
+      "flush": [
+        815,
+        4605,
+        13,
+        267,
+        535,
+        0,
+        0,
+        0
+      ],
+      "eligible_stable_window": false
+    },
+    {
+      "elapsed_s": 262.131,
+      "phase": 2,
+      "phase_age_s": 20.613,
+      "playing": 0,
+      "transfer": 0,
+      "gap": [
+        896,
+        69369,
+        0,
+        1,
+        361,
+        529,
+        0,
+        5
+      ],
+      "handler": [
+        896,
+        65834,
+        204,
+        0,
+        161,
+        526,
+        5,
+        0
+      ],
+      "flush": [
+        1248,
+        4537,
+        5,
+        697,
+        546,
+        0,
+        0,
+        0
+      ],
+      "eligible_stable_window": true
+    },
+    {
+      "elapsed_s": 292.15,
+      "phase": 2,
+      "phase_age_s": 50.632,
+      "playing": 0,
+      "transfer": 0,
+      "gap": [
+        884,
+        69230,
+        0,
+        3,
+        365,
+        511,
+        3,
+        2
+      ],
+      "handler": [
+        884,
+        65672,
+        154,
+        0,
+        223,
+        502,
+        5,
+        0
+      ],
+      "flush": [
+        1258,
+        4553,
+        5,
+        734,
+        519,
+        0,
+        0,
+        0
+      ],
+      "eligible_stable_window": true
+    }
+  ],
+  "malformed_diagnostic_lines": 5,
+  "discarded_non_diagnostic_lines": 58,
+  "started_at": "2026-10-21T12:08:30.626709+02:00",
+  "panel_user_confirmation_required": true,
+  "panel_user_confirmed_at": "2026-10-21T12:10:32.067376+02:00",
+  "completed_at": "2026-10-21T12:13:32.154180+02:00",
+  "stable_window_counts": {
+    "0": 3,
+    "1": 2,
+    "2": 2
+  },
+  "result": "timing_phases_completed_with_valid_windows"
+}

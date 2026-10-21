@@ -1,5 +1,21 @@
 # Bongo Cat – Current State
 
+## Senast 2026-10-21 – 1252 mätt, normal 61BE återställd
+
+- Installerat är fortsatt **C42112AD/normal 61BE3B63 vid 921600**, CPU meter av.
+  Lead slutförde den uttryckligen godkända tillfälliga **1252EBAC**-mätningen
+  och verifierade återgången med ny appsektorbackup. 1252 är inte kvar.
+- Senast dokumenterad status 12:17:53 visar ansluten ESP och aktiv Windows Spotify;
+  app/config/Run/genvägar matchar. Användaren bekräftade 12:19:34:
+  **”Ja, vanlig låt och omslag är tillbaka”**. Det senare kvittot ersätter
+  grundkvittots då korrekta väntande fysiska återbekräftelse.
+- Syntetisk paus/spelande/paus, 60 s per fas, 3/2/2 markerade godkända fönster:
+  spelande H 57/430 över 66 ms och alla 430 över 33 ms; pauser H 0/4435 över 66 ms.
+  Egen diagnoskostnad, ingen panel-FPS/normal-CPU eller kontrollerad D7DA-A/B.
+  Se [metod, tider, återgång och publika JSON](docs/render-viewport-measurement-2026-10-21.md).
+- Rullning är fortsatt bara kvalitativt delvis förbättrad. Ingen färgmätning,
+  ny färgfirmware eller bred fysisk regression ingår. Äldre status nedan är historik.
+
 ## Driftprov 2026-10-21 – C421/normal 61BE installerat
 
 Normal **61BE3B63** är nu flashad av Lead 5 efter uttryckligt godkännande,

@@ -1,5 +1,19 @@
 # Bongo Cat – Architecture Decisions
 
+## 2026-10-21 – Temporary 1252 measurement completed; normal 61BE restored
+
+- Lead completed the approved diagnostic cycle and verified return to exact
+  normal 61BE. Installed state is C42112AD/61BE3B63/921600, CPU meter off.
+  The later user confirmation that normal track/artwork returned supersedes
+  the initial receipt's pending confirmation. Preserve both receipts unchanged.
+- Synthetic paused/playing/paused phases yielded 3/2/2 eligible windows.
+  Playing H: 57/430 above 66 ms, all 430 above 33 ms; paused H: 0/4435 above
+  66 ms. Own instrumentation cost remains; no panel-FPS, exact normal-CPU,
+  max-handler-minus-max-flush attribution or controlled prior-day A/B claim.
+- See [measurement and restoration evidence](docs/render-viewport-measurement-2026-10-21.md).
+  Keep old reports historical. Further render work needs a separate concrete
+  scope. No new color firmware, release, merge or tag is part of this result.
+
 ## 2026-10-21 – Normal viewport flashed; partial physical improvement
 
 - Lead 5 flashed exact normal 61BE3B63 after explicit user approval, fresh

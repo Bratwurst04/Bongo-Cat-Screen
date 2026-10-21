@@ -1,0 +1,9 @@
+{
+  "schema": "bongo-render-viewport-restoration-confirmation-v1",
+  "at": "2026-10-21T12:19:34.9161573+02:00",
+  "measurement_receipt_sha256": "FFA744466BB341609655AE5DDE02386AC1FE61530873EEB7AF64173F2589564C",
+  "question": "61BE3B63 är återställd och appen har anslutit. Syns nu din vanliga låt och ditt vanliga omslag igen?",
+  "user_answer": "Ja, vanlig låt och omslag är tillbaka",
+  "physical_restoration_confirmed": true,
+  "scope": "Vanlig låt och omslag åter efter återställning; ingen ny full acceptans av rullning, gester, långdrift eller bildfrekvens."
+}

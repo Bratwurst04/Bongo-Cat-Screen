@@ -5,6 +5,71 @@
 [driftrapporten](render-viewport-runtime-2026-10-21.md). Bildkedjans auditresultat
 nedan är oförändrade; normalkandidaten ändrar inte färgkedjan.
 
+## Nytt öppet referensfall – Quitter, 2026-10-21
+
+Användaren pekar ut **”Quitter” av Cameron Whitcomb** som ett dåligt omslag på
+TFT och beskrev det först som ungefär 50 % grått. Den senare preciseringen är
+ordagrant: **”En grå yta ersätter delar av motivet”**. Detta är en rapport om
+saknade motivdelar/gråblock, inte i första hand en allmän mättnadsobservation.
+Ingen rotorsak är fastställd.
+
+Lead läste därefter enbart den aktuella Windows Spotify-SMTC-thumbnailen och
+granskade originalets albumruta och den befintliga konverterarens vinyl.
+Det var det detaljrika färgillustrerade **The Hard Way**-omslaget enligt Leads
+visuella identifiering, inte en alternativ Quitter-single/EP-bild från nätet.
+Code har **inte öppnat eller publicerat råbilderna**. Det begränsade numeriska
+[referenskvittot](evidence/render-viewport-measurement-2026-10-21/quitter-reference-safe.json)
+har SHA `B2AC9132584BC4C693DE2A3D4479FEDC09D89AA775814C279BAF0A20AFFD75C1`.
+
+Kvittot visar 300×300 RGBA PNG, igenkänd wrapper och albumcrop
+`(33,0,267,234)` till 234×234. ICC/gamma saknas. På korrekt cirkulär etikett-ROI
+utan vinylkant/centrum gav den enkla digitala definitionen **RGB-spridning ≤16**:
+
+| Steg | Provpixlar | Nära-grå pixlar | Andel enligt just tröskeln |
+| --- | --- | --- | --- |
+| Källa 234 | 41 648 | 6070 | 14,575 % |
+| Konverterad etikett 81 | 4912 | 459 | 9,344 % |
+| Kompakt RGB565-etikett | 2516 | 240 | 9,539 % |
+
+Raster, provantal och resampling skiljer sig. Detta är **inte perceptuell
+färgmätning, gråandel på TFT eller ett motbevis mot användarens upplevelse**.
+Noll RGB565-grönnyckelkollisioner fanns i dessa etikett-ROI. Lead såg kvarvarande
+synliga färger i original och beräknad vinyl, utan det rapporterade sammanhängande
+gråblocket. Originalet är alltså inte generellt grått, och just denna digitala
+jämförelse visar ingen stor generell avmättning.
+
+Jämförelsen slutar vid källa/konverterare/codec. Senare firmwaresteg –
+record-renderer/vald skivsida, slotval och artviewport/klippning – måste granskas
+separat innan felet tillskrivs panel eller överföring. Fysisk panelbild saknas;
+panelvinkel och upplevd detaljförlust är också öppna frågor. Ingen färgboost
+eller ny färgfirmware har införts.
+
+### Första kvalitativa dokumentation med iPhone 13 Pro
+
+Den inbyggda Kamera-appen räcker för en första **kvalitativ** jämförelse.
+Detta är ett föreslaget protokoll; ingen mobilfilm/färgkontroll är genomförd här.
+Lead har först bett om ett enkelt foto rakt framför skärmen med **pausad Quitter**.
+Den första kontrollen kräver ingen extra app eller ny färgtestfirmware.
+
+Om video används för en fortsatt jämförelse:
+
+1. Använd vanlig **Video, 1×**. Under Inställningar → Kamera → Spela in video:
+   stäng av **HDR-video** och slå på **Lås vitbalans** om valet finns på aktuell
+   iOS-version. Apple beskriver båda reglagen i
+   [videoinställningarna](https://support.apple.com/guide/iphone/change-video-recording-settings-iphc1827d32f/ios).
+2. Håll mobilen stilla och rakt framför TFT, sedan vid normal betraktningsvinkel,
+   med samma ljus och samma omslag. Lås fokus/exponering där läget tillåter det;
+   Apples [AE/AF Lock](https://support.apple.com/guide/iphone/use-camera-tools-to-set-up-your-shot-iph3dc593597/ios)
+   avser fokus/exponering, **inte ett lås av fotovitbalans**.
+3. Beskriv vilka motivdelar som ersätts och om gråytan ändras med vinkel eller
+   stilla/roterande skiva. Kamerans behandling och skärmens ljus kan påverka
+   resultatet, så härled inga kalibrerade färg-/kontrasttal ur videon.
+
+Kalibrering och profilering kräver mätinstrument enligt
+[International Color Consortium](https://www.color.org/displaycalibration/).
+Opaka RGB/CMY/grå-direktmönster behövs separat för panelkaraktärisering eftersom
+omslagsvägen grönnycklar. Ingen sådan ny testfirmware har byggts eller flashats.
+
 ## Slutsats och avgränsning
 
 Det finns **ingen påvisad generell avmättning i konverteringen av vanlig opak

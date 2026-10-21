@@ -1,5 +1,15 @@
 # Bongo Cat – Project Context
 
+## Avslutad mätcykel 2026-10-21 – normal 61BE återställd
+
+Lead 5 har tillfälligt mätt **1252EBAC** och återställt exakt **normal 61BE3B63**.
+Aktuellt är **C42112AD/61BE3B63/921600**, CPU meter av. Användaren bekräftar att
+vanlig låt och omslag är tillbaka. Syntetisk paus/spelande/paus gav 3/2/2
+godkända diagnosfönster: spelande H 57/430 över 66 ms, pauser 0/4435.
+Det är instrumenterad handlertid, inte panel-FPS eller exakt normal-CPU.
+Se [mätning, återgång och säkra publika kvitton](docs/render-viewport-measurement-2026-10-21.md).
+Äldre före-/efterflashuppgifter nedan bevaras som historik.
+
 ## Driftprov 2026-10-21 – normal viewport flashad, rullning delvis bättre
 
 Lead 5 har efter uttryckligt tillstånd och verifierad EBB-backup flashat

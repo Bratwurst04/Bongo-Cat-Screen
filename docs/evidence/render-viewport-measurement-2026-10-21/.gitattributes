@@ -1,0 +1,2 @@
+# Keep the receipts byte-exact, including CRLF, for their published SHA-256 pins.
+*.json -text whitespace=cr-at-eol

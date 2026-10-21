@@ -1,0 +1,228 @@
+{
+  "schema": "bongo-render-viewport-measurement-safe-v1",
+  "created_at": "2026-10-21T12:19:22.536364+02:00",
+  "authorization": "User requested Git publication of today evidence, followed by proposed temporary 1252 measurement and restore to normal61BE; manual boot/reset confirmations received.",
+  "measurement_result": "timing_phases_completed_with_valid_windows",
+  "firmware": {
+    "diagnostic_sha256": "1252EBAC2C3CBFEC4915DADB172CC06DB5799DF7E0482B17710E474DD4274C33",
+    "diagnostic_bytes": 938400,
+    "restored_normal_sha256": "61BE3B633AF700B27F0DDF55F9B26D41E1B9E0916F187848A470B50988701440",
+    "normal_bytes": 937600,
+    "backup_bytes": 942080,
+    "backup_sha256": "113424C8966778445559A91F5DB0DDF1D0D7B77ABD779553C53CC89E654FCA5D",
+    "app_offset": "0x10000",
+    "sector_range": "[0x10000,0xF6000)",
+    "runtime_baud": 921600,
+    "flash_baud": 115200,
+    "bootloader_written": false,
+    "nvs_written": false
+  },
+  "operations": {
+    "backup": {
+      "exit_code": 0,
+      "seconds": 87.234,
+      "log_sha256": "75D3C25DA4BE60F5260E269E10545F8BA20FB5CDDE7211192170BD0CEBEDBA69",
+      "at": "2026-10-21T12:06:54.543266+02:00"
+    },
+    "backupverify": {
+      "exit_code": 0,
+      "seconds": 3.347,
+      "log_sha256": "0D28A8570006572A69CCBD1B726BA78227DB3E9EAB54AE635C26320F1AB003BA",
+      "at": "2026-10-21T12:07:15.557326+02:00"
+    },
+    "flash": {
+      "exit_code": 0,
+      "seconds": 42.708,
+      "log_sha256": "C7D70FC96FCB0E4C1F8C332F2044756C2DD43A0EDAAC7512D33B14F847F06F88",
+      "at": "2026-10-21T12:08:19.343193+02:00"
+    },
+    "restore": {
+      "exit_code": 0,
+      "seconds": 42.627,
+      "log_sha256": "E69B7A360FAAAABF31F1897577B3101AF43F82D61DDD22084C3124BAD1F7F170",
+      "at": "2026-10-21T12:15:21.914585+02:00"
+    }
+  },
+  "measurement": {
+    "synthetic_only": true,
+    "companion_stopped": true,
+    "spotify_api_calls_from_harness": 0,
+    "phase_seconds": 60,
+    "warmup_seconds": 18,
+    "phases": "paused/playing/paused",
+    "stable_window_counts": {
+      "0": 3,
+      "1": 2,
+      "2": 2
+    },
+    "valid_diagnostic_records": 15,
+    "malformed_diagnostic_lines": 5,
+    "discarded_non_diagnostic_lines": 58,
+    "panel_confirmed_by_user": true,
+    "panel_confirmation": "Ja, r\u00e4tt testbild och text syns",
+    "panel_confirmation_at": "2026-10-21T12:10:32.067376+02:00",
+    "synthetic_art_bytes": 12800,
+    "synthetic_art_sha256": "961FB0804278706D08827CC9CDEC85D496E7B149285697CEB51A69FA58FCE1CA",
+    "own_diagnostic_cost": true,
+    "panel_fps_measured": false,
+    "normal_firmware_cpu_measured": false,
+    "single_flush_max_cannot_be_subtracted_from_handler_max": true,
+    "timing_files": {
+      "render-timings.json": {
+        "bytes": 9822,
+        "sha256": "01EE3D69CAE861C4F9E163F91773BF155943759140A6181EF7CF73F3DDB3D1BB"
+      },
+      "render-summary.json": {
+        "bytes": 3113,
+        "sha256": "B004AACCE242AD78B17049B7648913B374065D6A2BA4DBF90904AB53A5AAAE90"
+      }
+    }
+  },
+  "preservation": {
+    "installed_app_sha256": "C42112AD2C774B0814B40B688AE8FA80BD0858D1308DA9130719362492CAC135",
+    "installed_app_bytes": 22856796,
+    "profiles_backed_up": 4,
+    "profiles_verified_unchanged_before_restoration": true,
+    "app_preserved": true,
+    "config_matches_backup_after_restart": true,
+    "run_unchanged": true,
+    "shortcuts_unchanged": true,
+    "durable_private_archive_copies": 17,
+    "durable_private_archive_verified": true
+  },
+  "restored_observation": {
+    "at": "2026-10-21T12:17:53.570683+02:00",
+    "status": {
+      "file_age_seconds": 0.655,
+      "esp32": {
+        "connected": true,
+        "free_heap_bytes": 154164,
+        "uptime_seconds": 34,
+        "cpu_meter_enabled": false,
+        "status_age_seconds": 1.6795713901519775
+      },
+      "media": {
+        "windows_spotify_available": true,
+        "api_only_idle": false,
+        "current_source": "windows_spotify"
+      }
+    },
+    "processes": [
+      {
+        "pid": 76444,
+        "parent_is_explorer": false
+      },
+      {
+        "pid": 84796,
+        "parent_is_explorer": true
+      }
+    ],
+    "app_matches": true,
+    "config_matches_backup": true,
+    "run_unchanged": true,
+    "shortcuts_unchanged": true,
+    "events": [
+      {
+        "at": "2026-10-21T12:17:16.207000",
+        "event": "APP_START"
+      },
+      {
+        "at": "2026-10-21T12:17:18.372000",
+        "event": "SERIAL_CONNECT",
+        "result": "failure",
+        "attempt": 1
+      },
+      {
+        "at": "2026-10-21T12:17:22.502000",
+        "event": "SERIAL_CONNECT",
+        "result": "success",
+        "attempt": 2
+      },
+      {
+        "at": "2026-10-21T12:17:25.755000",
+        "event": "MEDIA_TRACK",
+        "source": "windows_spotify"
+      },
+      {
+        "at": "2026-10-21T12:17:25.757000",
+        "event": "ART_DEFAULT",
+        "source": "windows_spotify"
+      },
+      {
+        "at": "2026-10-21T12:17:25.769000",
+        "event": "ART_READY",
+        "source": "windows_spotify",
+        "bytes": 37632,
+        "attempt": 1
+      },
+      {
+        "at": "2026-10-21T12:17:26.215000",
+        "event": "DEVICE_RESYNC"
+      },
+      {
+        "at": "2026-10-21T12:17:30.736000",
+        "event": "ART_SENT",
+        "bytes": 37632,
+        "attempt": 1,
+        "duration_ms": 4966,
+        "protocol": "legacy"
+      },
+      {
+        "at": "2026-10-21T12:17:30.739000",
+        "event": "ART_DEFAULT",
+        "source": "windows_spotify"
+      },
+      {
+        "at": "2026-10-21T12:17:30.743000",
+        "event": "ART_ACK",
+        "result": "success",
+        "protocol": "legacy"
+      },
+      {
+        "at": "2026-10-21T12:17:30.854000",
+        "event": "ART_CAPABILITY",
+        "result": "success",
+        "protocol": "art2"
+      },
+      {
+        "at": "2026-10-21T12:17:30.855000",
+        "event": "ART_COMPACT_CAPABILITY",
+        "result": "success",
+        "protocol": "art2",
+        "bytes": 12800
+      },
+      {
+        "at": "2026-10-21T12:17:35.703000",
+        "event": "ART_SENT",
+        "bytes": 37632,
+        "attempt": 1,
+        "duration_ms": 4959,
+        "protocol": "legacy"
+      },
+      {
+        "at": "2026-10-21T12:17:35.704000",
+        "event": "ART_ACK",
+        "result": "success",
+        "protocol": "legacy"
+      },
+      {
+        "at": "2026-10-21T12:17:35.708000",
+        "event": "ART_CAPABILITY",
+        "result": "success",
+        "protocol": "art2"
+      },
+      {
+        "at": "2026-10-21T12:17:35.709000",
+        "event": "ART_REFINE_CAPABILITY",
+        "result": "success",
+        "protocol": "art2"
+      }
+    ]
+  },
+  "physical_restoration_confirmation": "pending",
+  "limitations": [
+    "Instrumented synthetic timing only; no normal61BE benchmark or panel FPS.",
+    "D7DA comparison is a separate prior-day run, not controlled paired A/B or an EBB baseline.",
+    "No color chart, color measurement, new product binary, release, merge or tag."
+  ]
+}

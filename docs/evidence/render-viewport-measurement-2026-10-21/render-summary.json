@@ -1,0 +1,158 @@
+{
+  "classification": "1252 instrumented synthetic handler timings; not FPS or normal61BE CPU benchmark",
+  "result": "timing_phases_completed_with_valid_windows",
+  "rejected_diagnostic_lines": 5,
+  "diagnostic_records": 15,
+  "phases": [
+    {
+      "phase": 0,
+      "playing": false,
+      "stable_windows": 3,
+      "gap": {
+        "samples": 2655,
+        "max_us": 75216,
+        "bins": [
+          0,
+          0,
+          1076,
+          1564,
+          5,
+          10
+        ],
+        "over33_count": 15,
+        "over66_count": 10,
+        "over66_percent": 0.3766
+      },
+      "handler": {
+        "samples": 2655,
+        "max_us": 65555,
+        "bins": [
+          505,
+          0,
+          584,
+          1551,
+          15,
+          0
+        ],
+        "over33_count": 15,
+        "over66_count": 0,
+        "over66_percent": 0.0
+      },
+      "flush": {
+        "samples": 3786,
+        "max_us": 4560,
+        "bins": [
+          15,
+          2165,
+          1606,
+          0,
+          0,
+          0
+        ],
+        "over33_count": 0,
+        "over66_count": 0,
+        "over66_percent": 0.0
+      }
+    },
+    {
+      "phase": 1,
+      "playing": true,
+      "stable_windows": 2,
+      "gap": {
+        "samples": 430,
+        "max_us": 80934,
+        "bins": [
+          0,
+          0,
+          0,
+          0,
+          4,
+          426
+        ],
+        "over33_count": 430,
+        "over66_count": 426,
+        "over66_percent": 99.0698
+      },
+      "handler": {
+        "samples": 430,
+        "max_us": 71304,
+        "bins": [
+          0,
+          0,
+          0,
+          0,
+          373,
+          57
+        ],
+        "over33_count": 430,
+        "over66_count": 57,
+        "over66_percent": 13.2558
+      },
+      "flush": {
+        "samples": 2616,
+        "max_us": 4524,
+        "bins": [
+          40,
+          860,
+          1716,
+          0,
+          0,
+          0
+        ],
+        "over33_count": 0,
+        "over66_count": 0,
+        "over66_percent": 0.0
+      }
+    },
+    {
+      "phase": 2,
+      "playing": false,
+      "stable_windows": 2,
+      "gap": {
+        "samples": 1780,
+        "max_us": 69369,
+        "bins": [
+          0,
+          4,
+          726,
+          1040,
+          3,
+          7
+        ],
+        "over33_count": 10,
+        "over66_count": 7,
+        "over66_percent": 0.3933
+      },
+      "handler": {
+        "samples": 1780,
+        "max_us": 65834,
+        "bins": [
+          358,
+          0,
+          384,
+          1028,
+          10,
+          0
+        ],
+        "over33_count": 10,
+        "over66_count": 0,
+        "over66_percent": 0.0
+      },
+      "flush": {
+        "samples": 2506,
+        "max_us": 4553,
+        "bins": [
+          10,
+          1431,
+          1065,
+          0,
+          0,
+          0
+        ],
+        "over33_count": 0,
+        "over66_count": 0,
+        "over66_percent": 0.0
+      }
+    }
+  ]
+}
